@@ -165,7 +165,7 @@ export function AiUsageCard() {
                 data={chartData}
                 index="day"
                 categories={['Tokens']}
-                colors={['violet']}
+                colors={['emerald']}
                 valueFormatter={(v) => formatCompactNumber(v)}
                 showLegend={false}
                 yAxisWidth={48}

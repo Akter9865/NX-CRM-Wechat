@@ -140,6 +140,68 @@ export function MembersTab() {
     null,
   );
 
+  // WhatsApp connection permissions state
+  const [whatsappPermsOpen, setWhatsappPermsOpen] = useState(false);
+  const [editingMemberForPerms, setEditingMemberForPerms] = useState<Member | null>(null);
+  const [permsLoading, setPermsLoading] = useState(false);
+  const [assignedConnectionIds, setAssignedConnectionIds] = useState<string[]>([]);
+  const [availableConnections, setAvailableConnections] = useState<
+    Array<{
+      id: string;
+      connection_name?: string;
+      business_name?: string;
+      display_phone_number?: string;
+      phone_number_id?: string;
+    }>
+  >([]);
+  const [savingPerms, setSavingPerms] = useState(false);
+
+  async function openWhatsAppPerms(member: Member) {
+    setEditingMemberForPerms(member);
+    setWhatsappPermsOpen(true);
+    setPermsLoading(true);
+    try {
+      const res = await fetch(`/api/account/members/${member.user_id}/whatsapp-permissions`);
+      if (!res.ok) throw new Error('Failed to load permissions');
+      const data = await res.json();
+      setAssignedConnectionIds(data.assigned_connection_ids || []);
+      setAvailableConnections(data.available_connections || []);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not load WhatsApp permissions';
+      toast.error(msg);
+    } finally {
+      setPermsLoading(false);
+    }
+  }
+
+  function toggleConnectionPermission(connId: string) {
+    setAssignedConnectionIds((prev) =>
+      prev.includes(connId)
+        ? prev.filter((id) => id !== connId)
+        : [...prev, connId]
+    );
+  }
+
+  async function handleSaveWhatsAppPerms() {
+    if (!editingMemberForPerms) return;
+    setSavingPerms(true);
+    try {
+      const res = await fetch(`/api/account/members/${editingMemberForPerms.user_id}/whatsapp-permissions`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connection_ids: assignedConnectionIds }),
+      });
+      if (!res.ok) throw new Error('Failed to update permissions');
+      toast.success(`WhatsApp access updated for ${editingMemberForPerms.full_name || 'Member'}`);
+      setWhatsappPermsOpen(false);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to update WhatsApp access';
+      toast.error(msg);
+    } finally {
+      setSavingPerms(false);
+    }
+  }
+
   const loadEverything = useCallback(async () => {
     try {
       const [mres, ires] = await Promise.all([
@@ -410,6 +472,22 @@ export function MembersTab() {
                       inline. Items align to the start on mobile so the
                       role dropdown lines up under the avatar. */}
                   <div className="flex items-center gap-2 sm:gap-3">
+                    {/* WhatsApp Connection Access Button/Badge */}
+                    {member.role === 'owner' || member.role === 'admin' ? (
+                      <span className="hidden sm:inline-flex items-center gap-1 rounded-md border border-border/60 bg-muted/30 px-2 py-1 text-[11px] text-muted-foreground font-mono">
+                        All WhatsApp
+                      </span>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openWhatsAppPerms(member)}
+                        className="h-8 text-xs border-border text-muted-foreground hover:text-foreground"
+                      >
+                        WhatsApp Access
+                      </Button>
+                    )}
+
                     {/* Role display / editor. Inline Select is admin+
                         only AND not allowed on the owner row (owner
                         changes go through transfer, which lands later). */}
@@ -605,6 +683,99 @@ export function MembersTab() {
                 </>
               ) : (
                 t('removeBtn')
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* WhatsApp Connection Permissions Dialog */}
+      <Dialog
+        open={whatsappPermsOpen}
+        onOpenChange={(open) => {
+          if (!open) setWhatsappPermsOpen(false);
+        }}
+      >
+        <DialogContent className="bg-popover border-border sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold text-foreground">
+              WhatsApp Connection Access
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Configure which WhatsApp phone numbers {editingMemberForPerms?.full_name || 'this member'} can access in the Unified Inbox and Contacts.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-2 space-y-3">
+            {permsLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="size-5 animate-spin text-primary" />
+              </div>
+            ) : availableConnections.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-4">
+                No active WhatsApp connections found on this account.
+              </p>
+            ) : (
+              <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                {availableConnections.map((conn) => {
+                  const isChecked = assignedConnectionIds.includes(conn.id);
+                  return (
+                    <div
+                      key={conn.id}
+                      onClick={() => toggleConnectionPermission(conn.id)}
+                      className={`flex items-center justify-between p-3 rounded-lg border text-xs cursor-pointer transition-colors ${
+                        isChecked
+                          ? 'border-primary/40 bg-primary/5 text-foreground'
+                          : 'border-border/60 bg-muted/20 text-muted-foreground hover:bg-muted/40'
+                      }`}
+                    >
+                      <div className="space-y-0.5">
+                        <div className="font-medium text-foreground">
+                          {conn.connection_name || conn.business_name || 'WhatsApp Connection'}
+                        </div>
+                        <div className="text-[11px] font-mono text-muted-foreground">
+                          {conn.display_phone_number || conn.phone_number_id}
+                        </div>
+                      </div>
+
+                      <div
+                        className={`size-4 rounded border flex items-center justify-center text-[10px] font-bold ${
+                          isChecked
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'border-muted-foreground/40'
+                        }`}
+                      >
+                        {isChecked ? '✓' : ''}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="bg-popover border-border">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setWhatsappPermsOpen(false)}
+              className="border-border text-muted-foreground hover:bg-muted"
+            >
+              {t('cancel')}
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleSaveWhatsAppPerms}
+              disabled={savingPerms || permsLoading}
+              className="bg-primary text-primary-foreground font-medium"
+            >
+              {savingPerms ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin mr-1.5" />
+                  Saving...
+                </>
+              ) : (
+                'Save Access Permissions'
               )}
             </Button>
           </DialogFooter>

@@ -13,6 +13,7 @@ import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { resolveImportTagIds } from '@/lib/contacts/resolve-import-tags';
 import { addContactTagAndDispatch } from '@/lib/contacts/tag-events';
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
+import { checkCanAddContact } from '@/lib/billing/entitlements';
 
 /** Row select that embeds the contact's tags for serialization. */
 export const CONTACT_SELECT = '*, contact_tags(tags(*))';
@@ -123,6 +124,15 @@ export async function findOrCreateContact(
 
   const existing = await findExistingContact(db, accountId, sanitized);
   if (existing) return { id: existing.id, created: false };
+
+  // Backend Entitlement Guard: Check contact limit under account plan
+  const canAdd = await checkCanAddContact(accountId, db);
+  if (!canAdd.allowed) {
+    throw new ContactError(
+      canAdd.message || 'Contact limit reached for your plan. Please upgrade to add more contacts.',
+      403,
+    );
+  }
 
   const { data: created, error } = await db
     .from('contacts')

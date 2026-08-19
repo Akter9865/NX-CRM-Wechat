@@ -73,6 +73,35 @@ export function ConversationList({
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
 
+  // Multi-WhatsApp connection filter
+  const [whatsappConnections, setWhatsappConnections] = useState<
+    Array<{
+      id: string;
+      connection_name?: string;
+      business_name?: string;
+      display_phone_number?: string;
+      phone_number_id?: string;
+    }>
+  >([]);
+  const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/whatsapp/connections');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && data.connections) {
+          setWhatsappConnections(data.connections);
+        }
+      } catch {}
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Keep the latest callback in a ref so the fetch effect below can
   // have a stable, empty-dep identity. Previously the fetch useCallback
   // depended on `onConversationsLoaded`, which depends on the parent's
@@ -167,6 +196,11 @@ export function ConversationList({
       result = result.filter((c) => c.status === filter);
     }
 
+    // Multi-WhatsApp connection filter
+    if (selectedConnectionId !== null) {
+      result = result.filter((c) => c.whatsapp_connection_id === selectedConnectionId);
+    }
+
     // Contact-based filters (tags via OR logic, exact company match).
     if (selectedTagIds.length > 0 || selectedCompany !== null) {
       result = result.filter((c) =>
@@ -188,7 +222,7 @@ export function ConversationList({
     }
 
     return result;
-  }, [conversations, filter, search, selectedTagIds, selectedCompany]);
+  }, [conversations, filter, search, selectedTagIds, selectedCompany, selectedConnectionId]);
 
   const toggleTag = useCallback((id: string) => {
     setSelectedTagIds((prev) =>
@@ -300,6 +334,57 @@ export function ConversationList({
                       <span className="truncate">{t.name}</span>
                     </span>
                   </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
+          {whatsappConnections.length > 1 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                className={cn(
+                  "inline-flex max-w-40 items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
+                  selectedConnectionId
+                    ? "text-primary font-medium"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <span className="truncate">
+                  {selectedConnectionId
+                    ? (whatsappConnections.find((c) => c.id === selectedConnectionId)?.connection_name || "WhatsApp")
+                    : "All WhatsApp"}
+                </span>
+                <ChevronDown className="h-3 w-3 shrink-0" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                className="max-h-64 w-56 border-border bg-popover"
+              >
+                <DropdownMenuItem
+                  onClick={() => setSelectedConnectionId(null)}
+                  className={cn(
+                    "text-xs font-medium",
+                    selectedConnectionId === null
+                      ? "text-primary"
+                      : "text-popover-foreground"
+                  )}
+                >
+                  All WhatsApp ({whatsappConnections.length})
+                </DropdownMenuItem>
+                {whatsappConnections.map((conn) => (
+                  <DropdownMenuItem
+                    key={conn.id}
+                    onClick={() => setSelectedConnectionId(conn.id)}
+                    className={cn(
+                      "text-xs flex flex-col items-start gap-0.5",
+                      selectedConnectionId === conn.id
+                        ? "text-primary font-medium"
+                        : "text-popover-foreground"
+                    )}
+                  >
+                    <span className="truncate">{conn.connection_name || conn.business_name}</span>
+                    <span className="text-[10px] text-muted-foreground font-mono">{conn.display_phone_number || conn.phone_number_id}</span>
+                  </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
@@ -461,6 +546,7 @@ function ConversationItem({
       {/* Avatar */}
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
         {contact?.avatar_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={contact.avatar_url}
             alt={displayName}
@@ -480,10 +566,15 @@ function ConversationItem({
           <span className="shrink-0 text-[10px] text-muted-foreground">{timeAgo}</span>
         </div>
         <div className="mt-0.5 flex items-center justify-between gap-2">
-          <p className="truncate text-xs text-muted-foreground">
+          <p className="truncate text-xs text-muted-foreground flex-1">
             {conversation.last_message_text || t("noMessagesYet")}
           </p>
           <div className="flex shrink-0 items-center gap-1.5">
+            {conversation.whatsapp_connection && (
+              <span className="inline-flex items-center text-[10px] text-primary/80 font-mono bg-primary/10 px-1 py-0.5 rounded truncate max-w-[90px]">
+                {conversation.whatsapp_connection.connection_name || conversation.whatsapp_connection.display_phone_number}
+              </span>
+            )}
             {conversation.unread_count > 0 && (
               <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
                 {conversation.unread_count}

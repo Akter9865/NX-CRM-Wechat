@@ -11,6 +11,7 @@ import {
   Bell,
   Bot,
   Crown,
+  CreditCard,
   GitBranch,
   LayoutDashboard,
   LogOut,
@@ -23,6 +24,9 @@ import {
   Users,
   UsersRound,
   Workflow,
+  Wrench,
+  Link as LinkIcon,
+  MousePointerClick,
   X,
   Zap,
 } from "lucide-react";
@@ -78,15 +82,22 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+interface SubNavItem {
+  href: string;
+  labelKey: string;
+  labelFallback: string;
+  icon: typeof LinkIcon;
+}
+
 interface NavItem {
   href: string;
   labelKey: string;
+  labelFallback?: string;
   icon: typeof LayoutDashboard;
-  /**
-   * When true, the nav row renders a small "Beta" chip after the label.
-   * Purely informational — doesn't affect routing or access.
-   */
   beta?: boolean;
+  badgeText?: string;
+  badgeClass?: string;
+  subItems?: SubNavItem[];
 }
 
 const navItems: NavItem[] = [
@@ -95,13 +106,40 @@ const navItems: NavItem[] = [
   { href: "/notifications", labelKey: "notifications", icon: Bell },
   { href: "/contacts", labelKey: "contacts", icon: Users },
   { href: "/pipelines", labelKey: "pipelines", icon: GitBranch },
-  { href: "/broadcasts", labelKey: "broadcasts", icon: Radio },
   { href: "/automations", labelKey: "automations", icon: Zap },
-  { href: "/flows", labelKey: "flows", icon: Workflow, beta: true },
+  {
+    href: "/broadcasts",
+    labelKey: "broadcasts",
+    icon: Radio,
+    badgeText: "COMING SOON",
+    badgeClass: "border border-amber-500/40 bg-amber-500/15 text-amber-400 font-extrabold text-[8px] tracking-wider px-1.5 py-0.5 rounded",
+  },
+  { href: "/flows", labelKey: "flows", icon: Workflow },
   { href: "/agents", labelKey: "aiAgents", icon: Bot },
+  {
+    href: "/tools",
+    labelKey: "tools",
+    labelFallback: "Tools",
+    icon: Wrench,
+    subItems: [
+      {
+        href: "/tools/whatsapp-link",
+        labelKey: "whatsappLink",
+        labelFallback: "WhatsApp Link",
+        icon: LinkIcon,
+      },
+      {
+        href: "/tools/whatsapp-button",
+        labelKey: "whatsappButton",
+        labelFallback: "WhatsApp Button",
+        icon: MousePointerClick,
+      },
+    ],
+  },
 ];
 
-const bottomNavItems = [
+const bottomNavItems: NavItem[] = [
+  { href: "/billing", labelKey: "billing", labelFallback: "Billing & Plans", icon: CreditCard },
   { href: "/settings", labelKey: "settings", icon: Settings },
 ];
 
@@ -186,14 +224,24 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
       >
         {/* Logo row. On mobile we put a close button here; on desktop the
             close button is hidden since the sidebar is always-visible. */}
-        <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <MessageSquare className="h-4 w-4" />
+        <div className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-border/80 px-4">
+          <Link href="/dashboard" className="flex items-center gap-2.5 group">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 via-teal-500 to-blue-600 text-white shadow-md shadow-emerald-500/25 ring-1 ring-white/20 transition-transform duration-200 group-hover:scale-105">
+              <MessageSquare className="h-4.5 w-4.5 fill-white/20 text-white" />
             </div>
-            <span className="text-sm font-semibold text-foreground">
-              {t("title")}
-            </span>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-bold tracking-tight text-foreground">
+                  NX CRM
+                </span>
+                <span className="rounded-md border border-emerald-500/30 bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-400">
+                  WeChat
+                </span>
+              </div>
+              <span className="text-[10px] font-medium text-muted-foreground">
+                Enterprise Suite
+              </span>
+            </div>
           </Link>
           <button
             type="button"
@@ -224,23 +272,30 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                 item.href === "/notifications" && unreadNotifications > 0;
 
               return (
-                <li key={item.href}>
+                <li key={item.href} className="space-y-1">
                   <Link
                     href={item.href}
                     className={cn(
                       // Taller on mobile so fingers can hit the row reliably (≥44px).
-                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
+                      "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150 lg:py-2",
                       isActive
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        ? "bg-primary/15 text-primary border border-primary/25 font-semibold shadow-sm shadow-primary/5"
+                        : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
                     )}
                   >
-                    <item.icon className="h-4 w-4" />
-                    <span className="flex-1">{t(item.labelKey as string)}</span>
-                    {item.beta && (
+                    <item.icon className={cn("h-4 w-4 transition-transform duration-150 group-hover:scale-110", isActive && "text-primary")} />
+                    <span className="flex-1">
+                      {item.labelFallback || t(item.labelKey as string)}
+                    </span>
+                    {item.badgeText && (
+                      <span className={item.badgeClass}>
+                        {item.badgeText}
+                      </span>
+                    )}
+                    {item.beta && !item.badgeText && (
                       <span
                         aria-label={t("beta")}
-                        className="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-300"
+                        className="rounded-md border border-cyan-500/40 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-cyan-400"
                       >
                         {t("beta")}
                       </span>
@@ -251,24 +306,49 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                         className="relative flex h-2 w-2"
                       >
                         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-                        <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-primary shadow-sm shadow-primary" />
                       </span>
                     )}
                     {showNotificationBadge && (
                       <span
                         aria-label={t("unreadNotifications", { count: unreadNotifications })}
-                        className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground"
+                        className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground shadow-sm shadow-primary/20"
                       >
                         {unreadNotifications > 9 ? "9+" : unreadNotifications}
                       </span>
                     )}
                   </Link>
+
+                  {/* Sub-navigation items for Tools */}
+                  {item.subItems && (isActive || pathname.startsWith('/tools')) && (
+                    <ul className="pl-3 py-0.5 space-y-0.5 border-l border-border/80 ml-4 animate-in fade-in-50 duration-150">
+                      {item.subItems.map((sub) => {
+                        const isSubActive = pathname === sub.href;
+                        return (
+                          <li key={sub.href}>
+                            <Link
+                              href={sub.href}
+                              className={cn(
+                                "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
+                                isSubActive
+                                  ? "bg-primary/10 text-primary font-semibold"
+                                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                              )}
+                            >
+                              <sub.icon className="h-3.5 w-3.5 shrink-0" />
+                              <span>{sub.labelFallback || t(sub.labelKey as string)}</span>
+                            </Link>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
                 </li>
               );
             })}
           </ul>
 
-          <div className="my-4 border-t border-border" />
+          <div className="my-4 border-t border-border/70" />
 
           <ul className="flex flex-col gap-1">
             {bottomNavItems.map((item) => {
@@ -278,14 +358,16 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                   <Link
                     href={item.href}
                     className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
+                      "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150 lg:py-2",
                       isActive
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        ? "bg-primary/15 text-primary border border-primary/25 font-semibold shadow-sm shadow-primary/5"
+                        : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
                     )}
                   >
-                    <item.icon className="h-4 w-4" />
-                    {t(item.labelKey as string)}
+                    <item.icon className={cn("h-4 w-4 transition-transform duration-150 group-hover:scale-110", isActive && "text-primary")} />
+                    <span className="flex-1">
+                      {item.labelFallback || t(item.labelKey as string)}
+                    </span>
                   </Link>
                 </li>
               );

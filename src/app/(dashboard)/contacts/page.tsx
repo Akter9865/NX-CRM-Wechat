@@ -49,13 +49,23 @@ import {
   SlidersHorizontal,
   Filter,
   X,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  Sparkles,
+  Check,
+  Building2,
+  Lock,
 } from 'lucide-react';
+import Link from 'next/link';
 import { ContactForm } from '@/components/contacts/contact-form';
 import { ContactDetailView } from '@/components/contacts/contact-detail-view';
 import { ImportModal } from '@/components/contacts/import-modal';
 import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager';
 import { useCan } from '@/hooks/use-can';
+import { useAuth } from '@/hooks/use-auth';
 import { GatedButton } from '@/components/ui/gated-button';
+import { exportContactsToFile } from '@/lib/contacts/export-contacts';
 import { useTranslations } from 'next-intl';
 
 const PAGE_SIZE = 25;
@@ -67,16 +77,22 @@ interface ContactWithTags extends Contact {
 export default function ContactsPage() {
   const t = useTranslations('Contacts.page');
   const supabase = createClient();
+  const { accountId } = useAuth();
   const canEdit = useCan('send-messages');
   const canEditSettings = useCan('edit-settings');
 
   const [contacts, setContacts] = useState<ContactWithTags[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   // Tag filter — contacts shown must have ANY of these tags (OR).
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+
+  // Plan entitlement for Contact Deletion (Business & Enterprise only)
+  const [canDeleteContacts, setCanDeleteContacts] = useState(false);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
 
   // Modals
   const [formOpen, setFormOpen] = useState(false);
@@ -96,6 +112,65 @@ export default function ContactsPage() {
 
   // All tags for display
   const [tagsMap, setTagsMap] = useState<Record<string, Tag>>({});
+
+  useEffect(() => {
+    if (!accountId) return;
+    (async () => {
+      try {
+        const { data: sub } = await supabase
+          .from('subscriptions')
+          .select('plan_id, status')
+          .eq('account_id', accountId)
+          .maybeSingle();
+        const pid = (sub?.plan_id || 'free').toLowerCase();
+        setCanDeleteContacts(pid === 'business' || pid === 'enterprise');
+      } catch (err) {
+        console.error('Error fetching subscription plan:', err);
+      }
+    })();
+  }, [accountId, supabase]);
+
+  const handleExport = async (formatType: 'csv' | 'xlsx', scope: 'all' | 'selected' = 'all') => {
+    try {
+      setExporting(true);
+      let listToExport: ContactWithTags[] = [];
+
+      if (scope === 'selected' && selected.size > 0) {
+        listToExport = contacts.filter((c) => selected.has(c.id));
+      } else {
+        // Fetch all contacts with tags for the account
+        let query = supabase
+          .from('contacts')
+          .select('*, contact_tags(tags(*))')
+          .order('created_at', { ascending: false });
+
+        if (accountId) {
+          query = query.eq('account_id', accountId);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        listToExport = ((data || []) as Array<Contact & { contact_tags?: Array<{ tags?: Tag }> }>).map((row) => ({
+          ...row,
+          tags: (row.contact_tags || []).map((ct) => ct.tags).filter(Boolean) as Tag[],
+        }));
+      }
+
+      if (listToExport.length === 0) {
+        toast.error('No contacts available to export');
+        return;
+      }
+
+      exportContactsToFile(listToExport, formatType, tagsMap);
+      toast.success(`Successfully exported ${listToExport.length} contact(s) as ${formatType.toUpperCase()}`);
+    } catch (err) {
+      console.error('Export failed:', err);
+      toast.error('Failed to export contacts');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // Guards against out-of-order fetch responses: each fetchContacts run
   // claims a sequence number and only the latest is allowed to commit its
@@ -210,16 +285,11 @@ export default function ContactsPage() {
   }, [supabase, page, search, selectedTagIds, tagsMap, t]);
 
   // Load-once-on-mount-ish data fetches. Each setter inside runs
-  // inside an async promise completion (Supabase await), not
-  // synchronously in the effect body, so the cascade the lint rule
-  // warns about doesn't apply here.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchTags();
   }, [fetchTags]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchContacts();
   }, [fetchContacts]);
 
@@ -245,29 +315,47 @@ export default function ContactsPage() {
   }
 
   function confirmDelete(contact: Contact) {
+    if (!canDeleteContacts) {
+      setUpgradeModalOpen(true);
+      return;
+    }
     setDeleteTarget(contact);
     setDeleteConfirmOpen(true);
   }
 
   async function handleDelete() {
     if (!deleteTarget) return;
+    if (!canDeleteContacts) {
+      setUpgradeModalOpen(true);
+      setDeleteConfirmOpen(false);
+      return;
+    }
     setDeleting(true);
 
-    const { error } = await supabase
-      .from('contacts')
-      .delete()
-      .eq('id', deleteTarget.id);
-
-    if (error) {
+    try {
+      const res = await fetch('/api/contacts/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: deleteTarget.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.code === 'plan_upgrade_required') {
+          setUpgradeModalOpen(true);
+        } else {
+          toast.error(data.error || t('toastFailedDelete'));
+        }
+      } else {
+        toast.success(t('toastDeleted'));
+        fetchContacts();
+      }
+    } catch {
       toast.error(t('toastFailedDelete'));
-    } else {
-      toast.success(t('toastDeleted'));
-      fetchContacts();
+    } finally {
+      setDeleting(false);
+      setDeleteConfirmOpen(false);
+      setDeleteTarget(null);
     }
-
-    setDeleting(false);
-    setDeleteConfirmOpen(false);
-    setDeleteTarget(null);
   }
 
   const allOnPageSelected =
@@ -298,20 +386,37 @@ export default function ContactsPage() {
   async function handleBulkDelete() {
     const ids = [...selected];
     if (ids.length === 0) return;
+    if (!canDeleteContacts) {
+      setUpgradeModalOpen(true);
+      setBulkDeleteOpen(false);
+      return;
+    }
     setDeleting(true);
 
-    const { error } = await supabase.from('contacts').delete().in('id', ids);
-
-    if (error) {
+    try {
+      const res = await fetch('/api/contacts/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.code === 'plan_upgrade_required') {
+          setUpgradeModalOpen(true);
+        } else {
+          toast.error(data.error || t('toastBulkFailedDelete'));
+        }
+      } else {
+        toast.success(t('toastBulkDeleted', { count: data.deleted_count || ids.length }));
+        setSelected(new Set());
+        fetchContacts();
+      }
+    } catch {
       toast.error(t('toastBulkFailedDelete'));
-    } else {
-      toast.success(t('toastBulkDeleted', { count: ids.length }));
-      setSelected(new Set());
-      fetchContacts();
+    } finally {
+      setDeleting(false);
+      setBulkDeleteOpen(false);
     }
-
-    setDeleting(false);
-    setBulkDeleteOpen(false);
   }
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
@@ -349,23 +454,66 @@ export default function ContactsPage() {
             {totalCount > 0 ? t('subtitle', { count: totalCount }) : t('subtitleZero')}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {canEditSettings && (
             <Button
               variant="outline"
               onClick={() => setCustomFieldsOpen(true)}
-              className="border-border text-muted-foreground hover:bg-muted"
+              className="border-border text-muted-foreground hover:bg-muted rounded-xl"
             >
               <SlidersHorizontal className="size-4" />
               {t('customFieldsBtn')}
             </Button>
           )}
+
+          {/* Export Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="outline"
+                  disabled={exporting || (contacts.length === 0 && totalCount === 0)}
+                  className="border-border text-muted-foreground hover:bg-muted rounded-xl"
+                >
+                  {exporting ? (
+                    <Loader2 className="size-4 animate-spin mr-1.5" />
+                  ) : (
+                    <Download className="size-4 mr-1.5 text-primary" />
+                  )}
+                  <span>Export</span>
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="end" className="w-52 rounded-xl">
+              <DropdownMenuItem
+                onClick={() => handleExport('csv')}
+                className="flex items-center gap-2.5 cursor-pointer py-2"
+              >
+                <FileText className="size-4 text-emerald-500" />
+                <div className="flex flex-col">
+                  <span className="font-medium text-xs">Export to CSV</span>
+                  <span className="text-[10px] text-muted-foreground">Standard comma-separated format</span>
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => handleExport('xlsx')}
+                className="flex items-center gap-2.5 cursor-pointer py-2"
+              >
+                <FileSpreadsheet className="size-4 text-blue-500" />
+                <div className="flex flex-col">
+                  <span className="font-medium text-xs">Export to Excel</span>
+                  <span className="text-[10px] text-muted-foreground">Microsoft Excel (.xlsx) workbook</span>
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <GatedButton
             variant="outline"
             canAct={canEdit}
             gateReason="add or import contacts"
             onClick={() => setImportOpen(true)}
-            className="border-border text-muted-foreground hover:bg-muted"
+            className="border-border text-muted-foreground hover:bg-muted rounded-xl"
           >
             <Upload className="size-4" />
             {t('importBtn')}
@@ -374,7 +522,7 @@ export default function ContactsPage() {
             canAct={canEdit}
             gateReason="add or import contacts"
             onClick={openAddForm}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl shadow-sm"
           >
             <Plus className="size-4" />
             {t('addContactBtn')}
@@ -500,16 +648,36 @@ export default function ContactsPage() {
 
       {/* Bulk action bar */}
       {selected.size > 0 && (
-        <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/40 px-4 py-2">
-          <p className="text-sm text-foreground">
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-card/80 backdrop-blur-sm px-4 py-2.5 shadow-sm">
+          <p className="text-sm font-medium text-foreground">
             {t('selectedCount', { count: selected.size })}
           </p>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleExport('csv', 'selected')}
+              disabled={exporting}
+              className="text-xs border-border/80 rounded-lg hover:bg-muted"
+            >
+              <FileText className="mr-1.5 size-3.5 text-emerald-500" />
+              Export Selected (CSV)
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleExport('xlsx', 'selected')}
+              disabled={exporting}
+              className="text-xs border-border/80 rounded-lg hover:bg-muted"
+            >
+              <FileSpreadsheet className="mr-1.5 size-3.5 text-blue-500" />
+              Export Selected (Excel)
+            </Button>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setSelected(new Set())}
-              className="text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground text-xs"
             >
               {t('clearSelection')}
             </Button>
@@ -518,10 +686,20 @@ export default function ContactsPage() {
               size="sm"
               canAct={canEdit}
               gateReason="delete contacts"
-              onClick={() => setBulkDeleteOpen(true)}
+              onClick={() => {
+                if (!canDeleteContacts) {
+                  setUpgradeModalOpen(true);
+                } else {
+                  setBulkDeleteOpen(true);
+                }
+              }}
+              className="rounded-lg text-xs"
             >
-              <Trash2 className="size-4" />
+              <Trash2 className="size-3.5 mr-1" />
               {t('deleteSelected')}
+              {!canDeleteContacts && (
+                <Lock className="size-3 ml-1 text-amber-300" />
+              )}
             </GatedButton>
           </div>
         </div>
@@ -677,11 +855,23 @@ export default function ContactsPage() {
                           variant="destructive"
                           onClick={(e) => {
                             e.stopPropagation();
-                            confirmDelete(contact);
+                            if (!canDeleteContacts) {
+                              setUpgradeModalOpen(true);
+                            } else {
+                              confirmDelete(contact);
+                            }
                           }}
+                          className="flex items-center justify-between gap-2"
                         >
-                          <Trash2 className="size-4" />
-                          {t('deleteAction')}
+                          <div className="flex items-center gap-2">
+                            <Trash2 className="size-4" />
+                            {t('deleteAction')}
+                          </div>
+                          {!canDeleteContacts && (
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                              Business+
+                            </span>
+                          )}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -823,6 +1013,132 @@ export default function ContactsPage() {
             >
               {deleting && <Loader2 className="size-4 animate-spin" />}
               {t('deleteBtn')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Contact Deletion Plan Upgrade Dialog */}
+      <Dialog open={upgradeModalOpen} onOpenChange={setUpgradeModalOpen}>
+        <DialogContent className="bg-popover border-border text-popover-foreground sm:max-w-2xl">
+          <DialogHeader className="text-left space-y-2">
+            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold w-fit">
+              <Sparkles className="size-3.5" />
+              <span>Business & Enterprise Plan Feature</span>
+            </div>
+            <DialogTitle className="text-xl font-bold text-foreground">
+              Upgrade to Delete & Manage Contacts
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              Contact deletion and advanced lifecycle management are exclusively available on our <strong>Business (₹3,000/mo)</strong> and <strong>Enterprise (₹8,999/mo)</strong> plans.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-3">
+            {/* Business Plan */}
+            <div className="rounded-xl border border-blue-500/40 bg-blue-500/5 p-4 flex flex-col justify-between space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-500/20 text-blue-400">
+                    RECOMMENDED
+                  </span>
+                  <Sparkles className="size-4 text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-foreground">Business</h3>
+                  <p className="text-xs text-muted-foreground">For scaling teams that need advanced automation & contact management.</p>
+                </div>
+                <div className="pt-1">
+                  <span className="text-2xl font-bold text-foreground">₹3,000</span>
+                  <span className="text-xs text-muted-foreground"> / month</span>
+                </div>
+                <ul className="text-xs space-y-1.5 pt-2 text-muted-foreground">
+                  <li className="flex items-center gap-2">
+                    <Check className="size-3.5 text-blue-400 shrink-0" />
+                    <span className="text-foreground font-medium">Contact Deletion & Management</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="size-3.5 text-blue-400 shrink-0" />
+                    <span>7,000 Contacts max</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="size-3.5 text-blue-400 shrink-0" />
+                    <span>5 WhatsApp API Connections</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="size-3.5 text-blue-400 shrink-0" />
+                    <span>Unlimited Messages*</span>
+                  </li>
+                </ul>
+              </div>
+
+              <Link href="/pricing" onClick={() => setUpgradeModalOpen(false)}>
+                <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs">
+                  Upgrade to Business →
+                </Button>
+              </Link>
+            </div>
+
+            {/* Enterprise Plan */}
+            <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/5 p-4 flex flex-col justify-between space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400">
+                    UNLIMITED SCALE
+                  </span>
+                  <Building2 className="size-4 text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-foreground">Enterprise</h3>
+                  <p className="text-xs text-muted-foreground">High-volume organizations requiring unlimited scale & custom SLAs.</p>
+                </div>
+                <div className="pt-1">
+                  <span className="text-2xl font-bold text-foreground">₹8,999</span>
+                  <span className="text-xs text-muted-foreground"> / month</span>
+                </div>
+                <ul className="text-xs space-y-1.5 pt-2 text-muted-foreground">
+                  <li className="flex items-center gap-2">
+                    <Check className="size-3.5 text-emerald-400 shrink-0" />
+                    <span className="text-foreground font-medium">Full Contact Deletion & Cleanups</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="size-3.5 text-emerald-400 shrink-0" />
+                    <span>Unlimited Contacts</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="size-3.5 text-emerald-400 shrink-0" />
+                    <span>Unlimited WhatsApp Connections</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="size-3.5 text-emerald-400 shrink-0" />
+                    <span>Dedicated Support & Onboarding</span>
+                  </li>
+                </ul>
+              </div>
+
+              <Link href="/pricing" onClick={() => setUpgradeModalOpen(false)}>
+                <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs">
+                  Upgrade to Enterprise →
+                </Button>
+              </Link>
+            </div>
+          </div>
+
+          <DialogFooter className="flex flex-row items-center justify-between sm:justify-between border-t border-border pt-3">
+            <Link
+              href="/pricing"
+              onClick={() => setUpgradeModalOpen(false)}
+              className="text-xs text-primary hover:underline"
+            >
+              Compare all plan features →
+            </Link>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setUpgradeModalOpen(false)}
+              className="border-border text-muted-foreground hover:bg-muted"
+            >
+              Cancel
             </Button>
           </DialogFooter>
         </DialogContent>

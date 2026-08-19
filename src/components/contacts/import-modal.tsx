@@ -19,6 +19,7 @@ import {
 } from '@/lib/contacts/resolve-import-tags';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+
 import {
   Dialog,
   DialogContent,
@@ -36,7 +37,10 @@ import {
   XCircle,
   AlertTriangle,
   Tag,
+  Download,
+  FileSpreadsheet,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { useTranslations } from 'next-intl';
 
 const DEFAULT_TAG_COLOR = '#3b82f6';
@@ -161,6 +165,54 @@ export function ImportModal({
     onOpenChange(next);
   }
 
+  function downloadSampleTemplate(formatType: 'csv' | 'xlsx') {
+    const sampleData = [
+      {
+        phone: '+14155552671',
+        name: 'Alex Johnson',
+        email: 'alex@example.com',
+        company: 'Acme Corp',
+        tags: 'VIP, Lead, Inbound',
+      },
+      {
+        phone: '+447911123456',
+        name: 'Sarah Smith',
+        email: 'sarah@globaltech.io',
+        company: 'Global Tech',
+        tags: 'Customer, Enterprise',
+      },
+      {
+        phone: '+919876543210',
+        name: 'Rahul Sharma',
+        email: 'rahul@example.in',
+        company: 'Apex Innovations',
+        tags: 'Partner',
+      },
+    ];
+
+    const worksheet = XLSX.utils.json_to_sheet(sampleData, {
+      header: ['phone', 'name', 'email', 'company', 'tags'],
+    });
+    worksheet['!cols'] = [{ wch: 18 }, { wch: 20 }, { wch: 24 }, { wch: 20 }, { wch: 24 }];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Contacts');
+
+    if (formatType === 'csv') {
+      const csvOutput = XLSX.utils.sheet_to_csv(worksheet);
+      const blob = new Blob(['\uFEFF' + csvOutput], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'contacts_sample_template.csv';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } else {
+      XLSX.writeFile(workbook, 'contacts_sample_template.xlsx', { bookType: 'xlsx' });
+    }
+  }
+
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const selected = e.target.files?.[0];
     if (!selected) return;
@@ -168,7 +220,28 @@ export function ImportModal({
     setFile(selected);
     setResult(null);
 
-    const text = await selected.text();
+    let text = '';
+    const isExcel = selected.name.endsWith('.xlsx') || selected.name.endsWith('.xls');
+    if (isExcel) {
+      try {
+        const buffer = await selected.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        if (!firstSheetName || !workbook.Sheets[firstSheetName]) {
+          toast.error('The selected Excel file is empty.');
+          return;
+        }
+        const worksheet = workbook.Sheets[firstSheetName];
+        text = XLSX.utils.sheet_to_csv(worksheet);
+      } catch (readErr) {
+        console.error('Failed to read Excel file:', readErr);
+        toast.error('Could not read Excel file. Ensure it is a valid .xlsx or .xls file.');
+        return;
+      }
+    } else {
+      text = await selected.text();
+    }
+
     const {
       rows,
       hasTagsColumn: csvHasTags,
@@ -446,20 +519,53 @@ export function ImportModal({
                 <div className="flex size-10 items-center justify-center rounded-lg bg-muted/80 ring-1 ring-border/80 transition-colors group-hover:bg-muted">
                   <Upload className="size-5 text-muted-foreground group-hover:text-foreground" />
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  {t('uploadDropzone')}
+                <p className="text-sm font-medium text-foreground">
+                  Drop your CSV or Excel (.xlsx, .xls) file here, or browse
                 </p>
-                <p className="text-[11px] text-muted-foreground">
-                  {t('uploadHint')}
+                <p className="text-xs text-muted-foreground">
+                  Supports CSV and modern Excel sheets with headers: phone, name, email, company, tags
                 </p>
               </>
             )}
           </div>
 
+          {/* Sample template buttons */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+            <span className="text-xs text-muted-foreground">Download sample format:</span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  downloadSampleTemplate('csv');
+                }}
+                className="h-7 rounded-lg border-border/80 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <Download className="mr-1 h-3 w-3 text-emerald-500" />
+                <span>CSV Template</span>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  downloadSampleTemplate('xlsx');
+                }}
+                className="h-7 rounded-lg border-border/80 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <FileSpreadsheet className="mr-1 h-3 w-3 text-blue-500" />
+                <span>Excel (.xlsx) Template</span>
+              </Button>
+            </div>
+          </div>
+
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv,text/csv"
+            accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
             onChange={handleFileChange}
             className="hidden"
           />

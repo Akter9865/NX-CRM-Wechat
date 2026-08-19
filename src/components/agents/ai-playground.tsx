@@ -79,46 +79,80 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
     }
   };
 
+  const SAMPLE_PROMPTS = [
+    'Hi! Can you tell me your business hours?',
+    'What services and pricing do you offer?',
+    'How do I track my order or request a refund?',
+    'I want to speak with a human support agent.',
+  ];
+
   return (
-    <div className="flex h-[60vh] min-h-[420px] flex-col rounded-xl border border-border bg-card">
+    <div className="flex h-[65vh] min-h-[480px] flex-col rounded-2xl border border-border/80 bg-card shadow-sm overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Bot className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium text-foreground">Playground</span>
-          <span className="text-xs text-muted-foreground">
-            — test replies as if you were a customer
-          </span>
+      <div className="flex items-center justify-between border-b border-border/80 bg-card/50 backdrop-blur-sm px-5 py-3.5">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+            <Bot className="h-4 w-4" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-foreground">Interactive AI Simulator</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.2 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                Live Agent
+              </span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Simulate WhatsApp customer conversations and test response quality in real-time.
+            </p>
+          </div>
         </div>
         <Button
-          variant="ghost"
+          variant="outline"
           size="sm"
           onClick={() => setTurns([])}
           disabled={turns.length === 0 || sending}
-          className="text-muted-foreground"
+          className="rounded-xl border-border/80 text-xs text-muted-foreground hover:text-foreground"
         >
-          <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Reset
+          <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Clear Chat
         </Button>
       </div>
 
       {/* Transcript */}
-      <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto p-4">
+      <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto p-5">
         {turns.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center text-center text-sm text-muted-foreground">
-            <Bot className="mb-2 h-8 w-8 text-muted-foreground/60" />
-            <p>Send a message to see how your agent would reply.</p>
-            <p className="mt-1 text-xs">
-              It uses your knowledge base and behaves exactly like the
-              auto-reply bot — including handoff.
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-3 shadow-inner">
+              <Bot className="h-6 w-6" />
+            </div>
+            <p className="font-semibold text-foreground">Test your AI Agent before going live</p>
+            <p className="mt-1 max-w-md text-xs text-muted-foreground">
+              Your agent leverages your business instructions and knowledge base to formulate replies or trigger automated human handoffs.
             </p>
+
+            <div className="mt-6 flex flex-wrap justify-center gap-2 max-w-lg">
+              {SAMPLE_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => {
+                    setInput(prompt);
+                  }}
+                  className="rounded-xl border border-border/80 bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-foreground text-left"
+                >
+                  💬 {prompt}
+                </button>
+              ))}
+            </div>
+
             {onGoToSetup && (
               <Button
                 variant="link"
                 size="sm"
                 onClick={onGoToSetup}
-                className="mt-1 h-auto p-0 text-xs"
+                className="mt-5 h-auto p-0 text-xs text-primary font-medium"
               >
-                Not set up yet? Go to Setup <ArrowRight className="ml-1 h-3 w-3" />
+                Configure Provider & System Prompt <ArrowRight className="ml-1 h-3 w-3" />
               </Button>
             )}
           </div>
@@ -128,70 +162,79 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
           <div
             key={i}
             className={cn(
-              'flex gap-2',
+              'flex gap-2.5',
               t.role === 'user' ? 'justify-end' : 'justify-start',
             )}
           >
             {t.role === 'assistant' && (
-              <Bot className="mt-1 h-5 w-5 shrink-0 text-primary" />
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 mt-0.5">
+                <Bot className="h-4 w-4" />
+              </div>
             )}
             <div
               className={cn(
-                'max-w-[80%] rounded-2xl px-3.5 py-2 text-sm',
+                'max-w-[78%] rounded-2xl px-4 py-2.5 text-sm shadow-sm',
                 t.role === 'user'
-                  ? 'rounded-br-sm bg-primary text-primary-foreground'
-                  : 'rounded-bl-sm bg-muted text-foreground',
+                  ? 'rounded-br-sm bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-medium'
+                  : 'rounded-bl-sm bg-muted/80 text-foreground border border-border/60',
               )}
             >
-              {t.content && <p className="whitespace-pre-wrap">{t.content}</p>}
+              {t.content && <p className="whitespace-pre-wrap leading-relaxed">{t.content}</p>}
               {t.role === 'assistant' && t.handoff && (
-                <p
+                <div
                   className={cn(
-                    'flex items-center gap-1 text-xs text-amber-500',
-                    t.content && 'mt-1.5 border-t border-border/50 pt-1.5',
+                    'flex items-center gap-1.5 text-xs font-semibold text-amber-500',
+                    t.content && 'mt-2 border-t border-border/60 pt-2',
                   )}
                 >
                   <UserCircle2 className="h-3.5 w-3.5" />
-                  Would hand off to a human here
-                </p>
+                  <span>[HANDOFF TRIGGERED] Transferring to human agent</span>
+                </div>
               )}
             </div>
             {t.role === 'user' && (
-              <UserCircle2 className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground mt-0.5">
+                <UserCircle2 className="h-4 w-4" />
+              </div>
             )}
           </div>
         ))}
 
         {sending && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Bot className="h-5 w-5 text-primary" />
-            <Loader2 className="h-4 w-4 animate-spin" /> Thinking…
+          <div className="flex items-center gap-2.5 text-xs text-muted-foreground pl-1">
+            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Bot className="h-3.5 w-3.5" />
+            </div>
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+            <span>AI is generating reply...</span>
           </div>
         )}
       </div>
 
       {/* Composer */}
-      <div className="flex items-end gap-2 border-t border-border p-3">
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Type a customer message…"
-          rows={1}
-          className="flex-1 resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none focus:border-primary/50"
-        />
-        <Button
-          size="sm"
-          onClick={send}
-          disabled={!input.trim() || sending}
-          className="h-9 w-9 shrink-0 p-0"
-        >
-          {sending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Send className="h-4 w-4" />
-          )}
-        </Button>
+      <div className="border-t border-border/80 bg-card/60 p-3.5 backdrop-blur-sm">
+        <div className="flex items-end gap-2.5">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type a customer message (Press Enter to send)..."
+            rows={1}
+            className="flex-1 resize-none rounded-xl border border-border/80 bg-muted/40 px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary/40 transition-all"
+          />
+          <Button
+            size="sm"
+            onClick={send}
+            disabled={!input.trim() || sending}
+            className="h-10 w-10 shrink-0 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-sm hover:from-emerald-600 hover:to-teal-700"
+          >
+            {sending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );

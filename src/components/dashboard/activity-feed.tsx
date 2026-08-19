@@ -31,11 +31,11 @@ interface KindTheme {
 }
 
 const KIND_THEME: Record<ActivityKind, KindTheme> = {
-  message: { icon: MessageSquare, badge: 'bg-blue-500/10 text-blue-400' },
-  contact: { icon: UserPlus, badge: 'bg-primary/10 text-primary' },
-  deal: { icon: Briefcase, badge: 'bg-primary/10 text-primary' },
-  broadcast: { icon: Radio, badge: 'bg-amber-500/10 text-amber-400' },
-  automation: { icon: Zap, badge: 'bg-rose-500/10 text-rose-400' },
+  message: { icon: MessageSquare, badge: 'border border-blue-500/30 bg-blue-500/15 text-blue-400' },
+  contact: { icon: UserPlus, badge: 'border border-cyan-500/30 bg-cyan-500/15 text-cyan-400' },
+  deal: { icon: Briefcase, badge: 'border border-emerald-500/30 bg-emerald-500/15 text-emerald-400' },
+  broadcast: { icon: Radio, badge: 'border border-teal-500/30 bg-teal-500/15 text-teal-400' },
+  automation: { icon: Zap, badge: 'border border-sky-500/30 bg-sky-500/15 text-sky-400' },
 }
 
 import { useTranslations } from 'next-intl'
@@ -57,12 +57,12 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
     i === 0 || totalLoaded > PAGE_SIZES[i - 1]
 
   return (
-    <section className="rounded-xl border border-border bg-card">
-      <header className="flex items-center justify-between border-b border-border px-5 py-4">
-        <h2 className="text-sm font-semibold text-foreground">{t('title')}</h2>
+    <section className="rounded-2xl border border-border/80 bg-card shadow-sm">
+      <header className="flex items-center justify-between border-b border-border/80 px-5 py-4">
+        <h2 className="text-sm font-bold text-foreground">{t('title')}</h2>
         <Link
           href="/inbox"
-          className="text-xs font-medium text-primary hover:text-primary/80"
+          className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors"
         >
           {t('viewAll')}
         </Link>

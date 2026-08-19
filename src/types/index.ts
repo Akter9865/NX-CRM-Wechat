@@ -160,7 +160,10 @@ export type ConversationStatus = 'open' | 'pending' | 'closed';
 export interface Conversation {
   id: string;
   user_id: string;
+  account_id?: string;
   contact_id: string;
+  whatsapp_connection_id?: string | null;
+  whatsapp_connection?: WhatsAppConfig | null;
   status: ConversationStatus;
   assigned_agent_id?: string;
   last_message_text?: string;
@@ -221,6 +224,7 @@ export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed'
 export interface Message {
   id: string;
   conversation_id: string;
+  whatsapp_connection_id?: string | null;
   sender_type: SenderType;
   sender_id?: string;
   content_type: ContentType;
@@ -275,11 +279,24 @@ export interface MessageReaction {
 export interface WhatsAppConfig {
   id: string;
   user_id: string;
+  account_id?: string;
+  connection_name?: string;
   phone_number_id: string;
   waba_id?: string;
+  business_portfolio_id?: string;
+  app_id?: string;
+  app_secret?: string;
+  display_phone_number?: string;
+  business_name?: string;
+  quality_rating?: string;
+  code_verification_status?: string;
   access_token: string;
   verify_token?: string;
-  status: 'connected' | 'disconnected';
+  status: 'connected' | 'connecting' | 'disconnected' | 'error' | 'banned' | 'deactivated' | 'replaced';
+  is_default?: boolean;
+  is_archived?: boolean;
+  deleted_at?: string | null;
+  replaced_by?: string | null;
   connected_at?: string;
   /**
    * Set when POST /{phone_number_id}/register last succeeded. NULL
@@ -292,12 +309,42 @@ export interface WhatsAppConfig {
   /** Last error from /register; cleared on success. */
   last_registration_error?: string;
   /**
+   * Live heartbeat timestamp of the most recent webhook event processed
+   * for this phone number ID.
+   */
+  last_webhook_at?: string;
+  last_message_received_at?: string | null;
+  last_message_sent_at?: string | null;
+  last_api_check_at?: string | null;
+  last_error_at?: string | null;
+  last_error_message?: string | null;
+  /**
    * When true (the default), the inbound webhook copies received media
    * into the `chat-media` bucket so attachments outlive Meta's ~30-day
    * retention. Turning it off keeps storage flat and accepts that
    * inbound attachments expire. Migration 039.
    */
   mirror_inbound_media?: boolean;
+}
+
+export interface TeamWhatsAppPermission {
+  id: string;
+  account_id: string;
+  user_id: string;
+  whatsapp_connection_id: string;
+  created_at: string;
+  whatsapp_connection?: WhatsAppConfig;
+}
+
+export interface AuditLog {
+  id: string;
+  account_id: string;
+  actor_user_id?: string | null;
+  action: string;
+  target_type: string;
+  target_id?: string | null;
+  metadata?: Record<string, unknown>;
+  created_at: string;
 }
 
 // Raw Meta status enum. We persist this verbatim from Meta (sync + webhook)

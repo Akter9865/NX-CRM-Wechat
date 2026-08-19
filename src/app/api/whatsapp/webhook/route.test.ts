@@ -52,6 +52,7 @@ vi.mock('@supabase/supabase-js', () => ({
                 Promise.resolve({
                   data: [
                     {
+                      id: 'cfg-1',
                       account_id: 'acc-1',
                       user_id: 'user-1',
                       access_token: 'enc',
@@ -61,24 +62,39 @@ vi.mock('@supabase/supabase-js', () => ({
                   error: null,
                 }),
             }),
-          }
-        case 'conversations':
-          // findOrCreateConversation: select().eq().eq().order().limit()
-          return {
-            select: () => ({
-              eq: () => ({
-                eq: () => ({
-                  order: () => ({
-                    limit: () =>
-                      Promise.resolve({
-                        data: [h.state.conversation],
-                        error: null,
-                      }),
-                  }),
-                }),
-              }),
+            update: () => ({
+              eq: () => Promise.resolve({ data: null, error: null }),
             }),
           }
+        case 'conversations': {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const convChain: any = {
+            eq: () => convChain,
+            is: () => convChain,
+            order: () => convChain,
+            limit: () =>
+              Promise.resolve({
+                data: [h.state.conversation],
+                error: null,
+              }),
+            single: () =>
+              Promise.resolve({
+                data: h.state.conversation,
+                error: null,
+              }),
+            maybeSingle: () =>
+              Promise.resolve({
+                data: h.state.conversation,
+                error: null,
+              }),
+            select: () => convChain,
+          }
+          return {
+            select: () => convChain,
+            insert: () => convChain,
+            update: () => convChain,
+          }
+        }
         case 'broadcast_recipients':
           // flagBroadcastReplyIfAny: select().eq().eq().in().order().limit()
           return {

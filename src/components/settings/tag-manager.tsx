@@ -69,11 +69,13 @@ export function TagManager() {
   async function fetchTags(userId: string) {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('tags')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: true });
+      let query = supabase.from('tags').select('*').order('created_at', { ascending: true });
+      if (accountId) {
+        query = query.eq('account_id', accountId);
+      } else {
+        query = query.eq('user_id', userId);
+      }
+      const { data, error } = await query;
 
       if (error) throw error;
       setTags(data || []);
@@ -151,20 +153,20 @@ export function TagManager() {
   }
 
   return (
-    <Card>
+    <Card className="rounded-2xl border border-border/80 bg-card shadow-sm overflow-hidden">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-foreground">
-          <TagIcon className="size-4 text-primary" />
+        <CardTitle className="flex items-center gap-2 text-base text-foreground">
+          <TagIcon className="h-4 w-4 text-cyan-500" />
           {t('tagsTitle')}
         </CardTitle>
-        <CardDescription className="text-muted-foreground">
+        <CardDescription className="text-xs text-muted-foreground">
           {t('tagsDesc')}
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-5">
         {loading ? (
           <div className="flex items-center justify-center py-8">
-            <Loader2 className="size-6 animate-spin text-primary" />
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
         ) : (
           <>
@@ -173,15 +175,15 @@ export function TagManager() {
                 {tags.map((tag) => (
                   <span
                     key={tag.id}
-                    className="group inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors"
+                    className="group inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold shadow-sm transition-transform hover:scale-102"
                     style={{
-                      backgroundColor: `${tag.color}20`,
+                      backgroundColor: `${tag.color}15`,
                       color: tag.color,
-                      border: `1px solid ${tag.color}40`,
+                      border: `1px solid ${tag.color}35`,
                     }}
                   >
                     <span
-                      className="size-2 rounded-full"
+                      className="h-2 w-2 rounded-full"
                       style={{ backgroundColor: tag.color }}
                     />
                     {tag.name}
@@ -189,21 +191,21 @@ export function TagManager() {
                       type="button"
                       onClick={() => confirmDelete(tag)}
                       aria-label={t('deleteAria', { name: tag.name })}
-                      className="ml-0.5 rounded-full p-0.5 opacity-60 transition-opacity hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/10"
+                      className="ml-1 rounded-full p-0.5 opacity-60 transition-opacity hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/10"
                     >
-                      <X className="size-3" />
+                      <X className="h-3 w-3" />
                     </button>
                   </span>
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">
+              <div className="rounded-xl border border-dashed border-border/80 p-6 text-center text-xs text-muted-foreground">
                 {t('noTags')}
-              </p>
+              </div>
             )}
 
             {/* Inline create row */}
-            <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-3 pt-2">
               <Input
                 placeholder={t('placeholder')}
                 value={newTagName}
@@ -213,9 +215,9 @@ export function TagManager() {
                 }}
                 disabled={saving}
                 maxLength={40}
-                className="min-w-[180px] flex-1"
+                className="min-w-[180px] flex-1 rounded-xl border-border/80 text-sm"
               />
-              <div className="flex gap-1.5">
+              <div className="flex items-center gap-1.5 rounded-xl border border-border/80 bg-muted/30 p-1">
                 {PRESET_COLORS.map((color) => (
                   <button
                     key={color.value}
@@ -224,9 +226,9 @@ export function TagManager() {
                     aria-label={t('useColor', { color: t(`colors.${color.name}` as Parameters<typeof t>[0]) })}
                     aria-pressed={selectedColor === color.value}
                     className={cn(
-                      'size-6 rounded-md transition-transform hover:scale-110',
+                      'h-6 w-6 rounded-lg transition-transform hover:scale-110',
                       selectedColor === color.value &&
-                        'outline outline-2 outline-offset-2 outline-primary',
+                        'outline outline-2 outline-offset-1 outline-primary scale-110 shadow-sm',
                     )}
                     style={{ backgroundColor: color.value }}
                     title={t(`colors.${color.name}` as Parameters<typeof t>[0])}
@@ -238,11 +240,12 @@ export function TagManager() {
                 size="sm"
                 onClick={handleCreate}
                 disabled={saving || !newTagName.trim()}
+                className="rounded-xl border-border/80 h-10 px-4"
               >
                 {saving ? (
-                  <Loader2 className="size-4 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
                 ) : (
-                  <Plus className="size-4" />
+                  <Plus className="h-4 w-4 mr-1.5 text-cyan-500" />
                 )}
                 {t('addTag')}
               </Button>

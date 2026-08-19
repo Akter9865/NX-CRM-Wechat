@@ -1,22 +1,23 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useState } from 'react';
+import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { MessageSquare, CheckCircle, ArrowLeft } from "lucide-react";
+  MessageSquare,
+  ArrowRight,
+  ArrowLeft,
+  Loader2,
+  AlertCircle,
+  MailCheck,
+  KeyRound,
+} from 'lucide-react';
 
 export default function ForgotPasswordPage() {
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -27,12 +28,15 @@ export default function ForgotPasswordPage() {
     setError(null);
     setLoading(true);
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
-    });
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+      email.trim(),
+      {
+        redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
+      }
+    );
 
-    if (error) {
-      setError(error.message);
+    if (resetError) {
+      setError(resetError.message);
       setLoading(false);
       return;
     }
@@ -43,89 +47,129 @@ export default function ForgotPasswordPage() {
 
   if (success) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-4">
-        <Card className="w-full max-w-md border-border bg-card">
-          <CardHeader className="items-center text-center">
-            <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-              <CheckCircle className="h-6 w-6 text-primary" />
-            </div>
-            <CardTitle className="text-xl text-foreground">
-              Check your email
-            </CardTitle>
-            <CardDescription className="text-muted-foreground">
-              We&apos;ve sent a password reset link to{" "}
-              <span className="text-foreground">{email}</span>. Please check your
-              inbox.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link href="/login">
-              <Button
-                variant="outline"
-                className="w-full border-border text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                Back to sign in
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
+      <div className="w-full space-y-6 text-center animate-in fade-in-50 slide-in-from-bottom-3 duration-300">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shadow-lg shadow-emerald-500/10">
+          <MailCheck className="size-8" />
+        </div>
+
+        <div className="space-y-2">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">
+            Check your inbox
+          </h2>
+          <p className="text-sm text-muted-foreground max-w-sm mx-auto leading-relaxed">
+            If an account exists for{' '}
+            <span className="font-semibold text-foreground underline">{email}</span>, we&apos;ve sent a password reset link. Please check your spam folder if it doesn&apos;t arrive in a few minutes.
+          </p>
+        </div>
+
+        <div className="pt-2">
+          <Link href="/login">
+            <Button
+              variant="outline"
+              className="w-full h-11 rounded-xl border-border/80 text-foreground hover:bg-muted font-medium"
+            >
+              Return to sign in
+            </Button>
+          </Link>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md border-border bg-card">
-        <CardHeader className="items-center text-center">
-          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-            <MessageSquare className="h-6 w-6 text-primary" />
+    <div className="w-full space-y-6 animate-in fade-in-50 slide-in-from-bottom-3 duration-300">
+      {/* Mobile Branding Header */}
+      <div className="flex lg:hidden items-center justify-center gap-2.5 pb-1">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-400 p-0.5 shadow-md shadow-emerald-500/20">
+          <div className="flex h-full w-full items-center justify-center rounded-[10px] bg-card">
+            <MessageSquare className="size-4 text-emerald-400" />
           </div>
-          <CardTitle className="text-xl text-foreground">Reset password</CardTitle>
-          <CardDescription className="text-muted-foreground">
-            Enter your email and we&apos;ll send you a reset link
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleReset} className="flex flex-col gap-4">
-            {error && (
-              <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-                {error}
-              </div>
-            )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-lg font-bold tracking-tight text-foreground">
+            NX CRM
+          </span>
+          <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.2 text-[9px] font-bold uppercase text-emerald-400">
+            WeChat
+          </span>
+        </div>
+      </div>
 
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="email" className="text-muted-foreground">
-                Email
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="border-border bg-muted text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/20"
-              />
+      {/* Header */}
+      <div className="space-y-1.5 text-center lg:text-left">
+        <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-400 mb-1">
+          <KeyRound className="size-3.5" />
+          <span>Account Recovery</span>
+        </div>
+
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+          Forgot your <span className="text-emerald-400">password?</span>
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Enter your email address and we&apos;ll send you a secure link to reset your password.
+        </p>
+      </div>
+
+      {/* Error Callout */}
+      {error && (
+        <div className="flex items-start gap-3 rounded-xl border border-red-500/25 bg-red-500/10 p-3.5 text-xs text-red-300 animate-in fade-in-50 duration-200">
+          <AlertCircle className="size-4 shrink-0 text-red-400 mt-0.5" />
+          <div className="flex-1 leading-relaxed">{error}</div>
+        </div>
+      )}
+
+      {/* Form */}
+      <form onSubmit={handleReset} className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="email" className="text-xs font-medium text-foreground">
+            Work email
+          </Label>
+          <Input
+            id="email"
+            type="email"
+            placeholder="name@company.com"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (error) setError(null);
+            }}
+            required
+            autoComplete="email"
+            autoFocus
+            className="h-11 rounded-xl border-border/80 bg-muted/40 px-3.5 text-sm text-foreground transition-all duration-200 placeholder:text-muted-foreground/60 hover:border-border hover:bg-muted/60 focus-visible:border-primary focus-visible:bg-background focus-visible:ring-3 focus-visible:ring-primary/20"
+          />
+        </div>
+
+        {/* Submit CTA */}
+        <Button
+          type="submit"
+          disabled={loading}
+          className="group relative mt-2 h-11 w-full rounded-xl bg-primary font-semibold text-primary-foreground shadow-md shadow-primary/20 transition-all duration-200 hover:bg-primary/90 hover:shadow-lg hover:shadow-primary/25 disabled:opacity-50"
+        >
+          {loading ? (
+            <div className="flex items-center gap-2">
+              <Loader2 className="size-4 animate-spin" />
+              <span>Sending link...</span>
             </div>
+          ) : (
+            <div className="flex items-center justify-center gap-1.5">
+              <span>Send reset link</span>
+              <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-1" />
+            </div>
+          )}
+        </Button>
+      </form>
 
-            <Button
-              type="submit"
-              disabled={loading}
-              className="mt-2 h-10 w-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-            >
-              {loading ? "Sending..." : "Send reset link"}
-            </Button>
-          </form>
-
-          <Link
-            href="/login"
-            className="mt-6 flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to sign in
-          </Link>
-        </CardContent>
-      </Card>
+      {/* Back to sign in */}
+      <div className="pt-2 text-center border-t border-border/50">
+        <Link
+          href="/login"
+          className="inline-flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="size-3.5" />
+          <span>Back to sign in</span>
+        </Link>
+      </div>
     </div>
   );
 }

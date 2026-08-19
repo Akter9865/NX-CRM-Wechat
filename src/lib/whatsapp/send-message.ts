@@ -252,11 +252,26 @@ export async function sendMessageToConversation(
   }
 
   // WhatsApp config, account-scoped.
-  const { data: config, error: configError } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', accountId)
-    .single();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let config: any = null;
+  let configError: { message?: string } | null = null;
+
+  try {
+    let q = db
+      .from('whatsapp_config')
+      .select('*')
+      .eq('account_id', accountId);
+
+    if (conversation.whatsapp_connection_id) {
+      q = q.eq('id', conversation.whatsapp_connection_id);
+    }
+
+    const res = await q.order('is_default', { ascending: false }).limit(1);
+    config = Array.isArray(res?.data) ? (res.data[0] || null) : (res?.data || null);
+    configError = res?.error || null;
+  } catch (err: unknown) {
+    configError = { message: err instanceof Error ? err.message : String(err) };
+  }
 
   if (configError || !config) {
     throw new SendMessageError(
@@ -472,6 +487,7 @@ export async function sendMessageToConversation(
     .from('messages')
     .insert({
       conversation_id: conversationId,
+      whatsapp_connection_id: config.id,
       sender_type: 'agent',
       content_type: messageType,
       content_text: persistedText,
@@ -508,6 +524,13 @@ export async function sendMessageToConversation(
       updated_at: new Date().toISOString(),
     })
     .eq('id', conversationId);
+
+  // Update last_message_sent_at on connection
+  void db
+    .from('whatsapp_config')
+    .update({ last_message_sent_at: new Date().toISOString() })
+    .eq('id', config.id)
+    .then(() => {});
 
   // Pause any active Flow run for this contact — the agent stepping in
   // is the strongest "yield, human is here" signal. Best-effort.

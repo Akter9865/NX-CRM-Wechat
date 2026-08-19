@@ -31,6 +31,7 @@ import type { AiProvider } from '@/lib/ai/types';
 import type { AccountMember } from '@/types';
 import { fetchAccountMembers, memberLabel } from '@/lib/account/members';
 import { useTranslations } from 'next-intl';
+import { cn } from '@/lib/utils';
 
 const MASKED_KEY = '••••••••••••••••';
 
@@ -39,13 +40,40 @@ const MASKED_KEY = '••••••••••••••••';
 const HANDOFF_QUEUE = '__queue__';
 
 const PROVIDER_LABEL: Record<AiProvider, string> = {
+  gemini: 'Google Gemini',
   openai: 'OpenAI',
   anthropic: 'Anthropic (Claude)',
 };
 
 const KEY_PLACEHOLDER: Record<AiProvider, string> = {
+  gemini: 'AIzaSy...',
   openai: 'sk-...',
   anthropic: 'sk-ant-...',
+};
+
+const KEY_URL: Record<AiProvider, { label: string; url: string }> = {
+  gemini: { label: 'Get Gemini API Key (Google AI Studio)', url: 'https://aistudio.google.com/app/apikey' },
+  openai: { label: 'Get OpenAI API Key', url: 'https://platform.openai.com/api-keys' },
+  anthropic: { label: 'Get Anthropic API Key', url: 'https://console.anthropic.com/settings/keys' },
+};
+
+const MODEL_PRESETS: Record<AiProvider, { id: string; label: string; badge?: string }[]> = {
+  gemini: [
+    { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', badge: 'Fast & Smart' },
+    { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', badge: 'Fast' },
+    { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
+    { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', badge: 'High Reasoning' },
+    { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', badge: 'Ultra' },
+  ],
+  openai: [
+    { id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini', badge: 'Default' },
+    { id: 'gpt-4o-mini', label: 'GPT-4o Mini', badge: 'Fast' },
+    { id: 'gpt-4o', label: 'GPT-4o', badge: 'Flagship' },
+  ],
+  anthropic: [
+    { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', badge: 'Default' },
+    { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet', badge: 'Flagship' },
+  ],
 };
 
 export function AiConfig() {
@@ -112,7 +140,7 @@ export function AiConfig() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!accountId || loadedAccountIdRef.current === accountId) return;
@@ -265,40 +293,88 @@ export function AiConfig() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>{t('provider')}</Label>
-                <Select
-                  value={provider}
-                  onValueChange={(v) => handleProviderChange(v as AiProvider)}
-                  disabled={disabled}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="openai">{PROVIDER_LABEL.openai}</SelectItem>
-                    <SelectItem value="anthropic">
-                      {PROVIDER_LABEL.anthropic}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="space-y-3">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('provider')}</Label>
+                <div className="grid grid-cols-3 gap-2.5">
+                  {(['gemini', 'openai', 'anthropic'] as const).map((p) => {
+                    const isSelected = provider === p;
+                    return (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => handleProviderChange(p)}
+                        disabled={disabled}
+                        className={cn(
+                          'flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-all',
+                          isSelected
+                            ? 'border-primary bg-primary/10 shadow-sm ring-1 ring-primary'
+                            : 'border-border/70 bg-card hover:border-border hover:bg-muted/40',
+                        )}
+                      >
+                        <span className="text-xs font-semibold text-foreground">{PROVIDER_LABEL[p]}</span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {p === 'gemini' ? 'Google AI Studio' : p === 'openai' ? 'ChatGPT Models' : 'Claude 3.5 Models'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="ai-model">{t('model')}</Label>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="ai-model" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('model')}</Label>
+                  <span className="text-xs text-muted-foreground">Or pick a preset below</span>
+                </div>
                 <Input
                   id="ai-model"
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
                   placeholder={AI_PROVIDER_DEFAULT_MODEL[provider]}
                   disabled={disabled}
+                  className="rounded-xl border-border/80 font-mono text-sm"
                 />
+                {/* Model Presets Pills */}
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {MODEL_PRESETS[provider]?.map((preset) => {
+                    const isCurrent = model === preset.id;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => setModel(preset.id)}
+                        disabled={disabled}
+                        className={cn(
+                          'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors',
+                          isCurrent
+                            ? 'border-primary/60 bg-primary/15 font-medium text-primary'
+                            : 'border-border/70 bg-muted/30 text-muted-foreground hover:bg-muted hover:text-foreground',
+                        )}
+                      >
+                        <span>{preset.label}</span>
+                        {preset.badge && (
+                          <span className="rounded bg-primary/20 px-1 py-0.2 text-[10px] font-semibold text-primary">
+                            {preset.badge}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="ai-key">{t('apiKey')}</Label>
+            <div className="space-y-2 pt-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="ai-key" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('apiKey')}</Label>
+                <a
+                  href={KEY_URL[provider].url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-primary underline-offset-4 hover:underline"
+                >
+                  {KEY_URL[provider].label} ↗
+                </a>
+              </div>
               <div className="flex gap-2">
                 <div className="relative flex-1">
                   <Input
@@ -318,11 +394,12 @@ export function AiConfig() {
                     placeholder={KEY_PLACEHOLDER[provider]}
                     disabled={disabled}
                     autoComplete="off"
+                    className="rounded-xl border-border/80 font-mono text-sm"
                   />
                   <button
                     type="button"
                     onClick={() => setShowKey((s) => !s)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                     tabIndex={-1}
                   >
                     {showKey ? (
@@ -336,18 +413,19 @@ export function AiConfig() {
                   variant="outline"
                   onClick={handleTest}
                   disabled={disabled || testing}
+                  className="rounded-xl border-border/80"
                 >
                   {testing ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin text-primary" />
                   ) : (
-                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-500" />
                   )}
                   {t('testKey')}
                 </Button>
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 pt-2">
               <Label htmlFor="ai-embeddings-key">
                 {t('embeddingsKey')}{' '}
                 <span className="font-normal text-muted-foreground">

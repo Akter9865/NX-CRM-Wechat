@@ -7,8 +7,10 @@ import {
   verifyPhoneNumber,
 } from '@/lib/whatsapp/meta-api'
 import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
+import { checkCanAddConnection } from '@/lib/billing/entitlements'
 
 /**
+
  * Resolve the caller's account_id from their profile. Inlined here
  * (rather than going through `@/lib/auth/account.getCurrentAccount`)
  * because the GET handler wants to return shaped 200s for every
@@ -87,7 +89,7 @@ export async function GET() {
 
     const { data: config, error: configError } = await supabase
       .from('whatsapp_config')
-      .select('phone_number_id, access_token, status')
+      .select('*')
       .eq('account_id', accountId)
       .maybeSingle()
 
@@ -135,7 +137,42 @@ export async function GET() {
         phoneNumberId: config.phone_number_id,
         accessToken,
       })
-      return NextResponse.json({ connected: true, phone_info: phoneInfo })
+
+      // Optionally refresh cached metadata in background if changed
+      if (
+        phoneInfo &&
+        (phoneInfo.verified_name !== config.business_name ||
+          phoneInfo.display_phone_number !== config.display_phone_number ||
+          phoneInfo.quality_rating !== config.quality_rating)
+      ) {
+        void supabase
+          .from('whatsapp_config')
+          .update({
+            business_name: phoneInfo.verified_name ?? config.business_name,
+            display_phone_number: phoneInfo.display_phone_number ?? config.display_phone_number,
+            quality_rating: phoneInfo.quality_rating ?? config.quality_rating,
+            code_verification_status: phoneInfo.code_verification_status ?? config.code_verification_status,
+          })
+          .eq('account_id', accountId)
+      }
+
+      return NextResponse.json({
+        connected: true,
+        phone_info: phoneInfo,
+        business_portfolio_id: config.business_portfolio_id ?? null,
+        app_id: config.app_id ?? null,
+        has_app_secret: Boolean(config.app_secret),
+        waba_id: config.waba_id ?? null,
+        phone_number_id: config.phone_number_id,
+        display_phone_number: phoneInfo.display_phone_number ?? config.display_phone_number,
+        business_name: phoneInfo.verified_name ?? config.business_name,
+        quality_rating: phoneInfo.quality_rating ?? config.quality_rating,
+        registered_at: config.registered_at ?? null,
+        subscribed_apps_at: config.subscribed_apps_at ?? null,
+        last_webhook_at: config.last_webhook_at ?? null,
+        last_registration_error: config.last_registration_error ?? null,
+        mirror_inbound_media: config.mirror_inbound_media !== false,
+      })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown Meta API error'
       console.error('[whatsapp/config GET] Meta API verification failed:', message)
@@ -144,6 +181,16 @@ export async function GET() {
           connected: false,
           reason: 'meta_api_error',
           message: `Meta API rejected the credentials: ${message}`,
+          business_portfolio_id: config.business_portfolio_id ?? null,
+          app_id: config.app_id ?? null,
+          waba_id: config.waba_id ?? null,
+          phone_number_id: config.phone_number_id,
+          display_phone_number: config.display_phone_number ?? null,
+          business_name: config.business_name ?? null,
+          quality_rating: config.quality_rating ?? null,
+          registered_at: config.registered_at ?? null,
+          subscribed_apps_at: config.subscribed_apps_at ?? null,
+          last_webhook_at: config.last_webhook_at ?? null,
         },
         { status: 200 }
       )
@@ -185,7 +232,16 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { phone_number_id, waba_id, access_token, verify_token, pin } = body
+    const {
+      phone_number_id,
+      waba_id,
+      access_token,
+      verify_token,
+      pin,
+      business_portfolio_id,
+      app_id,
+      app_secret,
+    } = body
 
     if (!access_token || !phone_number_id) {
       return NextResponse.json(
@@ -254,9 +310,11 @@ export async function POST(request: Request) {
     // Encrypt sensitive tokens before storing
     let encryptedAccessToken: string
     let encryptedVerifyToken: string | null
+    let encryptedAppSecret: string | null
     try {
       encryptedAccessToken = encrypt(access_token)
       encryptedVerifyToken = verify_token ? encrypt(verify_token) : null
+      encryptedAppSecret = app_secret ? encrypt(app_secret) : null
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown encryption error'
       console.error('Encryption failed:', message)
@@ -274,13 +332,28 @@ export async function POST(request: Request) {
     // /register when the user didn't provide a PIN this time around.
     const { data: existing } = await supabase
       .from('whatsapp_config')
-      .select('id, registered_at, phone_number_id')
+      .select('id, registered_at, phone_number_id, app_secret')
       .eq('account_id', accountId)
       .maybeSingle()
+
+    if (!existing) {
+      const canConnect = await checkCanAddConnection(accountId, supabase)
+      if (!canConnect.allowed) {
+        return NextResponse.json(
+          { error: canConnect.message || 'WhatsApp connection limit reached for your plan.' },
+          { status: 403 }
+        )
+      }
+    }
 
     const sameNumber =
       existing?.phone_number_id === phone_number_id &&
       existing?.registered_at != null
+
+    // If app_secret was not provided in the update request, keep the previous encrypted secret
+    if (!encryptedAppSecret && existing?.app_secret && app_secret === undefined) {
+      encryptedAppSecret = existing.app_secret
+    }
 
     // Step 1: register the phone number for inbound webhooks.
     //
@@ -356,6 +429,13 @@ export async function POST(request: Request) {
     const baseRow = {
       phone_number_id,
       waba_id: waba_id || null,
+      business_portfolio_id: business_portfolio_id ? String(business_portfolio_id).trim() : null,
+      app_id: app_id ? String(app_id).trim() : null,
+      app_secret: encryptedAppSecret,
+      display_phone_number: phoneInfo?.display_phone_number || null,
+      business_name: phoneInfo?.verified_name || null,
+      quality_rating: phoneInfo?.quality_rating || null,
+      code_verification_status: phoneInfo?.code_verification_status || null,
       access_token: encryptedAccessToken,
       verify_token: encryptedVerifyToken,
       status: registrationError ? 'disconnected' : 'connected',

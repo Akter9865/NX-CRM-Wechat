@@ -21,12 +21,22 @@ import crypto from 'node:crypto'
 export function verifyMetaWebhookSignature(
   rawBody: string,
   signatureHeader: string | null,
+  additionalSecrets: string[] = [],
 ): boolean {
-  const secret = process.env.META_APP_SECRET
-  if (!secret) {
+  const secrets: string[] = []
+  if (process.env.META_APP_SECRET) {
+    secrets.push(process.env.META_APP_SECRET)
+  }
+  for (const s of additionalSecrets) {
+    if (s && !secrets.includes(s)) {
+      secrets.push(s)
+    }
+  }
+
+  if (secrets.length === 0) {
     console.error(
-      '[webhook] META_APP_SECRET is not set — rejecting request. ' +
-        'Configure the env var (Meta → App Settings → Basic → App Secret) ' +
+      '[webhook] META_APP_SECRET is not set and no connection app secret found — rejecting request. ' +
+        'Configure the env var (Meta → App Settings → Basic → App Secret) or per-connection App Secret ' +
         'to enable signature verification.',
     )
     return false
@@ -35,13 +45,17 @@ export function verifyMetaWebhookSignature(
   if (!signatureHeader) return false
   if (!signatureHeader.startsWith('sha256=')) return false
 
-  const expected =
-    'sha256=' +
-    crypto.createHmac('sha256', secret).update(rawBody).digest('hex')
+  for (const secret of secrets) {
+    const expected =
+      'sha256=' +
+      crypto.createHmac('sha256', secret).update(rawBody).digest('hex')
 
-  const a = Buffer.from(signatureHeader)
-  const b = Buffer.from(expected)
-  // Bail if lengths differ — timingSafeEqual throws otherwise.
-  if (a.length !== b.length) return false
-  return crypto.timingSafeEqual(a, b)
+    const a = Buffer.from(signatureHeader)
+    const b = Buffer.from(expected)
+    if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
+      return true
+    }
+  }
+
+  return false
 }

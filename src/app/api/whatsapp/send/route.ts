@@ -11,6 +11,10 @@ import {
   validateSendMessageParams,
   SendMessageError,
 } from '@/lib/whatsapp/send-message'
+import {
+  checkCanSendMessage,
+  trackOutboundMessage,
+} from '@/lib/billing/entitlements'
 
 // The dashboard's outbound-send endpoint. It owns auth, per-user rate
 // limiting, and the two ways the UI targets a thread — an existing
@@ -148,6 +152,15 @@ export async function POST(request: Request) {
       )
     }
 
+    // Entitlement Guard: Check account's monthly message limit under plan
+    const canSend = await checkCanSendMessage(accountId, supabase)
+    if (!canSend.allowed) {
+      return NextResponse.json(
+        { error: canSend.message || 'Monthly message limit reached. Please upgrade to continue messaging.' },
+        { status: 403 }
+      )
+    }
+
     // Delegate to the shared send core (validates, sends to Meta with
     // phone-variant retry, persists, pauses active flow runs). Its
     // `SendMessageError` carries a machine code + HTTP status; the
@@ -166,6 +179,9 @@ export async function POST(request: Request) {
         interactivePayload: interactive_payload,
         replyToMessageId: reply_to_message_id,
       })
+
+      // Track usage in monthly usage records
+      await trackOutboundMessage(accountId, 1, supabase)
 
       return NextResponse.json({
         success: true,

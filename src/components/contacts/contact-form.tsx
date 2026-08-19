@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
+import { checkCanAddContact } from '@/lib/billing/entitlements';
 import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag } from '@/types';
 import {
@@ -23,7 +24,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
@@ -70,18 +70,6 @@ export function ContactForm({
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [loadingTags, setLoadingTags] = useState(false);
 
-  useEffect(() => {
-    if (open) {
-      setName(contact?.name ?? '');
-      setPhone(contact?.phone ?? '');
-      setEmail(contact?.email ?? '');
-      setCompany(contact?.company ?? '');
-      setSelectedTagIds(contactTags.map((ct) => ct.tag_id));
-      setDupMatch(null);
-      fetchTags();
-    }
-  }, [open, contact]);
-
   // Look up an existing contact with this number (new contacts only).
   // Runs on blur so we don't query on every keystroke.
   async function checkDuplicate() {
@@ -104,15 +92,27 @@ export function ContactForm({
     }
   }
 
-  async function fetchTags() {
-    setLoadingTags(true);
-    const { data } = await supabase
-      .from('tags')
-      .select('*')
-      .order('name');
-    if (data) setTags(data);
-    setLoadingTags(false);
-  }
+  useEffect(() => {
+    if (!open) return;
+    setName(contact?.name ?? '');
+    setPhone(contact?.phone ?? '');
+    setEmail(contact?.email ?? '');
+    setCompany(contact?.company ?? '');
+    setSelectedTagIds(contactTags.map((ct) => ct.tag_id));
+    setDupMatch(null);
+
+    let cancelled = false;
+    (async () => {
+      setLoadingTags(true);
+      const { data } = await supabase.from('tags').select('*').order('name');
+      if (!cancelled && data) setTags(data);
+      if (!cancelled) setLoadingTags(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, contact, contactTags, supabase]);
 
   function toggleTag(tagId: string) {
     setSelectedTagIds((prev) =>
@@ -162,6 +162,13 @@ export function ContactForm({
           .eq('id', contactId);
         if (error) throw error;
       } else {
+        const canAdd = await checkCanAddContact(accountId, supabase);
+        if (!canAdd.allowed) {
+          toast.error(canAdd.message || 'Contact limit reached for your plan. Please upgrade to add more contacts.');
+          setSaving(false);
+          return;
+        }
+
         const { data, error } = await supabase
           .from('contacts')
           .insert({

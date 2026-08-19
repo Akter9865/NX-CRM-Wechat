@@ -49,22 +49,22 @@ export function ConversationsChart({ series, loading, range, onRangeChange }: Co
   }, [data])
 
   return (
-    <section className="flex h-full flex-col rounded-xl border border-border bg-card">
-      <header className="flex items-center justify-between border-b border-border px-5 py-4">
+    <section className="flex h-full flex-col rounded-2xl border border-border/80 bg-card shadow-sm">
+      <header className="flex items-center justify-between border-b border-border/80 px-5 py-4">
         <div>
-          <h2 className="text-sm font-semibold text-foreground">{t('title')}</h2>
+          <h2 className="text-sm font-bold text-foreground">{t('title')}</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">{t('description')}</p>
         </div>
-        <div className="flex items-center gap-1 rounded-lg bg-muted/60 p-1">
+        <div className="flex items-center gap-1 rounded-xl bg-muted/60 p-1">
           {[7, 30, 90].map((r) => (
             <button
               key={r}
               type="button"
               onClick={() => onRangeChange(r as RangeDays)}
               className={cn(
-                'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                'rounded-lg px-2.5 py-1 text-xs font-semibold transition-all',
                 range === r
-                  ? 'bg-secondary text-secondary-foreground'
+                  ? 'bg-card text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground',
               )}
             >
@@ -76,7 +76,7 @@ export function ConversationsChart({ series, loading, range, onRangeChange }: Co
 
       <div className="p-5">
         {loading || !data ? (
-          <Skeleton className="h-[240px] w-full" />
+          <Skeleton className="h-[240px] w-full rounded-xl" />
         ) : data.every((p) => p.incoming === 0 && p.outgoing === 0) ? (
           <EmptyState
             icon={MessageSquare}
@@ -88,9 +88,9 @@ export function ConversationsChart({ series, loading, range, onRangeChange }: Co
         )}
       </div>
 
-      <footer className="flex items-center gap-4 border-t border-border px-5 py-3 text-xs text-muted-foreground">
-        <LegendDot color="#3b82f6" label={t('incoming')} />
-        <LegendDot color="#7c3aed" label={t('outgoing')} />
+      <footer className="flex items-center gap-4 border-t border-border/80 px-5 py-3 text-xs text-muted-foreground">
+        <LegendDot color="#0ea5e9" label={t('incoming')} />
+        <LegendDot color="#10b981" label={t('outgoing')} />
       </footer>
     </section>
   )
@@ -243,21 +243,21 @@ function LineSvg({
           ) : null,
         )}
 
-        {/* Outgoing polyline (violet) */}
+        {/* Outgoing polyline (emerald green) */}
         <path
           d={outgoingPath}
           fill="none"
-          stroke="#7c3aed"
-          strokeWidth={2}
+          stroke="#10b981"
+          strokeWidth={2.5}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        {/* Incoming polyline (blue) */}
+        {/* Incoming polyline (cyan blue) */}
         <path
           d={incomingPath}
           fill="none"
-          stroke="#3b82f6"
-          strokeWidth={2}
+          stroke="#0ea5e9"
+          strokeWidth={2.5}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
@@ -273,8 +273,8 @@ function LineSvg({
               stroke="var(--muted-foreground)"
               strokeDasharray="3 3"
             />
-            <circle cx={hoverX} cy={yFor(data[hover.idx].incoming)} r={3.5} fill="#3b82f6" />
-            <circle cx={hoverX} cy={yFor(data[hover.idx].outgoing)} r={3.5} fill="#7c3aed" />
+            <circle cx={hoverX} cy={yFor(data[hover.idx].incoming)} r={4} fill="#0ea5e9" stroke="#ffffff" strokeWidth={1.5} />
+            <circle cx={hoverX} cy={yFor(data[hover.idx].outgoing)} r={4} fill="#10b981" stroke="#ffffff" strokeWidth={1.5} />
           </g>
         )}
       </svg>
@@ -285,17 +285,17 @@ function LineSvg({
           letterboxed viewBox percentage. */}
       {hovered && hover !== null && (
         <div
-          className="pointer-events-none absolute top-0 z-10 -translate-x-1/2 rounded-md border border-border bg-popover px-2.5 py-1.5 text-[11px] shadow-lg"
+          className="pointer-events-none absolute top-0 z-10 -translate-x-1/2 rounded-xl border border-border/80 bg-popover/95 backdrop-blur-md px-3 py-2 text-[11px] shadow-xl"
           style={{ left: `${hover.tooltipLeftPx}px` }}
         >
-          <div className="font-medium text-popover-foreground">{longDayLabel(hovered.day)}</div>
-          <div className="mt-1 flex flex-col gap-0.5">
-            <span className="flex items-center gap-1.5 text-blue-300">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-500" />
+          <div className="font-semibold text-foreground">{longDayLabel(hovered.day)}</div>
+          <div className="mt-1.5 flex flex-col gap-1">
+            <span className="flex items-center gap-1.5 font-medium text-cyan-400">
+              <span className="inline-block h-2 w-2 rounded-full bg-cyan-500 shadow-sm" />
               {t('tooltipIncoming', { count: hovered.incoming })}
             </span>
-            <span className="flex items-center gap-1.5 text-primary">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary" />
+            <span className="flex items-center gap-1.5 font-medium text-emerald-400">
+              <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 shadow-sm" />
               {t('tooltipOutgoing', { count: hovered.outgoing })}
             </span>
           </div>
