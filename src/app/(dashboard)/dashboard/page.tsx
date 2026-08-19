@@ -126,14 +126,14 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {/* Header & Dynamic Greeting */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 flex-wrap">
             <h1 className="text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">
               {t('title')}
             </h1>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-400">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-0.5 text-xs font-semibold text-emerald-400">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
               Live Sync
             </span>
@@ -143,7 +143,7 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <Button
             variant="outline"
             size="sm"
@@ -152,7 +152,7 @@ export default function DashboardPage() {
               setSeriesLoading(true)
               loadAll()
             }}
-            className="h-8 gap-1.5 text-xs font-semibold rounded-xl border-border/80 hover:border-primary/40 bg-card/80 hover:bg-card shadow-2xs"
+            className="h-9 gap-1.5 text-xs font-semibold rounded-xl border-border/80 hover:border-primary/40 bg-card/80 hover:bg-card shadow-sm transition-all"
           >
             <RefreshCw className={metricsLoading ? 'size-3.5 animate-spin text-primary' : 'size-3.5'} />
             <span>Refresh Stats</span>
@@ -202,7 +202,7 @@ export default function DashboardPage() {
               title={t('openDealsValue')}
               value={formatCurrency(metrics.openDealsValue, defaultCurrency)}
               icon={DollarSign}
-              accent="teal"
+              accent="purple"
               subtitle={t('openDeals', { count: metrics.openDealsCount })}
             />
             <MetricCard

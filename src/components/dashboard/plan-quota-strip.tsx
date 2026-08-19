@@ -96,12 +96,16 @@ export function PlanQuotaStrip() {
                 variant="outline"
                 className={cn(
                   'text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full',
-                  isFree
+                  planId === 'enterprise'
+                    ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+                    : planId === 'business'
                     ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
-                    : 'border-primary/40 bg-primary/10 text-primary'
+                    : planId === 'pro'
+                    ? 'border-blue-500/40 bg-blue-500/10 text-blue-400'
+                    : 'border-muted-foreground/30 bg-muted/30 text-muted-foreground'
                 )}
               >
-                {isFree ? 'Free Forever' : 'Pro Subscription'}
+                {isFree ? 'Free Tier' : `${plan.name} Tier`}
               </Badge>
               {isOverLimit && (
                 <Badge variant="destructive" className="text-[10px] font-bold uppercase tracking-wider">

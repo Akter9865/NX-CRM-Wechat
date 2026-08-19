@@ -466,6 +466,20 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                 <Settings className="size-4" />
                 {t("menuSettings")}
               </DropdownMenuItem>
+              {accountRole === "owner" || accountRole === "admin" ? (
+                <DropdownMenuItem
+                  render={
+                    <Link
+                      href="/superadmin"
+                      onClick={onClose}
+                      className="text-emerald-400 focus:bg-accent focus:text-emerald-300"
+                    />
+                  }
+                >
+                  <Shield className="size-4 text-emerald-400" />
+                  <span>Super Admin Portal</span>
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuSeparator className="bg-border" />
               <DropdownMenuItem
                 onClick={signOut}

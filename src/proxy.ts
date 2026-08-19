@@ -4,9 +4,14 @@ import { NextResponse, type NextRequest } from 'next/server'
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co'
+  const supabaseAnonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key'
+
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl,
+    supabaseAnonKey,
     {
       cookies: {
         getAll() {
@@ -40,6 +45,19 @@ export async function proxy(request: NextRequest) {
       response.cookies.set(cookie)
     })
     return response
+  }
+
+  // SuperAdmin route protection
+  if (
+    request.nextUrl.pathname.startsWith('/superadmin') &&
+    request.nextUrl.pathname !== '/superadmin/login'
+  ) {
+    const superAdminToken = request.cookies.get('wacrm_superadmin_session')?.value;
+    if (!superAdminToken) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/superadmin/login';
+      return NextResponse.redirect(url);
+    }
   }
 
   // Auth pages - redirect to dashboard if already logged in.
