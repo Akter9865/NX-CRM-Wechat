@@ -58,11 +58,14 @@ function SignupPageInner() {
       return;
     }
 
-    setLoading(true);
+    const siteUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      (typeof window !== 'undefined' ? window.location.origin : '');
+    const callbackOrigin = siteUrl || (typeof window !== 'undefined' ? window.location.origin : '');
 
     const emailRedirectTo = inviteToken
-      ? `${window.location.origin}/join/${encodeURIComponent(inviteToken)}`
-      : `${window.location.origin}/auth/callback`;
+      ? `${callbackOrigin}/join/${encodeURIComponent(inviteToken)}`
+      : `${callbackOrigin}/auth/callback`;
 
     const { error: signUpError } = await supabase.auth.signUp({
       email: email.trim(),

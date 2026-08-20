@@ -1,7 +1,8 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -10,6 +11,7 @@ import { PasswordStrength } from '@/components/auth/password-strength';
 import {
   MessageSquare,
   ArrowRight,
+  ArrowLeft,
   Loader2,
   AlertCircle,
   CheckCircle2,
@@ -27,12 +29,30 @@ export default function ResetPasswordPage() {
 }
 
 function ResetPasswordPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlError = searchParams.get('error');
+
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(urlError ? decodeURIComponent(urlError) : null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [isSessionReady, setIsSessionReady] = useState(true);
   const supabase = createClient();
+
+  useEffect(() => {
+    // Listen to Supabase auth events (e.g. PASSWORD_RECOVERY)
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsSessionReady(true);
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, [supabase]);
 
   const passwordsMatch = confirmPassword.length > 0 && password === confirmPassword;
   const passwordsMismatch = confirmPassword.length > 0 && password !== confirmPassword;
@@ -208,6 +228,17 @@ function ResetPasswordPageInner() {
             </div>
           )}
         </Button>
+
+        {/* Back to sign in / Request link */}
+        <div className="pt-2 text-center border-t border-border/50">
+          <Link
+            href="/forgot-password"
+            className="inline-flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="size-3.5" />
+            <span>Need a new link? Request reset</span>
+          </Link>
+        </div>
       </form>
     </div>
   );

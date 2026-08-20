@@ -273,6 +273,90 @@ html[data-theme="jade"] {
   --sidebar-ring: oklch(0.72 0.19 160);
 }
 
+html[data-theme="sunset"] {
+  --primary: oklch(0.68 0.22 45);
+  --primary-foreground: oklch(0.99 0 0);
+  --primary-hover: oklch(0.74 0.20 45);
+  --primary-soft: oklch(0.68 0.22 45 / 0.15);
+  --primary-soft-2: oklch(0.68 0.22 45 / 0.25);
+  --ring: oklch(0.68 0.22 45);
+  --chart-1: oklch(0.68 0.22 45);
+  --chart-2: oklch(0.745 0.16 65);
+  --sidebar-primary: oklch(0.68 0.22 45);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-ring: oklch(0.68 0.22 45);
+}
+
+html[data-theme="fuchsia"] {
+  --primary: oklch(0.62 0.26 325);
+  --primary-foreground: oklch(0.99 0 0);
+  --primary-hover: oklch(0.68 0.24 325);
+  --primary-soft: oklch(0.62 0.26 325 / 0.15);
+  --primary-soft-2: oklch(0.62 0.26 325 / 0.25);
+  --ring: oklch(0.62 0.26 325);
+  --chart-1: oklch(0.62 0.26 325);
+  --chart-2: oklch(0.55 0.23 293);
+  --sidebar-primary: oklch(0.62 0.26 325);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-ring: oklch(0.62 0.26 325);
+}
+
+html[data-theme="ocean"] {
+  --primary: oklch(0.65 0.19 220);
+  --primary-foreground: oklch(0.99 0 0);
+  --primary-hover: oklch(0.71 0.17 220);
+  --primary-soft: oklch(0.65 0.19 220 / 0.15);
+  --primary-soft-2: oklch(0.65 0.19 220 / 0.25);
+  --ring: oklch(0.65 0.19 220);
+  --chart-1: oklch(0.65 0.19 220);
+  --chart-2: oklch(0.68 0.20 155);
+  --sidebar-primary: oklch(0.65 0.19 220);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-ring: oklch(0.65 0.19 220);
+}
+
+html[data-theme="aurora"] {
+  --primary: oklch(0.78 0.20 135);
+  --primary-foreground: oklch(0.12 0.02 240);
+  --primary-hover: oklch(0.83 0.18 135);
+  --primary-soft: oklch(0.78 0.20 135 / 0.15);
+  --primary-soft-2: oklch(0.78 0.20 135 / 0.25);
+  --ring: oklch(0.78 0.20 135);
+  --chart-1: oklch(0.78 0.20 135);
+  --chart-2: oklch(0.75 0.18 200);
+  --sidebar-primary: oklch(0.78 0.20 135);
+  --sidebar-primary-foreground: oklch(0.12 0.02 240);
+  --sidebar-ring: oklch(0.78 0.20 135);
+}
+
+html[data-theme="gold"] {
+  --primary: oklch(0.76 0.16 85);
+  --primary-foreground: oklch(0.15 0.02 65);
+  --primary-hover: oklch(0.82 0.14 85);
+  --primary-soft: oklch(0.76 0.16 85 / 0.15);
+  --primary-soft-2: oklch(0.76 0.16 85 / 0.25);
+  --ring: oklch(0.76 0.16 85);
+  --chart-1: oklch(0.76 0.16 85);
+  --chart-2: oklch(0.745 0.16 65);
+  --sidebar-primary: oklch(0.76 0.16 85);
+  --sidebar-primary-foreground: oklch(0.15 0.02 65);
+  --sidebar-ring: oklch(0.76 0.16 85);
+}
+
+html[data-theme="slate"] {
+  --primary: oklch(0.65 0.05 250);
+  --primary-foreground: oklch(0.99 0 0);
+  --primary-hover: oklch(0.72 0.04 250);
+  --primary-soft: oklch(0.65 0.05 250 / 0.15);
+  --primary-soft-2: oklch(0.65 0.05 250 / 0.25);
+  --ring: oklch(0.65 0.05 250);
+  --chart-1: oklch(0.65 0.05 250);
+  --chart-2: oklch(0.80 0.03 250);
+  --sidebar-primary: oklch(0.65 0.05 250);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-ring: oklch(0.65 0.05 250);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

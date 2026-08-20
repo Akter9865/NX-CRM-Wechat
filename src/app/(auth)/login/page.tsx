@@ -36,8 +36,10 @@ function LoginPageInner() {
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(
-    queryError === 'auth_callback_failed'
-      ? 'Authentication session expired or invalid. Please sign in again.'
+    queryError
+      ? queryError === 'auth_callback_failed'
+        ? 'Authentication session expired or invalid. Please sign in again.'
+        : decodeURIComponent(queryError)
       : null
   );
   const [loading, setLoading] = useState(false);

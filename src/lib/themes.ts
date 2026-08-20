@@ -15,6 +15,12 @@ export const THEME_IDS = [
   "rose",
   "crimson",
   "jade",
+  "sunset",
+  "fuchsia",
+  "ocean",
+  "aurora",
+  "gold",
+  "slate",
 ] as const;
 
 export type ThemeId = (typeof THEME_IDS)[number];
@@ -76,10 +82,40 @@ export const THEMES: ReadonlyArray<ThemeMeta> = [
     swatch: "oklch(0.55 0.23 293)",
   },
   {
+    id: "sunset",
+    name: "Sunset Orange",
+    tagline: "Warm fiery tangerine and radiant coral sunset glow.",
+    swatch: "oklch(0.68 0.22 45)",
+  },
+  {
+    id: "fuchsia",
+    name: "Electric Fuchsia",
+    tagline: "Vivid radiant magenta neon with futuristic energy.",
+    swatch: "oklch(0.62 0.26 325)",
+  },
+  {
+    id: "ocean",
+    name: "Deep Ocean",
+    tagline: "Rich sapphire oceanic teal — deep, calm and professional.",
+    swatch: "oklch(0.65 0.19 220)",
+  },
+  {
+    id: "aurora",
+    name: "Aurora Lime",
+    tagline: "Electric Nordic lime and radiant laser green vibes.",
+    swatch: "oklch(0.78 0.20 135)",
+  },
+  {
     id: "amber",
     name: "Golden Amber",
     tagline: "Warm, inviting solar glow — feels friendly and approachable.",
     swatch: "oklch(0.745 0.16 65)",
+  },
+  {
+    id: "gold",
+    name: "Luxury Gold",
+    tagline: "Warm champagne and metallic amber luxury gold.",
+    swatch: "oklch(0.76 0.16 85)",
   },
   {
     id: "rose",
@@ -98,6 +134,12 @@ export const THEMES: ReadonlyArray<ThemeMeta> = [
     name: "Mint Jade",
     tagline: "Fresh botanical mint with clean organic green vibes.",
     swatch: "oklch(0.72 0.19 160)",
+  },
+  {
+    id: "slate",
+    name: "Titanium Slate",
+    tagline: "Sleek minimalist modern monochrome titanium aesthetic.",
+    swatch: "oklch(0.65 0.05 250)",
   },
 ];
 

@@ -25,7 +25,7 @@ export function AppearancePanel() {
   const t = useTranslations("Settings.appearance");
 
   return (
-    <section className="max-w-3xl animate-in fade-in-50 duration-200">
+    <section className="max-w-5xl animate-in fade-in-50 duration-200">
       <SettingsPanelHead
         title={t("title")}
         description={t("description")}
@@ -54,12 +54,17 @@ export function AppearancePanel() {
       </div>
 
       <div className="mt-8 space-y-4">
-        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Palette className="size-4 text-muted-foreground" />
-          {t("accentColor")}
-        </h3>
+        <div className="flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Palette className="size-4 text-muted-foreground" />
+            {t("accentColor")}
+          </h3>
+          <span className="text-xs font-medium text-muted-foreground">
+            {THEMES.length} Available Color Themes
+          </span>
+        </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
           {THEMES.map((tObj) => (
             <ThemeCard
               key={tObj.id}

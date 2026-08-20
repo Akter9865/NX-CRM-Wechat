@@ -26,7 +26,7 @@ export function ThemePalettePopover() {
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="w-64 p-3 rounded-2xl border-border bg-card/98 backdrop-blur-xl shadow-2xl space-y-2 z-50"
+        className="w-72 sm:w-80 p-3 rounded-2xl border-border bg-card/98 backdrop-blur-xl shadow-2xl space-y-2 z-50"
       >
         <div className="flex items-center justify-between px-1">
           <div className="p-0 text-xs font-bold flex items-center gap-1.5 text-foreground">
@@ -40,7 +40,7 @@ export function ThemePalettePopover() {
 
         <DropdownMenuSeparator className="my-1 bg-border/60" />
 
-        <div className="grid grid-cols-1 gap-1.5 max-h-72 overflow-y-auto pr-0.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-80 overflow-y-auto pr-0.5">
           {THEMES.map((t) => {
             const isSelected = theme === t.id;
             return (
@@ -54,14 +54,14 @@ export function ThemePalettePopover() {
                     : 'hover:bg-muted text-foreground'
                 )}
               >
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2 min-w-0">
                   <div
-                    className="size-4 rounded-full shadow-xs ring-1 ring-border/80 shrink-0"
+                    className="size-3.5 rounded-full shadow-xs ring-1 ring-border/80 shrink-0"
                     style={{ backgroundColor: t.swatch }}
                   />
-                  <span className="truncate">{t.name}</span>
+                  <span className="truncate text-[11px]">{t.name}</span>
                 </div>
-                {isSelected && <Check className="size-3.5 text-primary shrink-0" />}
+                {isSelected && <Check className="size-3 text-primary shrink-0 ml-1" />}
               </DropdownMenuItem>
             );
           })}
