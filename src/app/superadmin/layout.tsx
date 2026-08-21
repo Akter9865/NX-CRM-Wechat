@@ -63,6 +63,20 @@ export default function SuperAdminLayout({
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-8 py-8">
         {children}
       </main>
+
+      {/* SuperAdmin Executive Footer */}
+      <footer className="w-full border-t border-border/70 bg-card/40 py-4 px-4 sm:px-8 text-xs text-muted-foreground mt-auto">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2 max-w-7xl mx-auto">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-foreground">NX CRM Master SuperAdmin</span>
+            <span className="text-muted-foreground/40">•</span>
+            <span>Developed & Managed by <strong className="text-foreground">Nexora Spark Agency</strong></span>
+          </div>
+          <div className="text-[11px] text-muted-foreground">
+            © {new Date().getFullYear()} Nexora Spark Agency. All rights reserved. (Commercial SaaS License)
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

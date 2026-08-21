@@ -186,6 +186,11 @@ export function SettingsOverview({
             }`,
     },
     {
+      section: 'integrations',
+      loading: false,
+      subtitle: 'Google Sheets, Payments, Zoho, Calendly',
+    },
+    {
       section: 'templates',
       loading: countsLoading,
       subtitle:

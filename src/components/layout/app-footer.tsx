@@ -17,11 +17,11 @@ export function AppFooter({ className }: { className?: string }) {
         {/* Left: Product & Agency Branding */}
         <div className="flex items-center gap-2 flex-wrap justify-center sm:justify-start">
           <span className="font-semibold text-foreground tracking-tight">
-            NX CRM Wechat
+            NX CRM Enterprise
           </span>
           <span className="text-muted-foreground/40 font-mono">•</span>
           <span className="flex items-center gap-1 font-medium">
-            <span>Powered by</span>
+            <span>Crafted & Powered by</span>
             <span className="font-bold text-foreground bg-gradient-to-r from-emerald-400 via-teal-400 to-blue-500 bg-clip-text text-transparent">
               Nexora Spark Agency
             </span>
@@ -29,13 +29,17 @@ export function AppFooter({ className }: { className?: string }) {
         </div>
 
         {/* Center/Right: Security badge & Copyright */}
-        <div className="flex items-center gap-4 text-[11px] text-muted-foreground/80 flex-wrap justify-center">
+        <div className="flex items-center gap-3 text-[11px] text-muted-foreground/80 flex-wrap justify-center">
           <div className="flex items-center gap-1 text-emerald-400/90 font-medium">
             <Shield className="size-3 text-emerald-400 shrink-0" />
             <span>Enterprise Encrypted</span>
           </div>
           <span className="text-muted-foreground/30 font-mono hidden sm:inline">•</span>
-          <span>© {currentYear} All rights reserved.</span>
+          <span className="text-[10px] bg-muted/60 px-2 py-0.5 rounded-md border border-border/50 font-medium">
+            Commercial SaaS License
+          </span>
+          <span className="text-muted-foreground/30 font-mono hidden sm:inline">•</span>
+          <span>© {currentYear} Nexora Spark Agency. All rights reserved.</span>
         </div>
       </div>
     </footer>

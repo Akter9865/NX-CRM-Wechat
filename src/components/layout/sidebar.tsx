@@ -476,6 +476,12 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* Agency Signature */}
+          <div className="mt-2 pt-2 border-t border-border/40 flex items-center justify-between text-[10px] text-muted-foreground/70 px-1 select-none">
+            <span>NX CRM v1.0</span>
+            <span className="font-semibold text-muted-foreground/90">Nexora Spark Agency</span>
+          </div>
         </div>
       </aside>
     </>

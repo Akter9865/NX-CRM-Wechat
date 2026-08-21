@@ -13,6 +13,17 @@ import {
   Calendar,
   Copy,
   Check,
+  Users,
+  CheckCircle2,
+  Clock,
+  Ban,
+  TrendingUp,
+  Coins,
+  MessageSquare,
+  Bot,
+  UserPlus,
+  AlertTriangle,
+  Radio,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,13 +55,26 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 
 interface SystemStats {
-  totalAccounts: number;
+  totalClients: number;
+  activeClients: number;
+  trialClients: number;
+  paidClients: number;
+  suspendedClients: number;
   totalUsers: number;
+  mrr: number;
+  todaysRevenue: number;
+  monthlyRevenue: number;
+  totalWhatsappNumbers: number;
+  connectedWhatsappApis: number;
+  failedApis: number;
+  totalMessages: number;
+  aiMessages: number;
+  totalLeads: number;
+  totalAccounts: number;
   totalWhatsappConnections: number;
   totalContacts: number;
   totalMessagesThisMonth: number;
   totalAutomationsThisMonth: number;
-  mrr: number;
   planCounts: Record<string, number>;
   statusCounts: Record<string, number>;
 }
@@ -241,102 +265,267 @@ export default function SuperAdminDashboardPage() {
         </div>
       </div>
 
-      {/* KPI Metric Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Total Tenants */}
-        <div className="rounded-2xl border border-border/80 bg-card/60 backdrop-blur p-5 space-y-2 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Total Clients
-            </span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Building2 className="size-4" />
-            </div>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-              {stats ? stats.totalAccounts.toLocaleString() : '—'}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              ({stats ? stats.totalUsers : 0} users)
-            </span>
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            Registered organizations in database
-          </p>
+      {/* ============================================================ */}
+      {/* 1. Client Ecosystem & Subscription Health (5 KPI Cards)     */}
+      {/* ============================================================ */}
+      <div className="space-y-2.5">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <Users className="size-3.5 text-primary" />
+            <span>Client Ecosystem &amp; Subscription Health</span>
+          </h3>
+          <span className="text-[11px] text-muted-foreground font-mono">
+            {stats?.totalClients || 0} Total Tenants
+          </span>
         </div>
 
-        {/* Card 2: Active Paid Subscriptions */}
-        <div className="rounded-2xl border border-border/80 bg-card/60 backdrop-blur p-5 space-y-2 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Paid Subscriptions
-            </span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400">
-              <Crown className="size-4" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+          {/* 1. Total Clients */}
+          <div className="rounded-2xl border border-border/80 bg-card/70 p-4 space-y-1.5 shadow-xs transition-all hover:border-primary/40">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-muted-foreground">Total Clients</span>
+              <div className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Building2 className="size-3.5" />
+              </div>
             </div>
+            <div className="text-2xl font-black text-foreground">
+              {stats ? (stats.totalClients ?? stats.totalAccounts).toLocaleString() : '—'}
+            </div>
+            <p className="text-[10px] text-muted-foreground">Registered Organizations</p>
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-bold tracking-tight text-emerald-400">
-              {stats
-                ? (stats.planCounts.pro || 0) +
-                  (stats.planCounts.business || 0) +
-                  (stats.planCounts.enterprise || 0)
-                : '—'}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              / {stats ? stats.totalAccounts : 0} Total
-            </span>
+
+          {/* 2. Active Clients */}
+          <div className="rounded-2xl border border-border/80 bg-card/70 p-4 space-y-1.5 shadow-xs transition-all hover:border-emerald-500/40">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-emerald-400">Active Clients</span>
+              <div className="flex size-7 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400">
+                <CheckCircle2 className="size-3.5" />
+              </div>
+            </div>
+            <div className="text-2xl font-black text-emerald-400">
+              {stats ? stats.activeClients.toLocaleString() : '—'}
+            </div>
+            <p className="text-[10px] text-muted-foreground">Healthy Active Accounts</p>
           </div>
-          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <span className="text-blue-400 font-medium">{stats?.planCounts.pro || 0} Pro</span> •{' '}
-            <span className="text-emerald-400 font-medium">{stats?.planCounts.business || 0} Biz</span> •{' '}
-            <span className="text-amber-400 font-medium">{stats?.planCounts.enterprise || 0} Ent</span>
+
+          {/* 3. Trial Clients */}
+          <div className="rounded-2xl border border-border/80 bg-card/70 p-4 space-y-1.5 shadow-xs transition-all hover:border-cyan-500/40">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-cyan-400">Trial Clients</span>
+              <div className="flex size-7 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
+                <Clock className="size-3.5" />
+              </div>
+            </div>
+            <div className="text-2xl font-black text-cyan-400">
+              {stats ? stats.trialClients.toLocaleString() : '—'}
+            </div>
+            <p className="text-[10px] text-muted-foreground">Evaluation Period</p>
+          </div>
+
+          {/* 4. Paid Clients */}
+          <div className="rounded-2xl border border-border/80 bg-card/70 p-4 space-y-1.5 shadow-xs transition-all hover:border-amber-500/40">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-amber-300">Paid Clients</span>
+              <div className="flex size-7 items-center justify-center rounded-lg bg-amber-500/10 text-amber-400">
+                <Crown className="size-3.5" />
+              </div>
+            </div>
+            <div className="text-2xl font-black text-amber-300">
+              {stats ? stats.paidClients.toLocaleString() : '—'}
+            </div>
+            <p className="text-[10px] text-muted-foreground">Pro / Biz / Enterprise</p>
+          </div>
+
+          {/* 5. Suspended Clients */}
+          <div className="rounded-2xl border border-border/80 bg-card/70 p-4 space-y-1.5 shadow-xs transition-all hover:border-red-500/40">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-red-400">Suspended Clients</span>
+              <div className="flex size-7 items-center justify-center rounded-lg bg-red-500/10 text-red-400">
+                <Ban className="size-3.5" />
+              </div>
+            </div>
+            <div className="text-2xl font-black text-red-400">
+              {stats ? stats.suspendedClients.toLocaleString() : '—'}
+            </div>
+            <p className="text-[10px] text-muted-foreground">Paused or Expired</p>
           </div>
         </div>
+      </div>
 
-        {/* Card 3: WhatsApp Channels */}
-        <div className="rounded-2xl border border-border/80 bg-card/60 backdrop-blur p-5 space-y-2 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              WhatsApp Channels
-            </span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400">
-              <Phone className="size-4" />
-            </div>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-              {stats ? stats.totalWhatsappConnections.toLocaleString() : '—'}
-            </span>
-            <span className="text-xs text-emerald-400 font-medium">
-              API Numbers Connected
-            </span>
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            Active Meta Cloud API configurations
-          </p>
+      {/* ============================================================ */}
+      {/* 2. Financial Performance & Revenue (3 KPI Cards)            */}
+      {/* ============================================================ */}
+      <div className="space-y-2.5">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <Coins className="size-3.5 text-amber-400" />
+            <span>Financial Performance &amp; Revenue</span>
+          </h3>
+          <span className="text-[11px] text-muted-foreground font-mono">Live Billing Engine</span>
         </div>
 
-        {/* Card 4: Estimated MRR */}
-        <div className="rounded-2xl border border-border/80 bg-card/60 backdrop-blur p-5 space-y-2 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Est. Monthly MRR
-            </span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500/10 text-amber-400">
-              <Sparkles className="size-4" />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* 6. MRR */}
+          <div className="rounded-2xl border border-amber-500/20 bg-gradient-to-br from-amber-500/10 via-card/80 to-card p-5 space-y-2 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
+                MRR (Monthly Recurring)
+              </span>
+              <div className="flex size-8 items-center justify-center rounded-xl bg-amber-500/20 text-amber-300">
+                <Sparkles className="size-4" />
+              </div>
             </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-extrabold text-amber-300">
+                {stats ? `₹${stats.mrr.toLocaleString()}` : '—'}
+              </span>
+              <span className="text-xs text-muted-foreground">/ month</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Total active client recurring subscription run-rate
+            </p>
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-bold tracking-tight text-amber-400">
-              {stats ? `₹${stats.mrr.toLocaleString()}` : '—'}
-            </span>
-            <span className="text-xs text-muted-foreground">/ month</span>
+
+          {/* 7. Today's Revenue */}
+          <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 via-card/80 to-card p-5 space-y-2 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                Today&apos;s Revenue
+              </span>
+              <div className="flex size-8 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-300">
+                <TrendingUp className="size-4" />
+              </div>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-extrabold text-emerald-300">
+                {stats ? `₹${stats.todaysRevenue.toLocaleString()}` : '—'}
+              </span>
+              <span className="text-xs text-muted-foreground">today</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Estimated daily revenue run-rate across tenants
+            </p>
           </div>
-          <p className="text-[11px] text-muted-foreground">
-            {stats?.totalMessagesThisMonth.toLocaleString() || 0} messages sent this month
-          </p>
+
+          {/* 8. Monthly Revenue */}
+          <div className="rounded-2xl border border-blue-500/20 bg-gradient-to-br from-blue-500/10 via-card/80 to-card p-5 space-y-2 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
+                Monthly Revenue
+              </span>
+              <div className="flex size-8 items-center justify-center rounded-xl bg-blue-500/20 text-blue-300">
+                <Coins className="size-4" />
+              </div>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-extrabold text-blue-300">
+                {stats ? `₹${stats.monthlyRevenue.toLocaleString()}` : '—'}
+              </span>
+              <span className="text-xs text-muted-foreground">gross</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Current billing cycle total pipeline revenue
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* ============================================================ */}
+      {/* 3. WhatsApp, AI & Infrastructure Health (6 KPI Cards)       */}
+      {/* ============================================================ */}
+      <div className="space-y-2.5">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <Radio className="size-3.5 text-emerald-400" />
+            <span>WhatsApp, AI &amp; Messaging Infrastructure</span>
+          </h3>
+          <span className="text-[11px] text-muted-foreground font-mono">Meta Cloud API V21</span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
+          {/* 9. Total WhatsApp Numbers */}
+          <div className="rounded-2xl border border-border/80 bg-card/70 p-4 space-y-1.5 shadow-xs transition-all hover:border-emerald-500/40">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-muted-foreground">WhatsApp Numbers</span>
+              <div className="flex size-7 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400">
+                <Phone className="size-3.5" />
+              </div>
+            </div>
+            <div className="text-2xl font-black text-foreground">
+              {stats ? stats.totalWhatsappNumbers.toLocaleString() : '—'}
+            </div>
+            <p className="text-[10px] text-muted-foreground">Registered Numbers</p>
+          </div>
+
+          {/* 10. Connected WhatsApp APIs */}
+          <div className="rounded-2xl border border-border/80 bg-card/70 p-4 space-y-1.5 shadow-xs transition-all hover:border-emerald-500/40">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-emerald-400">Connected APIs</span>
+              <div className="flex size-7 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400">
+                <CheckCircle2 className="size-3.5" />
+              </div>
+            </div>
+            <div className="text-2xl font-black text-emerald-400">
+              {stats ? stats.connectedWhatsappApis.toLocaleString() : '—'}
+            </div>
+            <p className="text-[10px] text-muted-foreground">Live Webhook Active</p>
+          </div>
+
+          {/* 11. Failed APIs */}
+          <div className="rounded-2xl border border-border/80 bg-card/70 p-4 space-y-1.5 shadow-xs transition-all hover:border-red-500/40">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-red-400">Failed APIs</span>
+              <div className="flex size-7 items-center justify-center rounded-lg bg-red-500/10 text-red-400">
+                <AlertTriangle className="size-3.5" />
+              </div>
+            </div>
+            <div className="text-2xl font-black text-red-400">
+              {stats ? stats.failedApis.toLocaleString() : '0'}
+            </div>
+            <p className="text-[10px] text-muted-foreground">Requires Token Re-auth</p>
+          </div>
+
+          {/* 12. Total Messages */}
+          <div className="rounded-2xl border border-border/80 bg-card/70 p-4 space-y-1.5 shadow-xs transition-all hover:border-blue-500/40">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-blue-400">Total Messages</span>
+              <div className="flex size-7 items-center justify-center rounded-lg bg-blue-500/10 text-blue-400">
+                <MessageSquare className="size-3.5" />
+              </div>
+            </div>
+            <div className="text-2xl font-black text-blue-400">
+              {stats ? stats.totalMessages.toLocaleString() : '—'}
+            </div>
+            <p className="text-[10px] text-muted-foreground">Inbound &amp; Outbound</p>
+          </div>
+
+          {/* 13. AI Messages */}
+          <div className="rounded-2xl border border-border/80 bg-card/70 p-4 space-y-1.5 shadow-xs transition-all hover:border-purple-500/40">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-purple-400">AI Messages</span>
+              <div className="flex size-7 items-center justify-center rounded-lg bg-purple-500/10 text-purple-400">
+                <Bot className="size-3.5" />
+              </div>
+            </div>
+            <div className="text-2xl font-black text-purple-400">
+              {stats ? stats.aiMessages.toLocaleString() : '—'}
+            </div>
+            <p className="text-[10px] text-muted-foreground">Gemini Auto-Replies</p>
+          </div>
+
+          {/* 14. Total Leads */}
+          <div className="rounded-2xl border border-border/80 bg-card/70 p-4 space-y-1.5 shadow-xs transition-all hover:border-teal-500/40">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-teal-400">Total Leads</span>
+              <div className="flex size-7 items-center justify-center rounded-lg bg-teal-500/10 text-teal-400">
+                <UserPlus className="size-3.5" />
+              </div>
+            </div>
+            <div className="text-2xl font-black text-teal-400">
+              {stats ? stats.totalLeads.toLocaleString() : '—'}
+            </div>
+            <p className="text-[10px] text-muted-foreground">CRM Contacts</p>
+          </div>
         </div>
       </div>
 

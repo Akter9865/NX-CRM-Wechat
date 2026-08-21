@@ -16,6 +16,7 @@ import {
   STORAGE_KEY,
   isMode,
   isThemeId,
+  applyThemeToDom,
   type Mode,
   type ThemeId,
 } from "@/lib/themes";
@@ -80,11 +81,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<ThemeId>(readInitialTheme);
   const [mode, setModeState] = useState<Mode>(readInitialMode);
 
+  useEffect(() => {
+    applyThemeToDom(theme);
+  }, [theme]);
+
   const setTheme = useCallback((next: ThemeId) => {
     setThemeState(next);
-    if (typeof document !== "undefined") {
-      document.documentElement.dataset.theme = next;
-    }
+    applyThemeToDom(next);
     try {
       localStorage.setItem(STORAGE_KEY, next);
     } catch {

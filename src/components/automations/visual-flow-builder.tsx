@@ -50,6 +50,11 @@ import {
   Code2,
   Smartphone,
   Workflow,
+  FileSpreadsheet,
+  CreditCard,
+  Mail,
+  Calendar,
+  Webhook,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -261,6 +266,66 @@ export const NODE_LIBRARY: NodeTypeMeta[] = [
     headerBg: 'from-teal-500/20 to-emerald-500/10 text-teal-400 border-teal-500/30',
     accentBorder: 'hover:border-teal-500/50',
     defaultConfig: { stageName: 'Discovery Call Scheduled' },
+  },
+
+  // Integrations & External Apps (Indigo / Emerald / Purple)
+  {
+    type: 'action_google_sheets',
+    category: 'actions',
+    title: 'Sync to Google Sheets',
+    description: 'Auto-append customer name, phone, and qualified lead data to Google Sheet',
+    icon: FileSpreadsheet,
+    color: 'emerald',
+    headerBg: 'from-emerald-500/20 to-teal-500/10 text-emerald-400 border-emerald-500/30',
+    accentBorder: 'hover:border-emerald-500/50',
+    defaultConfig: {
+      sheetTab: 'WhatsApp Leads',
+      syncFields: 'name,phone,email,notes,timestamp',
+    },
+  },
+  {
+    type: 'action_send_payment_link',
+    category: 'actions',
+    title: 'Send Razorpay/PhonePe Link',
+    description: 'Generate and send instant UPI payment link inside WhatsApp chat',
+    icon: CreditCard,
+    color: 'blue',
+    headerBg: 'from-blue-500/20 to-indigo-500/10 text-blue-400 border-blue-500/30',
+    accentBorder: 'hover:border-blue-500/50',
+    defaultConfig: {
+      gateway: 'razorpay',
+      amount: 499,
+      description: 'Pro Subscription Package',
+    },
+  },
+  {
+    type: 'action_email_alert',
+    category: 'actions',
+    title: 'Send Zoho/SMTP Email Alert',
+    description: 'Dispatch an immediate email alert to sales reps or management',
+    icon: Mail,
+    color: 'purple',
+    headerBg: 'from-purple-500/20 to-pink-500/10 text-purple-400 border-purple-500/30',
+    accentBorder: 'hover:border-purple-500/50',
+    defaultConfig: {
+      recipient: 'sales@yourdomain.com',
+      subject: '🚨 Hot WhatsApp Lead: {{contact.name}}',
+      body: 'A new high-priority lead has contacted us: {{contact.name}} ({{contact.phone}}).',
+    },
+  },
+  {
+    type: 'action_book_calendar',
+    category: 'actions',
+    title: 'Send Calendly Booking Link',
+    description: 'Send direct consultation meeting scheduling link',
+    icon: Calendar,
+    color: 'amber',
+    headerBg: 'from-amber-500/20 to-orange-500/10 text-amber-400 border-amber-500/30',
+    accentBorder: 'hover:border-amber-500/50',
+    defaultConfig: {
+      calendarUrl: 'https://calendly.com/your-username/30min',
+      inviteText: 'Please select a convenient time for our consultation: {{calendarUrl}}',
+    },
   },
 ];
 
@@ -644,6 +709,192 @@ const PREBUILT_TEMPLATES: WorkflowTemplate[] = [
     edges: [
       { id: 'e1-2', source: 'node-1', target: 'node-2', animated: true, type: 'smoothstep' },
       { id: 'e2-3', source: 'node-2', target: 'node-3', animated: true, type: 'smoothstep' },
+    ],
+  },
+  {
+    id: 'google_sheets_lead_capture',
+    name: '📊 Google Sheets Auto-Sync & Instant Lead Capture',
+    category: 'Integrations & Leads',
+    description: 'Captures new WhatsApp customer details, tags them as qualified, and appends a new row to Google Sheets in real-time.',
+    icon: FileSpreadsheet,
+    nodes: [
+      {
+        id: 'node-1',
+        type: 'customNode',
+        position: { x: 100, y: 150 },
+        data: {
+          type: 'trigger_message',
+          label: 'Customer Sends Inbound Message',
+          config: { triggerType: 'any_message' },
+        },
+      },
+      {
+        id: 'node-2',
+        type: 'customNode',
+        position: { x: 480, y: 150 },
+        data: {
+          type: 'action_add_tag',
+          label: 'Tag as Qualified Lead',
+          config: { tag: 'Google Sheets Synced' },
+        },
+      },
+      {
+        id: 'node-3',
+        type: 'customNode',
+        position: { x: 860, y: 150 },
+        data: {
+          type: 'action_google_sheets',
+          label: 'Export Row to Google Sheets',
+          config: {
+            sheetTab: 'WhatsApp Leads',
+            syncFields: 'name,phone,message,timestamp',
+          },
+        },
+      },
+      {
+        id: 'node-4',
+        type: 'customNode',
+        position: { x: 1240, y: 150 },
+        data: {
+          type: 'action_send_message',
+          label: 'Send Confirmation to Customer',
+          config: { message: 'Hello {{contact.name}}! Thank you, our sales team has received your inquiry and will connect shortly.' },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e1-2', source: 'node-1', target: 'node-2', animated: true, type: 'smoothstep' },
+      { id: 'e2-3', source: 'node-2', target: 'node-3', animated: true, type: 'smoothstep' },
+      { id: 'e3-4', source: 'node-3', target: 'node-4', animated: true, type: 'smoothstep' },
+    ],
+  },
+  {
+    id: 'whatsapp_payment_collection',
+    name: '💳 Instant WhatsApp Payment Collection (Razorpay / PhonePe)',
+    category: 'Payments & Sales',
+    description: 'Automatically generates a dynamic Razorpay/PhonePe payment link and sends it to the customer on WhatsApp.',
+    icon: CreditCard,
+    nodes: [
+      {
+        id: 'node-1',
+        type: 'customNode',
+        position: { x: 100, y: 150 },
+        data: {
+          type: 'trigger_keyword',
+          label: 'Customer Types "pay" or "buy"',
+          config: { keywords: ['pay', 'buy', 'checkout', 'order', 'payment'], matchType: 'contains' },
+        },
+      },
+      {
+        id: 'node-2',
+        type: 'customNode',
+        position: { x: 480, y: 150 },
+        data: {
+          type: 'action_send_payment_link',
+          label: 'Generate UPI Payment Link',
+          config: {
+            gateway: 'razorpay',
+            amount: 499,
+            description: 'Order Payment',
+          },
+        },
+      },
+      {
+        id: 'node-3',
+        type: 'customNode',
+        position: { x: 860, y: 150 },
+        data: {
+          type: 'action_send_message',
+          label: 'Send Payment Instructions',
+          config: { message: 'Please complete your secure payment here: {{payment.link}}\n\nOnce paid, your order will be activated immediately! 🚀' },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e1-2', source: 'node-1', target: 'node-2', animated: true, type: 'smoothstep' },
+      { id: 'e2-3', source: 'node-2', target: 'node-3', animated: true, type: 'smoothstep' },
+    ],
+  },
+  {
+    id: 'hot_lead_email_alert',
+    name: '🚨 Hot Lead Instant Zoho / SMTP Email Notification',
+    category: 'Integrations & Leads',
+    description: 'Detects high-intent keywords and triggers an immediate Zoho/SMTP email alert to the sales manager.',
+    icon: Mail,
+    nodes: [
+      {
+        id: 'node-1',
+        type: 'customNode',
+        position: { x: 100, y: 150 },
+        data: {
+          type: 'trigger_keyword',
+          label: 'High-Intent Keywords ("urgent", "demo", "pricing")',
+          config: { keywords: ['urgent', 'demo', 'pricing', 'enterprise', 'quote'], matchType: 'contains' },
+        },
+      },
+      {
+        id: 'node-2',
+        type: 'customNode',
+        position: { x: 480, y: 150 },
+        data: {
+          type: 'action_email_alert',
+          label: 'Send Zoho/SMTP Email Alert',
+          config: {
+            recipient: 'sales@yourdomain.com',
+            subject: '🚨 URGENT WhatsApp Lead: {{contact.name}} ({{contact.phone}})',
+            body: 'Customer {{contact.name}} is asking for urgent pricing/demo on WhatsApp.',
+          },
+        },
+      },
+      {
+        id: 'node-3',
+        type: 'customNode',
+        position: { x: 860, y: 150 },
+        data: {
+          type: 'action_add_tag',
+          label: 'Tag as Hot Priority',
+          config: { tag: 'Hot Lead (Alert Sent)' },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e1-2', source: 'node-1', target: 'node-2', animated: true, type: 'smoothstep' },
+      { id: 'e2-3', source: 'node-2', target: 'node-3', animated: true, type: 'smoothstep' },
+    ],
+  },
+  {
+    id: 'calendly_appointment_scheduler',
+    name: '📅 Automated Calendly & Google Calendar Meeting Scheduler',
+    category: 'Booking & Meetings',
+    description: 'Shares an appointment scheduling link for consultations when customers ask for a call.',
+    icon: Calendar,
+    nodes: [
+      {
+        id: 'node-1',
+        type: 'customNode',
+        position: { x: 100, y: 150 },
+        data: {
+          type: 'trigger_keyword',
+          label: 'Customer Asks for "call", "meet", "appointment"',
+          config: { keywords: ['call', 'meet', 'appointment', 'consultation', 'schedule'], matchType: 'contains' },
+        },
+      },
+      {
+        id: 'node-2',
+        type: 'customNode',
+        position: { x: 480, y: 150 },
+        data: {
+          type: 'action_book_calendar',
+          label: 'Dispatch Calendar Booking Link',
+          config: {
+            calendarUrl: 'https://calendly.com/your-team/30min',
+            inviteText: 'Hello {{contact.name}}! Please pick a convenient 30-minute slot on our calendar: {{calendarUrl}}',
+          },
+        },
+      },
+    ],
+    edges: [
+      { id: 'e1-2', source: 'node-1', target: 'node-2', animated: true, type: 'smoothstep' },
     ],
   },
 ];
@@ -1428,6 +1679,121 @@ export function VisualFlowBuilder({
                   onChange={(e) => updateActiveNodeConfig({ tag: e.target.value })}
                   placeholder="e.g. High-Intent Lead"
                   className="h-8 text-xs rounded-lg"
+                />
+              </div>
+            )}
+
+            {/* Google Sheets Action Config */}
+            {activeNode.data.type === 'action_google_sheets' && (
+              <div className="space-y-3">
+                <Label className="text-xs font-medium text-muted-foreground">Sheet Tab Name</Label>
+                <Input
+                  value={(activeNode.data.config as any)?.sheetTab || ''}
+                  onChange={(e) => updateActiveNodeConfig({ sheetTab: e.target.value })}
+                  placeholder="e.g. WhatsApp Leads"
+                  className="h-8 text-xs rounded-lg"
+                />
+                <Label className="text-xs font-medium text-muted-foreground block pt-1">
+                  Columns / Fields to Sync
+                </Label>
+                <Input
+                  value={(activeNode.data.config as any)?.syncFields || ''}
+                  onChange={(e) => updateActiveNodeConfig({ syncFields: e.target.value })}
+                  placeholder="name, phone, message, timestamp"
+                  className="h-8 text-xs rounded-lg"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Data will be pushed to the Google Sheets webhook configured in Settings &gt; Integrations.
+                </p>
+              </div>
+            )}
+
+            {/* Payment Link Action Config */}
+            {activeNode.data.type === 'action_send_payment_link' && (
+              <div className="space-y-3">
+                <Label className="text-xs font-medium text-muted-foreground">Payment Gateway</Label>
+                <Select
+                  value={(activeNode.data.config as any)?.gateway || 'razorpay'}
+                  onValueChange={(val) => updateActiveNodeConfig({ gateway: val })}
+                >
+                  <SelectTrigger className="h-8 text-xs rounded-lg">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="razorpay" className="text-xs">Razorpay (UPI & Cards)</SelectItem>
+                    <SelectItem value="phonepe" className="text-xs">PhonePe PG</SelectItem>
+                    <SelectItem value="paytm" className="text-xs">Paytm Gateway</SelectItem>
+                    <SelectItem value="stripe" className="text-xs">Stripe Checkout</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Label className="text-xs font-medium text-muted-foreground block pt-1">Amount</Label>
+                <Input
+                  type="number"
+                  value={(activeNode.data.config as any)?.amount || 499}
+                  onChange={(e) => updateActiveNodeConfig({ amount: parseFloat(e.target.value) || 0 })}
+                  placeholder="499"
+                  className="h-8 text-xs rounded-lg"
+                />
+
+                <Label className="text-xs font-medium text-muted-foreground block pt-1">Payment Description</Label>
+                <Input
+                  value={(activeNode.data.config as any)?.description || ''}
+                  onChange={(e) => updateActiveNodeConfig({ description: e.target.value })}
+                  placeholder="Order Activation Fee"
+                  className="h-8 text-xs rounded-lg"
+                />
+              </div>
+            )}
+
+            {/* Email Alert Action Config */}
+            {activeNode.data.type === 'action_email_alert' && (
+              <div className="space-y-3">
+                <Label className="text-xs font-medium text-muted-foreground">Recipient Email Address</Label>
+                <Input
+                  value={(activeNode.data.config as any)?.recipient || ''}
+                  onChange={(e) => updateActiveNodeConfig({ recipient: e.target.value })}
+                  placeholder="sales@yourcompany.com"
+                  className="h-8 text-xs rounded-lg"
+                />
+
+                <Label className="text-xs font-medium text-muted-foreground block pt-1">Email Subject</Label>
+                <Input
+                  value={(activeNode.data.config as any)?.subject || ''}
+                  onChange={(e) => updateActiveNodeConfig({ subject: e.target.value })}
+                  placeholder="🚨 New Hot Lead: {{contact.name}}"
+                  className="h-8 text-xs rounded-lg"
+                />
+
+                <Label className="text-xs font-medium text-muted-foreground block pt-1">Email Body Content</Label>
+                <Textarea
+                  rows={3}
+                  value={(activeNode.data.config as any)?.body || ''}
+                  onChange={(e) => updateActiveNodeConfig({ body: e.target.value })}
+                  placeholder="Lead details: {{contact.name}}, {{contact.phone}}"
+                  className="text-xs rounded-lg resize-none"
+                />
+              </div>
+            )}
+
+            {/* Calendar Booking Action Config */}
+            {activeNode.data.type === 'action_book_calendar' && (
+              <div className="space-y-3">
+                <Label className="text-xs font-medium text-muted-foreground">Calendly / Calendar URL</Label>
+                <Input
+                  value={(activeNode.data.config as any)?.calendarUrl || ''}
+                  onChange={(e) => updateActiveNodeConfig({ calendarUrl: e.target.value })}
+                  placeholder="https://calendly.com/your-username/30min"
+                  className="h-8 text-xs rounded-lg"
+                />
+
+                <Label className="text-xs font-medium text-muted-foreground block pt-1">Invitation Message</Label>
+                <Textarea
+                  rows={3}
+                  value={(activeNode.data.config as any)?.inviteText || ''}
+                  onChange={(e) => updateActiveNodeConfig({ inviteText: e.target.value })}
+                  placeholder="Please select a convenient time for our consultation: {{calendarUrl}}"
+                  className="text-xs rounded-lg resize-none"
                 />
               </div>
             )}

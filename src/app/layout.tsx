@@ -22,10 +22,14 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: "NX CRM Wechat",
-    template: "%s — NX CRM Wechat",
+    default: "NX CRM — Enterprise WhatsApp & WeChat AI CRM",
+    template: "%s — NX CRM | Nexora Spark Agency",
   },
-  description: "NX CRM Wechat — Next-Gen CRM with shared inbox, contacts, sales pipelines, broadcasts, and no-code automations.",
+  description: "Next-generation enterprise CRM for WhatsApp & WeChat with AI Auto-Replies, Visual Flow Builder, Multi-Client Team Management, and Shared Inbox. Powered by Nexora Spark Agency.",
+  authors: [{ name: "Nexora Spark Agency", url: "https://nexorasparkagency.com" }],
+  creator: "Nexora Spark Agency",
+  publisher: "Nexora Spark Agency",
+  applicationName: "NX CRM Enterprise",
   robots: {
     index: false,
     follow: false,
@@ -61,9 +65,25 @@ const THEME_BOOT_SCRIPT = `
   try {
     var THEME_KEY = ${JSON.stringify(STORAGE_KEY)};
     var THEME_DEFAULT = ${JSON.stringify(DEFAULT_THEME)};
-    var THEMES = ${JSON.stringify(THEME_IDS)};
     var savedTheme = localStorage.getItem(THEME_KEY);
-    d.dataset.theme = THEMES.indexOf(savedTheme) !== -1 ? savedTheme : THEME_DEFAULT;
+    if (savedTheme) {
+      d.dataset.theme = savedTheme;
+      if (savedTheme.charAt(0) === '#') {
+        var hex = savedTheme;
+        var r = parseInt(hex.slice(1,3), 16) || 16;
+        var g = parseInt(hex.slice(3,5), 16) || 185;
+        var b = parseInt(hex.slice(5,7), 16) || 129;
+        d.style.setProperty('--primary', hex);
+        d.style.setProperty('--ring', 'rgba(' + r + ',' + g + ',' + b + ',0.4)');
+        d.style.setProperty('--primary-hover', 'rgba(' + r + ',' + g + ',' + b + ',0.88)');
+        d.style.setProperty('--primary-soft', 'rgba(' + r + ',' + g + ',' + b + ',0.12)');
+        d.style.setProperty('--primary-soft-2', 'rgba(' + r + ',' + g + ',' + b + ',0.22)');
+        d.style.setProperty('--sidebar-primary', hex);
+        d.style.setProperty('--chart-1', hex);
+      }
+    } else {
+      d.dataset.theme = THEME_DEFAULT;
+    }
 
     var MODE_KEY = ${JSON.stringify(MODE_STORAGE_KEY)};
     var MODE_DEFAULT = ${JSON.stringify(DEFAULT_MODE)};
