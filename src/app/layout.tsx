@@ -21,6 +21,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://nxcrm.online'),
   title: {
     default: "NX CRM — WhatsApp CRM, Automation & AI for Growing Businesses",
     template: "%s — NX CRM | Nexora Spark Agency",
