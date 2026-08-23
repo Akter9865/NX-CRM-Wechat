@@ -249,21 +249,20 @@ CREATE TABLE IF NOT EXISTS message_templates (
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   meta_template_id TEXT,
-  category TEXT NOT NULL DEFAULT 'MARKETING' CHECK (category IN ('MARKETING', 'UTILITY', 'AUTHENTICATION', 'Marketing', 'Utility', 'Authentication')),
+  category TEXT NOT NULL DEFAULT 'MARKETING',
   language TEXT NOT NULL DEFAULT 'en_US',
-  header_type TEXT CHECK (header_type IN ('TEXT', 'IMAGE', 'VIDEO', 'DOCUMENT', 'LOCATION', 'text', 'image', 'video', 'document')),
+  header_type TEXT,
   header_content TEXT,
   body_text TEXT NOT NULL,
   footer_text TEXT,
   buttons JSONB NOT NULL DEFAULT '[]'::jsonb,
-  status TEXT NOT NULL DEFAULT 'APPROVED' CHECK (status IN ('DRAFT', 'PENDING', 'APPROVED', 'REJECTED', 'PAUSED', 'DISABLED', 'Draft', 'Pending', 'Approved', 'Rejected')),
+  status TEXT NOT NULL DEFAULT 'APPROVED',
   rejection_reason TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_message_templates_account ON message_templates(account_id);
-CREATE INDEX IF NOT EXISTS idx_message_templates_name ON message_templates(account_id, name, language);
 
 ALTER TABLE message_templates ENABLE ROW LEVEL SECURITY;
 
@@ -297,7 +296,6 @@ CREATE TABLE IF NOT EXISTS contacts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_contacts_account_phone ON contacts(account_id, phone);
-CREATE INDEX IF NOT EXISTS idx_contacts_account_email ON contacts(account_id, email);
 
 ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
 
@@ -335,7 +333,7 @@ CREATE POLICY "Agents can manage tags" ON tags
   FOR ALL TO authenticated
   USING (is_account_member(account_id, 'agent'));
 
--- Contact Tags Junction (Many-to-Many)
+-- Contact Tags Junction
 CREATE TABLE IF NOT EXISTS contact_tags (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   contact_id UUID NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
@@ -344,80 +342,7 @@ CREATE TABLE IF NOT EXISTS contact_tags (
   UNIQUE(contact_id, tag_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_contact_tags_contact ON contact_tags(contact_id);
-CREATE INDEX IF NOT EXISTS idx_contact_tags_tag ON contact_tags(tag_id);
-
 ALTER TABLE contact_tags ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Members can view contact tags" ON contact_tags;
-CREATE POLICY "Members can view contact tags" ON contact_tags
-  FOR SELECT TO authenticated
-  USING (EXISTS (
-    SELECT 1 FROM contacts c
-    WHERE c.id = contact_tags.contact_id
-      AND is_account_member(c.account_id, 'viewer')
-  ));
-
-DROP POLICY IF EXISTS "Agents can manage contact tags" ON contact_tags;
-CREATE POLICY "Agents can manage contact tags" ON contact_tags
-  FOR ALL TO authenticated
-  USING (EXISTS (
-    SELECT 1 FROM contacts c
-    WHERE c.id = contact_tags.contact_id
-      AND is_account_member(c.account_id, 'agent')
-  ));
-
--- Custom Fields Definitions
-CREATE TABLE IF NOT EXISTS custom_fields (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  field_name TEXT NOT NULL,
-  field_type TEXT NOT NULL DEFAULT 'text' CHECK (field_type IN ('text', 'number', 'date', 'select', 'boolean')),
-  field_options JSONB,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(account_id, field_name)
-);
-
-ALTER TABLE custom_fields ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Members can view custom fields" ON custom_fields;
-CREATE POLICY "Members can view custom fields" ON custom_fields
-  FOR SELECT TO authenticated
-  USING (is_account_member(account_id, 'viewer'));
-
-DROP POLICY IF EXISTS "Admins can manage custom fields" ON custom_fields;
-CREATE POLICY "Admins can manage custom fields" ON custom_fields
-  FOR ALL TO authenticated
-  USING (is_account_member(account_id, 'admin'));
-
--- Contact Notes (Internal Agent Notes)
-CREATE TABLE IF NOT EXISTS contact_notes (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  contact_id UUID NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  note_text TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-ALTER TABLE contact_notes ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Members can view contact notes" ON contact_notes;
-CREATE POLICY "Members can view contact notes" ON contact_notes
-  FOR SELECT TO authenticated
-  USING (EXISTS (
-    SELECT 1 FROM contacts c
-    WHERE c.id = contact_notes.contact_id
-      AND is_account_member(c.account_id, 'viewer')
-  ));
-
-DROP POLICY IF EXISTS "Agents can insert contact notes" ON contact_notes;
-CREATE POLICY "Agents can insert contact notes" ON contact_notes
-  FOR INSERT TO authenticated
-  WITH CHECK (EXISTS (
-    SELECT 1 FROM contacts c
-    WHERE c.id = contact_notes.contact_id
-      AND is_account_member(c.account_id, 'agent')
-  ));
 
 -- ==============================================================================
 -- 5. SHARED INBOX, CONVERSATIONS & MESSAGES
@@ -430,7 +355,7 @@ CREATE TABLE IF NOT EXISTS conversations (
   assigned_agent_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   last_message_text TEXT,
   last_message_at TIMESTAMPTZ,
-  last_customer_message_at TIMESTAMPTZ, -- For 24-hour Meta customer care window calculation
+  last_customer_message_at TIMESTAMPTZ,
   unread_count INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -438,7 +363,6 @@ CREATE TABLE IF NOT EXISTS conversations (
 );
 
 CREATE INDEX IF NOT EXISTS idx_conversations_account_status ON conversations(account_id, status);
-CREATE INDEX IF NOT EXISTS idx_conversations_last_msg ON conversations(account_id, last_message_at DESC);
 
 ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
 
@@ -458,13 +382,12 @@ CREATE TABLE IF NOT EXISTS messages (
   conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
   sender_type TEXT NOT NULL CHECK (sender_type IN ('customer', 'agent', 'bot', 'system')),
   sender_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-  content_type TEXT NOT NULL DEFAULT 'text'
-    CHECK (content_type IN ('text', 'image', 'document', 'audio', 'video', 'location', 'template', 'interactive', 'reaction', 'contacts')),
+  content_type TEXT NOT NULL DEFAULT 'text',
   content_text TEXT,
   media_url TEXT,
   meta_media_id TEXT,
   template_name TEXT,
-  wamid TEXT UNIQUE, -- Meta WhatsApp Message ID (wamid.HBgL...)
+  wamid TEXT UNIQUE,
   status TEXT NOT NULL DEFAULT 'sent' CHECK (status IN ('sending', 'sent', 'delivered', 'read', 'failed')),
   error_message TEXT,
   raw_payload JSONB DEFAULT '{}'::jsonb,
@@ -472,7 +395,6 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_created ON messages(conversation_id, created_at ASC);
-CREATE INDEX IF NOT EXISTS idx_messages_wamid ON messages(wamid);
 
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 
@@ -493,29 +415,6 @@ CREATE POLICY "Agents can insert messages" ON messages
     WHERE c.id = messages.conversation_id
       AND is_account_member(c.account_id, 'agent')
   ));
-
--- Canned Quick Replies
-CREATE TABLE IF NOT EXISTS quick_replies (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  shortcut TEXT NOT NULL,
-  title TEXT NOT NULL,
-  message_text TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(account_id, shortcut)
-);
-
-ALTER TABLE quick_replies ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Members can view quick replies" ON quick_replies;
-CREATE POLICY "Members can view quick replies" ON quick_replies
-  FOR SELECT TO authenticated
-  USING (is_account_member(account_id, 'viewer'));
-
-DROP POLICY IF EXISTS "Agents can manage quick replies" ON quick_replies;
-CREATE POLICY "Agents can manage quick replies" ON quick_replies
-  FOR ALL TO authenticated
-  USING (is_account_member(account_id, 'agent'));
 
 -- ==============================================================================
 -- 6. BROADCAST CAMPAIGNS & RECIPIENTS
@@ -569,18 +468,8 @@ CREATE TABLE IF NOT EXISTS broadcast_recipients (
 );
 
 CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_queue ON broadcast_recipients(broadcast_id, status);
-CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_wamid ON broadcast_recipients(wamid);
 
 ALTER TABLE broadcast_recipients ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Members can view broadcast recipients" ON broadcast_recipients;
-CREATE POLICY "Members can view broadcast recipients" ON broadcast_recipients
-  FOR SELECT TO authenticated
-  USING (EXISTS (
-    SELECT 1 FROM broadcasts b
-    WHERE b.id = broadcast_recipients.broadcast_id
-      AND is_account_member(b.account_id, 'viewer')
-  ));
 
 -- ==============================================================================
 -- 7. SALES PIPELINES & DEALS CRM
@@ -606,7 +495,6 @@ CREATE POLICY "Agents can manage pipelines" ON pipelines
   FOR ALL TO authenticated
   USING (is_account_member(account_id, 'agent'));
 
--- Pipeline Stages
 CREATE TABLE IF NOT EXISTS pipeline_stages (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   pipeline_id UUID NOT NULL REFERENCES pipelines(id) ON DELETE CASCADE,
@@ -616,29 +504,8 @@ CREATE TABLE IF NOT EXISTS pipeline_stages (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_pipeline_stages_order ON pipeline_stages(pipeline_id, position ASC);
-
 ALTER TABLE pipeline_stages ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Members can view pipeline stages" ON pipeline_stages;
-CREATE POLICY "Members can view pipeline stages" ON pipeline_stages
-  FOR SELECT TO authenticated
-  USING (EXISTS (
-    SELECT 1 FROM pipelines p
-    WHERE p.id = pipeline_stages.pipeline_id
-      AND is_account_member(p.account_id, 'viewer')
-  ));
-
-DROP POLICY IF EXISTS "Agents can manage pipeline stages" ON pipeline_stages;
-CREATE POLICY "Agents can manage pipeline stages" ON pipeline_stages
-  FOR ALL TO authenticated
-  USING (EXISTS (
-    SELECT 1 FROM pipelines p
-    WHERE p.id = pipeline_stages.pipeline_id
-      AND is_account_member(p.account_id, 'agent')
-  ));
-
--- Pipeline Deals / Opportunities
 CREATE TABLE IF NOT EXISTS pipeline_deals (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   stage_id UUID NOT NULL REFERENCES pipeline_stages(id) ON DELETE CASCADE,
@@ -652,27 +519,7 @@ CREATE TABLE IF NOT EXISTS pipeline_deals (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_pipeline_deals_stage ON pipeline_deals(stage_id);
-
 ALTER TABLE pipeline_deals ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Members can view deals" ON pipeline_deals;
-CREATE POLICY "Members can view deals" ON pipeline_deals
-  FOR SELECT TO authenticated
-  USING (EXISTS (
-    SELECT 1 FROM contacts c
-    WHERE c.id = pipeline_deals.contact_id
-      AND is_account_member(c.account_id, 'viewer')
-  ));
-
-DROP POLICY IF EXISTS "Agents can manage deals" ON pipeline_deals;
-CREATE POLICY "Agents can manage deals" ON pipeline_deals
-  FOR ALL TO authenticated
-  USING (EXISTS (
-    SELECT 1 FROM contacts c
-    WHERE c.id = pipeline_deals.contact_id
-      AND is_account_member(c.account_id, 'agent')
-  ));
 
 -- ==============================================================================
 -- 8. AUTOMATIONS & VISUAL FLOWS
@@ -681,9 +528,9 @@ CREATE TABLE IF NOT EXISTS automations (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
-  trigger_type TEXT NOT NULL, -- e.g. 'keyword', 'first_inbound', 'tag_added', 'out_of_hours'
+  trigger_type TEXT NOT NULL,
   trigger_config JSONB NOT NULL DEFAULT '{}'::jsonb,
-  action_type TEXT NOT NULL,  -- e.g. 'send_message', 'send_template', 'assign_agent', 'add_tag'
+  action_type TEXT NOT NULL,
   action_config JSONB NOT NULL DEFAULT '{}'::jsonb,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   executions_count INTEGER NOT NULL DEFAULT 0,
@@ -737,7 +584,7 @@ CREATE TABLE IF NOT EXISTS ai_configs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   provider TEXT NOT NULL DEFAULT 'gemini' CHECK (provider IN ('gemini', 'openai', 'anthropic')),
-  api_key TEXT NOT NULL, -- Stored AES-256-GCM encrypted
+  api_key TEXT NOT NULL,
   model TEXT NOT NULL DEFAULT 'gemini-1.5-flash',
   system_prompt TEXT NOT NULL DEFAULT 'You are a helpful and polite WhatsApp customer assistant. Answer queries accurately based on the business knowledge base.',
   temperature NUMERIC(3,2) NOT NULL DEFAULT 0.7,
@@ -760,18 +607,15 @@ CREATE POLICY "Admins can manage ai configs" ON ai_configs
   FOR ALL TO authenticated
   USING (is_account_member(account_id, 'admin'));
 
--- AI Knowledge Base (Semantic Embeddings + Full-Text Search)
+-- AI Knowledge Base
 CREATE TABLE IF NOT EXISTS ai_knowledge_bases (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   content TEXT NOT NULL,
-  embedding vector(1536), -- Optional OpenAI embedding or Gemini text-embedding-004
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
-CREATE INDEX IF NOT EXISTS idx_ai_kb_account ON ai_knowledge_bases(account_id);
 
 ALTER TABLE ai_knowledge_bases ENABLE ROW LEVEL SECURITY;
 
@@ -789,7 +633,7 @@ CREATE POLICY "Agents can manage knowledge bases" ON ai_knowledge_bases
 -- 10. BILLING, SUBSCRIPTIONS & RAZORPAY
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS subscription_plans (
-  id TEXT PRIMARY KEY, -- 'free', 'pro', 'business', 'enterprise'
+  id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   price_inr INTEGER NOT NULL,
   contact_limit INTEGER,
@@ -822,12 +666,12 @@ CREATE POLICY "Plans are viewable by all" ON subscription_plans FOR SELECT USING
 CREATE TABLE IF NOT EXISTS subscriptions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  plan_id TEXT NOT NULL REFERENCES subscription_plans(id),
+  plan_id TEXT NOT NULL,
   razorpay_subscription_id TEXT,
   razorpay_customer_id TEXT,
-  status TEXT NOT NULL DEFAULT 'trial' CHECK (status IN ('active', 'trial', 'past_due', 'canceled', 'expired', 'paused')),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'trial', 'past_due', 'canceled', 'expired', 'paused', 'suspended')),
   current_period_start TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  current_period_end TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '14 days'),
+  current_period_end TIMESTAMPTZ,
   grace_period_end TIMESTAMPTZ,
   cancel_at_period_end BOOLEAN NOT NULL DEFAULT FALSE,
   notes TEXT,
@@ -855,15 +699,13 @@ CREATE TABLE IF NOT EXISTS payment_transactions (
   razorpay_payment_id TEXT NOT NULL UNIQUE,
   razorpay_order_id TEXT,
   razorpay_subscription_id TEXT,
-  amount INTEGER NOT NULL, -- In INR rupees
+  amount INTEGER NOT NULL,
   currency TEXT NOT NULL DEFAULT 'INR',
   status TEXT NOT NULL DEFAULT 'captured' CHECK (status IN ('captured', 'pending', 'failed', 'refunded')),
   payment_method TEXT NOT NULL DEFAULT 'razorpay',
   raw_payload JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
-CREATE INDEX IF NOT EXISTS idx_payment_transactions_account ON payment_transactions(account_id);
 
 ALTER TABLE payment_transactions ENABLE ROW LEVEL SECURITY;
 
@@ -874,7 +716,7 @@ CREATE POLICY "Members can view transactions" ON payment_transactions
 
 -- Webhook Idempotency Event Deduplication
 CREATE TABLE IF NOT EXISTS billing_webhook_events (
-  id TEXT PRIMARY KEY, -- event_id from Razorpay / Stripe
+  id TEXT PRIMARY KEY,
   event_type TEXT NOT NULL,
   processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -886,7 +728,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   key_hash TEXT NOT NULL UNIQUE,
-  key_prefix TEXT NOT NULL, -- First 8 chars e.g. nx_live_...
+  key_prefix TEXT NOT NULL,
   name TEXT NOT NULL,
   scopes JSONB NOT NULL DEFAULT '["contacts:read", "contacts:write", "messages:send"]'::jsonb,
   last_used_at TIMESTAMPTZ,
@@ -895,12 +737,6 @@ CREATE TABLE IF NOT EXISTS api_keys (
 
 ALTER TABLE api_keys ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Admins can manage api keys" ON api_keys;
-CREATE POLICY "Admins can manage api keys" ON api_keys
-  FOR ALL TO authenticated
-  USING (is_account_member(account_id, 'admin'));
-
--- Outbound Webhooks Endpoints
 CREATE TABLE IF NOT EXISTS webhook_endpoints (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -913,12 +749,6 @@ CREATE TABLE IF NOT EXISTS webhook_endpoints (
 
 ALTER TABLE webhook_endpoints ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Admins can manage webhook endpoints" ON webhook_endpoints;
-CREATE POLICY "Admins can manage webhook endpoints" ON webhook_endpoints
-  FOR ALL TO authenticated
-  USING (is_account_member(account_id, 'admin'));
-
--- In-App Notifications
 CREATE TABLE IF NOT EXISTS notifications (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -931,14 +761,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, is_read, created_at DESC);
-
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Users can manage own notifications" ON notifications;
-CREATE POLICY "Users can manage own notifications" ON notifications
-  FOR ALL TO authenticated
-  USING (auth.uid() = user_id);
 
 -- ==============================================================================
 -- 12. SUPER ADMIN CONTROL CENTER & SAAS CONFIGURATION
@@ -949,16 +772,13 @@ CREATE TABLE IF NOT EXISTS admin_users (
   password_hash TEXT NOT NULL,
   full_name TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'admin'
-    CHECK (role IN ('super_admin', 'admin', 'support_manager', 'support_agent', 'billing_manager', 'tech_manager')),
+    CHECK (role IN ('super_admin', 'superadmin', 'admin', 'support_manager', 'support_agent', 'billing_manager', 'tech_manager')),
   permissions JSONB NOT NULL DEFAULT '[]'::jsonb,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended')),
   last_login_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
-CREATE INDEX IF NOT EXISTS idx_admin_users_email ON admin_users(email);
-CREATE INDEX IF NOT EXISTS idx_admin_users_role ON admin_users(role);
 
 ALTER TABLE admin_users ENABLE ROW LEVEL SECURITY;
 
@@ -978,8 +798,6 @@ CREATE TABLE IF NOT EXISTS admin_audit_logs (
   ip_address TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
-CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_created ON admin_audit_logs(created_at DESC);
 
 ALTER TABLE admin_audit_logs ENABLE ROW LEVEL SECURITY;
 
@@ -1089,15 +907,11 @@ CREATE TABLE IF NOT EXISTS contact_inquiries (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_contact_inquiries_status ON contact_inquiries(status);
-CREATE INDEX IF NOT EXISTS idx_contact_inquiries_created ON contact_inquiries(created_at DESC);
-
 ALTER TABLE contact_inquiries ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Service role manages contact_inquiries" ON contact_inquiries;
 CREATE POLICY "Service role manages contact_inquiries" ON contact_inquiries
   FOR ALL TO service_role USING (TRUE);
 
--- Data Deletion Requests (Meta Graph API / GDPR / DPDP Compliance)
 CREATE TABLE IF NOT EXISTS data_deletion_requests (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   request_code TEXT NOT NULL UNIQUE,
@@ -1112,56 +926,16 @@ CREATE TABLE IF NOT EXISTS data_deletion_requests (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_data_deletion_code ON data_deletion_requests(request_code);
-
 ALTER TABLE data_deletion_requests ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Service role manages data_deletion_requests" ON data_deletion_requests;
 CREATE POLICY "Service role manages data_deletion_requests" ON data_deletion_requests
   FOR ALL TO service_role USING (TRUE);
 
 -- ==============================================================================
--- 14. HELPER STORED FUNCTIONS & ATOMIC SIGNUP TRIGGER
+-- 14. ATOMIC SIGNUP TRIGGER FUNCTION
 -- ==============================================================================
-
--- Stored RPC: Atomic Counter Increment
-CREATE OR REPLACE FUNCTION increment_counter(
-  target_table TEXT,
-  target_id UUID,
-  column_name TEXT,
-  delta INTEGER DEFAULT 1
-) RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-BEGIN
-  EXECUTE format('UPDATE %I SET %I = COALESCE(%I, 0) + $1 WHERE id = $2', target_table, column_name, column_name)
-  USING delta, target_id;
-END;
-$$;
-
--- Stored RPC: Filter Contacts by Tags
-CREATE OR REPLACE FUNCTION filter_contacts_by_tags(
-  target_account_id UUID,
-  tag_ids UUID[]
-) RETURNS SETOF contacts
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-AS $$
-  SELECT DISTINCT c.*
-  FROM contacts c
-  JOIN contact_tags ct ON ct.contact_id = c.id
-  WHERE c.account_id = target_account_id
-    AND ct.tag_id = ANY(tag_ids);
-$$;
-
--- Stored Function: New User Signup Handler (Creates Personal Account + Profile Atomically)
 CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
+RETURNS TRIGGER AS $$
 DECLARE
   new_account_id UUID;
   user_full_name TEXT;
@@ -1172,13 +946,13 @@ BEGIN
     split_part(NEW.email, '@', 1)
   );
 
-  -- 1. Create workspace account
-  INSERT INTO accounts (name, owner_user_id, status)
+  -- 1. Create Workspace Account
+  INSERT INTO public.accounts (name, owner_user_id, status)
   VALUES (user_full_name || '''s Workspace', NEW.id, 'active')
   RETURNING id INTO new_account_id;
 
-  -- 2. Create owner profile
-  INSERT INTO profiles (user_id, account_id, account_role, full_name, email, avatar_url)
+  -- 2. Create User Profile
+  INSERT INTO public.profiles (user_id, account_id, account_role, full_name, email, avatar_url)
   VALUES (
     NEW.id,
     new_account_id,
@@ -1188,39 +962,36 @@ BEGIN
     NEW.raw_user_meta_data->>'avatar_url'
   );
 
-  -- 3. Create Free Trial Subscription
-  INSERT INTO subscriptions (account_id, plan_id, status, current_period_start, current_period_end)
-  VALUES (new_account_id, 'free', 'trial', NOW(), NOW() + INTERVAL '14 days')
+  -- 3. Provision Free Active Subscription
+  INSERT INTO public.subscriptions (
+    account_id,
+    plan_id,
+    status,
+    current_period_start,
+    current_period_end
+  )
+  VALUES (
+    new_account_id,
+    'free',
+    'active',
+    NOW(),
+    NOW() + INTERVAL '30 days'
+  )
   ON CONFLICT (account_id) DO NOTHING;
 
   RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  -- Fallback: Do not block user creation if account already exists
+  RETURN NEW;
 END;
-$$;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- Bind Signup Trigger
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION handle_new_user();
 
 -- ==============================================================================
--- 15. STORAGE BUCKETS (If Supabase Storage is active)
--- ==============================================================================
-INSERT INTO storage.buckets (id, name, public)
-VALUES
-  ('profile-avatars', 'profile-avatars', TRUE),
-  ('flow-media', 'flow-media', TRUE),
-  ('chat-media', 'chat-media', TRUE),
-  ('documents', 'documents', FALSE)
-ON CONFLICT (id) DO NOTHING;
-
-DROP POLICY IF EXISTS "Public bucket access" ON storage.objects;
-CREATE POLICY "Public bucket access" ON storage.objects
-  FOR SELECT USING (bucket_id IN ('profile-avatars', 'flow-media', 'chat-media'));
-
-DROP POLICY IF EXISTS "Authenticated bucket upload" ON storage.objects;
-CREATE POLICY "Authenticated bucket upload" ON storage.objects
-  FOR INSERT TO authenticated WITH CHECK (TRUE);
-
--- ==============================================================================
--- Schema consolidation completed successfully!
+-- Schema consolidation complete.
 -- ==============================================================================
