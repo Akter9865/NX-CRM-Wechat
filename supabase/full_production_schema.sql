@@ -2,24 +2,9 @@
 -- NX CRM — FULL PRODUCTION SUPABASE CONSOLIDATED SCHEMA (v1.0.0 Enterprise)
 -- Powered by Nexora Spark Agency
 --
--- This script is completely IDEMPOTENT (safe to execute multiple times in
--- Supabase SQL Editor or Supabase CLI migrations).
---
--- Includes:
--- 1. Extensions & Custom Types
--- 2. Multi-Tenant Accounts & RBAC Profiles
--- 3. WhatsApp Cloud API v22.0 Connections & HSM Templates
--- 4. CRM Contacts, Tags, Custom Fields & Segments
--- 5. Shared Inbox, Live Conversations, Messages & Media
--- 6. Broadcast Campaigns Engine & Delivery Queue
--- 7. Sales Pipelines & Kanban Stages
--- 8. Visual Flows Builder & Automation Rules Engine
--- 9. AI Assistant (Gemini / OpenAI / Anthropic BYOK) & Vector Knowledge Base
--- 10. Billing, Plans, Invoices & Razorpay / UPI Transactions
--- 11. Public API Keys, Outbound Webhooks & In-App Notifications
--- 12. Super Admin Control Center, Staff RBAC, Audit Trail & System Settings
--- 13. Public Contact Inquiries & Meta GDPR Data Deletion Compliance
--- 14. Helper RPC Stored Functions, Row-Level Security (RLS) & Default Seeds
+-- This script is completely IDEMPOTENT and backward-compatible.
+-- It safely upgrades existing tables with missing columns before adding
+-- indexes, types, triggers, and RLS policies.
 -- ==============================================================================
 
 -- ==============================================================================
@@ -38,6 +23,7 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'admin_role_enum') THEN
     CREATE TYPE admin_role_enum AS ENUM (
       'super_admin',
+      'superadmin',
       'admin',
       'support_manager',
       'support_agent',
@@ -57,18 +43,25 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ==============================================================================
--- 2. MULTI-TENANT ACCOUNTS & PROFILES
+-- 2. MULTI-TENANT ACCOUNTS & PROFILES (Safe Schema Upgrade)
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS accounts (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name TEXT NOT NULL,
   owner_user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT,
-  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'archived')),
+  status TEXT NOT NULL DEFAULT 'active',
   default_currency TEXT NOT NULL DEFAULT 'INR',
   notes TEXT,
+  settings JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Upgrade existing accounts table if columns are missing
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS default_currency TEXT NOT NULL DEFAULT 'INR';
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS settings JSONB DEFAULT '{}'::jsonb;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_one_per_owner ON accounts(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_accounts_status ON accounts(status);
@@ -95,8 +88,11 @@ CREATE TABLE IF NOT EXISTS profiles (
   UNIQUE(user_id)
 );
 
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS account_id UUID REFERENCES accounts(id) ON DELETE CASCADE;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS beta_features JSONB NOT NULL DEFAULT '[]'::jsonb;
+
 CREATE INDEX IF NOT EXISTS idx_profiles_account_id ON profiles(account_id);
-CREATE INDEX IF NOT EXISTS idx_profiles_account_role ON profiles(account_id, account_role);
 
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
@@ -114,23 +110,17 @@ CREATE TABLE IF NOT EXISTS account_invitations (
   accepted_by_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_account_invitations_pending
-  ON account_invitations(account_id, expires_at)
-  WHERE accepted_at IS NULL;
-
 ALTER TABLE account_invitations ENABLE ROW LEVEL SECURITY;
 
 -- Member Presence (Live Agent Online / Active Typing State)
 CREATE TABLE IF NOT EXISTS member_presence (
   user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  status TEXT NOT NULL DEFAULT 'offline' CHECK (status IN ('online', 'busy', 'away', 'offline')),
+  status TEXT NOT NULL DEFAULT 'offline',
   active_conversation_id UUID,
   last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
-CREATE INDEX IF NOT EXISTS idx_member_presence_account ON member_presence(account_id, status);
 
 ALTER TABLE member_presence ENABLE ROW LEVEL SECURITY;
 
@@ -183,19 +173,19 @@ CREATE POLICY "Users can update own profile" ON profiles
   USING (auth.uid() = user_id);
 
 -- ==============================================================================
--- 3. WHATSAPP CLOUD API & HSM TEMPLATES
+-- 3. WHATSAPP CLOUD API & MULTI-LINE CONNECTIONS
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS whatsapp_configs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   phone_number_id TEXT NOT NULL,
   waba_id TEXT,
-  access_token TEXT NOT NULL, -- Stored encrypted with AES-256-GCM
+  access_token TEXT NOT NULL,
   verify_token TEXT,
   display_phone_number TEXT,
   verified_name TEXT,
   quality_rating TEXT DEFAULT 'UNKNOWN',
-  status TEXT NOT NULL DEFAULT 'disconnected' CHECK (status IN ('connected', 'disconnected', 'pending')),
+  status TEXT NOT NULL DEFAULT 'disconnected',
   connected_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -223,13 +213,11 @@ CREATE TABLE IF NOT EXISTS whatsapp_connections (
   display_phone_number TEXT NOT NULL,
   verified_name TEXT NOT NULL,
   quality_rating TEXT DEFAULT 'GREEN',
-  status TEXT NOT NULL DEFAULT 'connected' CHECK (status IN ('connected', 'disconnected', 'restricted', 'flagged')),
+  status TEXT NOT NULL DEFAULT 'connected',
   is_default BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
-CREATE INDEX IF NOT EXISTS idx_whatsapp_connections_account ON whatsapp_connections(account_id);
 
 ALTER TABLE whatsapp_connections ENABLE ROW LEVEL SECURITY;
 
@@ -262,7 +250,10 @@ CREATE TABLE IF NOT EXISTS message_templates (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_message_templates_account ON message_templates(account_id);
+ALTER TABLE message_templates ADD COLUMN IF NOT EXISTS header_type TEXT;
+ALTER TABLE message_templates ADD COLUMN IF NOT EXISTS header_content TEXT;
+ALTER TABLE message_templates ADD COLUMN IF NOT EXISTS footer_text TEXT;
+ALTER TABLE message_templates ADD COLUMN IF NOT EXISTS buttons JSONB DEFAULT '[]'::jsonb;
 
 ALTER TABLE message_templates ENABLE ROW LEVEL SECURITY;
 
@@ -295,7 +286,8 @@ CREATE TABLE IF NOT EXISTS contacts (
   UNIQUE(account_id, phone)
 );
 
-CREATE INDEX IF NOT EXISTS idx_contacts_account_phone ON contacts(account_id, phone);
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS is_opted_out BOOLEAN DEFAULT FALSE;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS custom_attributes JSONB DEFAULT '{}'::jsonb;
 
 ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
 
@@ -318,8 +310,6 @@ CREATE TABLE IF NOT EXISTS tags (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(account_id, name)
 );
-
-CREATE INDEX IF NOT EXISTS idx_tags_account ON tags(account_id);
 
 ALTER TABLE tags ENABLE ROW LEVEL SECURITY;
 
@@ -351,7 +341,7 @@ CREATE TABLE IF NOT EXISTS conversations (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   contact_id UUID NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
-  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'pending', 'closed', 'snoozed')),
+  status TEXT NOT NULL DEFAULT 'open',
   assigned_agent_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   last_message_text TEXT,
   last_message_at TIMESTAMPTZ,
@@ -362,7 +352,8 @@ CREATE TABLE IF NOT EXISTS conversations (
   UNIQUE(account_id, contact_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_conversations_account_status ON conversations(account_id, status);
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS last_customer_message_at TIMESTAMPTZ;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS unread_count INTEGER DEFAULT 0;
 
 ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
 
@@ -380,7 +371,7 @@ CREATE POLICY "Agents can update conversations" ON conversations
 CREATE TABLE IF NOT EXISTS messages (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-  sender_type TEXT NOT NULL CHECK (sender_type IN ('customer', 'agent', 'bot', 'system')),
+  sender_type TEXT NOT NULL,
   sender_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   content_type TEXT NOT NULL DEFAULT 'text',
   content_text TEXT,
@@ -388,13 +379,16 @@ CREATE TABLE IF NOT EXISTS messages (
   meta_media_id TEXT,
   template_name TEXT,
   wamid TEXT UNIQUE,
-  status TEXT NOT NULL DEFAULT 'sent' CHECK (status IN ('sending', 'sent', 'delivered', 'read', 'failed')),
+  status TEXT NOT NULL DEFAULT 'sent',
   error_message TEXT,
   raw_payload JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_messages_conversation_created ON messages(conversation_id, created_at ASC);
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS wamid TEXT;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS meta_media_id TEXT;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS raw_payload JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS error_message TEXT;
 
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 
@@ -426,7 +420,7 @@ CREATE TABLE IF NOT EXISTS broadcasts (
   template_id UUID REFERENCES message_templates(id) ON DELETE SET NULL,
   template_name TEXT NOT NULL,
   target_tag_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
-  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'scheduled', 'processing', 'completed', 'paused', 'failed', 'cancelled')),
+  status TEXT NOT NULL DEFAULT 'draft',
   scheduled_at TIMESTAMPTZ,
   total_recipients INTEGER NOT NULL DEFAULT 0,
   sent_count INTEGER NOT NULL DEFAULT 0,
@@ -436,8 +430,6 @@ CREATE TABLE IF NOT EXISTS broadcasts (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
-CREATE INDEX IF NOT EXISTS idx_broadcasts_account_status ON broadcasts(account_id, status);
 
 ALTER TABLE broadcasts ENABLE ROW LEVEL SECURITY;
 
@@ -451,7 +443,6 @@ CREATE POLICY "Agents can manage broadcasts" ON broadcasts
   FOR ALL TO authenticated
   USING (is_account_member(account_id, 'agent'));
 
--- Broadcast Recipients Queue
 CREATE TABLE IF NOT EXISTS broadcast_recipients (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   broadcast_id UUID NOT NULL REFERENCES broadcasts(id) ON DELETE CASCADE,
@@ -459,15 +450,13 @@ CREATE TABLE IF NOT EXISTS broadcast_recipients (
   phone TEXT NOT NULL,
   variables JSONB NOT NULL DEFAULT '{}'::jsonb,
   wamid TEXT,
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sending', 'sent', 'delivered', 'read', 'failed')),
+  status TEXT NOT NULL DEFAULT 'pending',
   error_message TEXT,
   sent_at TIMESTAMPTZ,
   delivered_at TIMESTAMPTZ,
   read_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
-CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_queue ON broadcast_recipients(broadcast_id, status);
 
 ALTER TABLE broadcast_recipients ENABLE ROW LEVEL SECURITY;
 
@@ -513,7 +502,7 @@ CREATE TABLE IF NOT EXISTS pipeline_deals (
   title TEXT NOT NULL,
   value NUMERIC(12, 2) NOT NULL DEFAULT 0,
   currency TEXT NOT NULL DEFAULT 'INR',
-  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'won', 'lost')),
+  status TEXT NOT NULL DEFAULT 'open',
   assigned_agent_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -583,10 +572,10 @@ CREATE POLICY "Agents can manage visual flows" ON visual_flows
 CREATE TABLE IF NOT EXISTS ai_configs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  provider TEXT NOT NULL DEFAULT 'gemini' CHECK (provider IN ('gemini', 'openai', 'anthropic')),
+  provider TEXT NOT NULL DEFAULT 'gemini',
   api_key TEXT NOT NULL,
   model TEXT NOT NULL DEFAULT 'gemini-1.5-flash',
-  system_prompt TEXT NOT NULL DEFAULT 'You are a helpful and polite WhatsApp customer assistant. Answer queries accurately based on the business knowledge base.',
+  system_prompt TEXT NOT NULL DEFAULT 'You are a helpful and polite WhatsApp customer assistant.',
   temperature NUMERIC(3,2) NOT NULL DEFAULT 0.7,
   is_enabled BOOLEAN NOT NULL DEFAULT FALSE,
   handoff_keywords JSONB NOT NULL DEFAULT '["agent", "human", "support", "talk to person"]'::jsonb,
@@ -607,7 +596,6 @@ CREATE POLICY "Admins can manage ai configs" ON ai_configs
   FOR ALL TO authenticated
   USING (is_account_member(account_id, 'admin'));
 
--- AI Knowledge Base
 CREATE TABLE IF NOT EXISTS ai_knowledge_bases (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -643,7 +631,6 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Seed Subscription Plans
 INSERT INTO subscription_plans (id, name, price_inr, contact_limit, monthly_message_limit, whatsapp_connections_limit, features)
 VALUES
   ('free', 'Free Tier', 0, 10, 200, 1, '["inbox", "automations"]'::jsonb),
@@ -669,7 +656,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   plan_id TEXT NOT NULL,
   razorpay_subscription_id TEXT,
   razorpay_customer_id TEXT,
-  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'trial', 'past_due', 'canceled', 'expired', 'paused', 'suspended')),
+  status TEXT NOT NULL DEFAULT 'active',
   current_period_start TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   current_period_end TIMESTAMPTZ,
   grace_period_end TIMESTAMPTZ,
@@ -679,6 +666,15 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(account_id)
 );
+
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS razorpay_subscription_id TEXT;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS razorpay_customer_id TEXT;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS current_period_start TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS current_period_end TIMESTAMPTZ;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS grace_period_end TIMESTAMPTZ;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS cancel_at_period_end BOOLEAN DEFAULT FALSE;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS notes TEXT;
 
 ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
 
@@ -701,7 +697,7 @@ CREATE TABLE IF NOT EXISTS payment_transactions (
   razorpay_subscription_id TEXT,
   amount INTEGER NOT NULL,
   currency TEXT NOT NULL DEFAULT 'INR',
-  status TEXT NOT NULL DEFAULT 'captured' CHECK (status IN ('captured', 'pending', 'failed', 'refunded')),
+  status TEXT NOT NULL DEFAULT 'captured',
   payment_method TEXT NOT NULL DEFAULT 'razorpay',
   raw_payload JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -755,7 +751,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   message TEXT NOT NULL,
-  type TEXT NOT NULL DEFAULT 'info' CHECK (type IN ('info', 'success', 'warning', 'error')),
+  type TEXT NOT NULL DEFAULT 'info',
   link TEXT,
   is_read BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -771,10 +767,9 @@ CREATE TABLE IF NOT EXISTS admin_users (
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   full_name TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'admin'
-    CHECK (role IN ('super_admin', 'superadmin', 'admin', 'support_manager', 'support_agent', 'billing_manager', 'tech_manager')),
+  role TEXT NOT NULL DEFAULT 'admin',
   permissions JSONB NOT NULL DEFAULT '[]'::jsonb,
-  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended')),
+  status TEXT NOT NULL DEFAULT 'active',
   last_login_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -899,7 +894,7 @@ CREATE TABLE IF NOT EXISTS contact_inquiries (
   category TEXT NOT NULL DEFAULT 'sales',
   subject TEXT NOT NULL,
   message TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'in_progress', 'resolved', 'spam')),
+  status TEXT NOT NULL DEFAULT 'new',
   ip_address TEXT,
   user_agent TEXT,
   notes TEXT,
@@ -919,7 +914,7 @@ CREATE TABLE IF NOT EXISTS data_deletion_requests (
   email TEXT NOT NULL,
   workspace_name TEXT,
   reason TEXT,
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'rejected')),
+  status TEXT NOT NULL DEFAULT 'pending',
   ip_address TEXT,
   user_agent TEXT,
   completed_at TIMESTAMPTZ,
@@ -981,7 +976,6 @@ BEGIN
 
   RETURN NEW;
 EXCEPTION WHEN OTHERS THEN
-  -- Fallback: Do not block user creation if account already exists
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
