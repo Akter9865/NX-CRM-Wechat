@@ -20,6 +20,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
+import { cookies } from 'next/headers';
+import { createServerClient } from '@supabase/ssr';
+
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -71,6 +74,24 @@ const PRICING_FAQS = [
 export default async function PricingPage() {
   const plans = await getDynamicPlans();
 
+  const cookieStore = await cookies();
+  let isAuthenticated = false;
+  try {
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key',
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+        },
+      }
+    );
+    const { data: { user } } = await supabase.auth.getUser();
+    isAuthenticated = Boolean(user);
+  } catch (_e) {}
+
   return (
     <div className="py-16 md:py-24 bg-white text-slate-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -101,10 +122,12 @@ export default async function PricingPage() {
             const isBusiness = plan.id === 'business';
             const isEnterprise = plan.id === 'enterprise';
 
-            const ctaHref = isFree ? '/signup' : `/signup?plan=${plan.id}`;
+            const ctaHref = isFree
+              ? (isAuthenticated ? '/dashboard' : '/signup')
+              : (isAuthenticated ? `/billing?upgrade=${plan.id}` : `/signup?plan=${plan.id}`);
             const ctaLabel =
               isFree
-                ? 'Get Started Free'
+                ? (isAuthenticated ? 'Open Dashboard' : 'Get Started Free')
                 : isPopular
                 ? 'Start Pro'
                 : isBusiness

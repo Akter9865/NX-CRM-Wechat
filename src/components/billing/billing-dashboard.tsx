@@ -32,6 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { PricingCards } from './pricing-cards';
 
 interface PaymentRecord {
   id: string;
@@ -260,12 +261,15 @@ export function BillingDashboard() {
               <span>Refresh Status</span>
             </Button>
 
-            <Link href="/pricing">
-              <Button className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl text-xs h-10 px-5 shadow-lg shadow-primary/20">
-                <Zap className="size-3.5 mr-1.5" />
-                <span>{summary.planId === 'free' ? 'Upgrade Plan' : 'Change Plan'}</span>
-              </Button>
-            </Link>
+            <Button
+              onClick={() => {
+                document.getElementById('pricing-plans-section')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl text-xs h-10 px-5 shadow-lg shadow-primary/20"
+            >
+              <Zap className="size-3.5 mr-1.5" />
+              <span>{summary.planId === 'free' ? 'Upgrade Plan' : 'Change Plan'}</span>
+            </Button>
 
             {summary.planId !== 'free' && !summary.cancelAtPeriodEnd && (
               <Button
@@ -457,6 +461,21 @@ export function BillingDashboard() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Available Plans & Instant Upgrade */}
+      <div className="space-y-4 pt-2" id="pricing-plans-section">
+        <div>
+          <h3 className="text-sm font-bold tracking-tight text-foreground flex items-center gap-2">
+            <Zap className="size-4 text-primary" />
+            Upgrade Plan & Capacities
+          </h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Choose your tier to immediately expand your contacts, monthly messages, and WhatsApp numbers via Razorpay.
+          </p>
+        </div>
+
+        <PricingCards currentPlanId={summary.planId} onPlanUpgraded={fetchBillingData} />
       </div>
 
       {/* Payment & Invoice History */}

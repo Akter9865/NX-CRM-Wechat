@@ -95,7 +95,6 @@ export async function createOrFetchRazorpayPlan(planId: PlanId): Promise<string>
 
   const { client: razorpay } = await getDynamicRazorpayClient();
 
-  // Create a standard monthly plan in Razorpay
   const response = await razorpay.plans.create({
     period: 'monthly',
     interval: 1,
@@ -114,7 +113,39 @@ export async function createOrFetchRazorpayPlan(planId: PlanId): Promise<string>
 }
 
 /**
- * Creates a new Razorpay subscription instance for checkout.
+ * Creates a standard Razorpay Order instance for universal Indian checkout (UPI, Cards, NetBanking, Wallets).
+ */
+export async function createOrderInstance({
+  planId,
+  accountId,
+  customerEmail,
+}: {
+  planId: PlanId;
+  accountId: string;
+  customerEmail?: string;
+}) {
+  const { client: razorpay, creds } = await getDynamicRazorpayClient();
+  const config = PLANS[planId];
+  if (!config || config.price <= 0) {
+    throw new Error(`Cannot create Razorpay order for free/invalid plan: ${planId}`);
+  }
+
+  const order = await razorpay.orders.create({
+    amount: config.price * 100,
+    currency: 'INR',
+    receipt: `rcpt_${accountId.slice(0, 8)}_${Date.now().toString().slice(-6)}`,
+    notes: {
+      account_id: accountId,
+      plan_id: planId,
+      customer_email: customerEmail || '',
+    },
+  });
+
+  return { order, keyId: creds.keyId };
+}
+
+/**
+ * Creates a new Razorpay subscription instance for recurring mandate checkout.
  */
 export async function createSubscriptionInstance({
   planId,
@@ -144,30 +175,54 @@ export async function createSubscriptionInstance({
 }
 
 /**
- * Verifies the signature returned by Razorpay Checkout after customer authorization.
+ * Universal payment signature verification (supports Orders, Subscriptions, and Direct verification).
  */
-export async function verifySubscriptionCheckoutSignature({
+export async function verifyPaymentSignature({
   paymentId,
+  orderId,
   subscriptionId,
   signature,
 }: {
   paymentId: string;
-  subscriptionId: string;
+  orderId?: string;
+  subscriptionId?: string;
   signature: string;
 }): Promise<boolean> {
   try {
     const creds = await getRazorpayCredentials();
-    const body = `${paymentId}|${subscriptionId}`;
-    const expectedSignature = crypto
-      .createHmac('sha256', creds.keySecret)
-      .update(body)
-      .digest('hex');
 
-    return expectedSignature === signature;
+    if (orderId) {
+      const expectedOrderSig = crypto
+        .createHmac('sha256', creds.keySecret)
+        .update(`${orderId}|${paymentId}`)
+        .digest('hex');
+      if (expectedOrderSig === signature) return true;
+    }
+
+    if (subscriptionId) {
+      const expectedSubSig = crypto
+        .createHmac('sha256', creds.keySecret)
+        .update(`${paymentId}|${subscriptionId}`)
+        .digest('hex');
+      if (expectedSubSig === signature) return true;
+    }
+
+    return false;
   } catch (err) {
-    console.error('[verifySubscriptionCheckoutSignature error]:', err);
+    console.error('[verifyPaymentSignature error]:', err);
     return false;
   }
+}
+
+/**
+ * Legacy alias for backwards compatibility.
+ */
+export async function verifySubscriptionCheckoutSignature(args: {
+  paymentId: string;
+  subscriptionId: string;
+  signature: string;
+}): Promise<boolean> {
+  return verifyPaymentSignature(args);
 }
 
 /**
@@ -196,4 +251,3 @@ export async function verifyWebhookSignature({
     return false;
   }
 }
-

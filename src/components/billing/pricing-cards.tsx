@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { PLAN_LIST, type PlanConfig, type PlanId } from '@/lib/billing/plans';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -33,6 +33,7 @@ interface PricingCardsProps {
 
 export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: PricingCardsProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [plans, setPlans] = useState<PlanConfig[]>(PLAN_LIST);
   const [loadingPlan, setLoadingPlan] = useState<PlanId | null>(null);
 
@@ -46,6 +47,17 @@ export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: Pricing
       })
       .catch(() => {});
   }, []);
+
+  // Auto-trigger if ?upgrade=planId is in query params
+  useEffect(() => {
+    const autoPlanId = searchParams?.get('upgrade') as PlanId;
+    if (autoPlanId && autoPlanId !== 'free' && autoPlanId !== currentPlanId) {
+      const match = plans.find((p) => p.id === autoPlanId);
+      if (match) {
+        handleSelectPlan(match);
+      }
+    }
+  }, [searchParams, currentPlanId, plans]);
 
   // Load Razorpay Checkout Script Dynamically
   const loadRazorpayScript = (): Promise<boolean> => {
@@ -82,7 +94,7 @@ export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: Pricing
         return;
       }
 
-      // 1. Create subscription order on server
+      // 1. Create order on server
       const res = await fetch('/api/billing/create-subscription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -91,19 +103,19 @@ export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: Pricing
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to initialize subscription');
+        throw new Error(data.error || 'Failed to initialize payment gateway');
       }
 
-      const { subscriptionId, keyId } = data;
+      const { orderId, subscriptionId, keyId, amount, currency } = data;
 
       // 2. Open Razorpay Checkout modal
-      const options = {
+      const options: Record<string, unknown> = {
         key: keyId,
-        subscription_id: subscriptionId,
-        name: 'NX CRM Wechat',
-        description: `${plan.name} Plan — Monthly Subscription (₹${plan.price}/mo)`,
-        image: '/icon.png',
-        currency: 'INR',
+        amount: amount || plan.price * 100,
+        currency: currency || 'INR',
+        name: 'NX CRM Enterprise',
+        description: `${plan.name} Plan — 1 Month Access (₹${plan.price})`,
+        image: '/icon',
         handler: async function (response: any) {
           try {
             // 3. Authoritative server-side verification
@@ -112,7 +124,8 @@ export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: Pricing
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_subscription_id: response.razorpay_subscription_id,
+                razorpay_order_id: response.razorpay_order_id || orderId,
+                razorpay_subscription_id: response.razorpay_subscription_id || subscriptionId,
                 razorpay_signature: response.razorpay_signature,
                 planId: plan.id,
               }),
@@ -143,6 +156,12 @@ export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: Pricing
         },
       };
 
+      if (orderId) {
+        options.order_id = orderId;
+      } else if (subscriptionId) {
+        options.subscription_id = subscriptionId;
+      }
+
       const rzp = new window.Razorpay(options);
       rzp.open();
     } catch (err: unknown) {
@@ -155,7 +174,7 @@ export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: Pricing
   };
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-10" id="pricing-plans-section">
       {/* Plan Grid */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4 items-stretch">
         {plans.map((plan) => {
