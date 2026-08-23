@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabase
       .from('conversations')
-      .select('id, account_id, contact_id, status, last_message_at, unread_count, assigned_to, created_at, tags')
+      .select('id, account_id, contact_id, status, last_message_text, last_message_at, unread_count, assigned_agent_id, created_at')
       .order('last_message_at', { ascending: false, nullsFirst: false })
       .limit(50);
 
@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
     const enriched = (conversations || []).map((conv) => {
       const contact = contactMap.get(conv.contact_id);
       const clientName = accMap.get(conv.account_id) || 'Unknown Client';
-      const agentName = conv.assigned_to ? agentMap.get(conv.assigned_to) || 'Agent' : 'Unassigned';
+      const agentName = conv.assigned_agent_id ? agentMap.get(conv.assigned_agent_id) || 'Agent' : 'Unassigned';
 
       return {
         id: conv.id,
@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
         channel: 'WhatsApp',
         assignedAgent: agentName,
         status: conv.status,
-        tags: Array.isArray(conv.tags) ? conv.tags : [],
+        lastMessageText: conv.last_message_text || '',
         unreadCount: conv.unread_count || 0,
         lastMessageAt: conv.last_message_at || conv.created_at,
         createdAt: conv.created_at,
