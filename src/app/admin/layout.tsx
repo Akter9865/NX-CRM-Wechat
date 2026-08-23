@@ -1,4 +1,7 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { getAdminSession } from '@/lib/admin/auth';
 import { AdminSidebar } from '@/components/admin/admin-sidebar';
 import { AdminHeader } from '@/components/admin/admin-header';
 
@@ -13,11 +16,26 @@ export const metadata: Metadata = {
   },
 };
 
-export default function AdminLayout({
+export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const headersList = await headers();
+  const pathname = headersList.get('x-pathname') || '';
+  const isLoginPage = pathname === '/admin/login' || pathname.startsWith('/admin/login');
+
+  // If on login page, render clean container without admin sidebar
+  if (isLoginPage) {
+    return <>{children}</>;
+  }
+
+  // Server-side authentication guard
+  const session = await getAdminSession();
+  if (!session) {
+    redirect('/admin/login');
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground flex">
       {/* Executive Sidebar */}
