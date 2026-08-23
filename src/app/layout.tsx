@@ -22,17 +22,17 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: "NX CRM — Enterprise WhatsApp & WeChat AI CRM",
+    default: "NX CRM — WhatsApp CRM, Automation & AI for Growing Businesses",
     template: "%s — NX CRM | Nexora Spark Agency",
   },
-  description: "Next-generation enterprise CRM for WhatsApp & WeChat with AI Auto-Replies, Visual Flow Builder, Multi-Client Team Management, and Shared Inbox. Powered by Nexora Spark Agency.",
+  description: "Next-generation enterprise CRM for WhatsApp with AI Auto-Replies, Visual Flow Builder, Multi-Agent Team Management, and Shared Inbox. Powered by Nexora Spark Agency.",
   authors: [{ name: "Nexora Spark Agency", url: "https://nexorasparkagency.com" }],
   creator: "Nexora Spark Agency",
   publisher: "Nexora Spark Agency",
   applicationName: "NX CRM Enterprise",
   robots: {
-    index: false,
-    follow: false,
+    index: true,
+    follow: true,
   },
   icons: {
     icon: [{ url: "/icon" }],

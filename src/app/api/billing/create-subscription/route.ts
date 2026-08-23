@@ -19,7 +19,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Free plan does not require checkout.' }, { status: 400 });
     }
 
-    const subscription = await createSubscriptionInstance({
+    const { subscription, keyId } = await createSubscriptionInstance({
       planId,
       accountId: account.id,
       customerEmail: userData?.user?.email,
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       subscriptionId: subscription.id,
-      keyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID,
+      keyId,
       plan: PLANS[planId],
     });
   } catch (error: unknown) {

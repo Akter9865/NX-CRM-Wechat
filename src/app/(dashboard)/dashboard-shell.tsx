@@ -9,8 +9,10 @@ import { AppFooter } from "@/components/layout/app-footer";
 import { AccountAccessAlert } from "@/components/layout/account-access-alert";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
 import { SubscriptionLockBanner } from "@/components/billing/subscription-lock-banner";
+import { PlanExpiryModal } from "@/components/billing/plan-expiry-modal";
 import { createClient } from "@/lib/supabase/client";
 import { evaluateSubscriptionStatus, type SubscriptionStatusInfo } from "@/lib/billing/entitlements";
+import { ImpersonationBanner } from "@/components/admin/impersonation-banner";
 import { Zap, ArrowRight, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -104,18 +106,27 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
       <PresenceHeartbeat />
       <Sidebar open={sidebarOpen} onClose={closeSidebar} />
       <div className="flex flex-1 flex-col overflow-hidden">
+        <ImpersonationBanner />
         <Header onOpenSidebar={() => setSidebarOpen(true)} />
         <main className="flex-1 overflow-y-auto flex flex-col justify-between">
           <div className="p-4 sm:p-6 flex-1 space-y-6">
             <AccountAccessAlert />
 
             {subStatus && (
-              <SubscriptionLockBanner
-                statusInfo={subStatus}
-                onRenewClick={() => {
-                  void refreshSubscription();
-                }}
-              />
+              <>
+                <SubscriptionLockBanner
+                  statusInfo={subStatus}
+                  onRenewClick={() => {
+                    void refreshSubscription();
+                  }}
+                />
+                <PlanExpiryModal
+                  statusInfo={subStatus}
+                  onRenewSuccess={() => {
+                    void refreshSubscription();
+                  }}
+                />
+              </>
             )}
 
             {isLocked ? (

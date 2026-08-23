@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     }
 
     // 1. Verify HMAC SHA256 Signature
-    const isValid = verifySubscriptionCheckoutSignature({
+    const isValid = await verifySubscriptionCheckoutSignature({
       paymentId: razorpay_payment_id,
       subscriptionId: razorpay_subscription_id,
       signature: razorpay_signature,

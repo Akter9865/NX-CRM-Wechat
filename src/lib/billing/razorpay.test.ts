@@ -17,13 +17,13 @@ describe('Razorpay Signature Verification', () => {
     vi.unstubAllEnvs();
   });
 
-  it('validates a correct subscription checkout signature', () => {
+  it('validates a correct subscription checkout signature', async () => {
     const paymentId = 'pay_Lz1234567890';
     const subscriptionId = 'sub_Sz9876543210';
     const body = `${paymentId}|${subscriptionId}`;
     const validSignature = crypto.createHmac('sha256', secret).update(body).digest('hex');
 
-    const result = verifySubscriptionCheckoutSignature({
+    const result = await verifySubscriptionCheckoutSignature({
       paymentId,
       subscriptionId,
       signature: validSignature,
@@ -32,8 +32,8 @@ describe('Razorpay Signature Verification', () => {
     expect(result).toBe(true);
   });
 
-  it('rejects an invalid subscription checkout signature', () => {
-    const result = verifySubscriptionCheckoutSignature({
+  it('rejects an invalid subscription checkout signature', async () => {
+    const result = await verifySubscriptionCheckoutSignature({
       paymentId: 'pay_Lz1234567890',
       subscriptionId: 'sub_Sz9876543210',
       signature: 'invalid_tampered_signature_hex',
@@ -42,11 +42,11 @@ describe('Razorpay Signature Verification', () => {
     expect(result).toBe(false);
   });
 
-  it('validates a correct webhook signature', () => {
+  it('validates a correct webhook signature', async () => {
     const rawBody = JSON.stringify({ event: 'subscription.charged', id: 'evt_123' });
     const validSignature = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
 
-    const result = verifyWebhookSignature({
+    const result = await verifyWebhookSignature({
       rawBody,
       signature: validSignature,
     });
@@ -54,10 +54,10 @@ describe('Razorpay Signature Verification', () => {
     expect(result).toBe(true);
   });
 
-  it('rejects an invalid webhook signature', () => {
+  it('rejects an invalid webhook signature', async () => {
     const rawBody = JSON.stringify({ event: 'subscription.charged', id: 'evt_123' });
 
-    const result = verifyWebhookSignature({
+    const result = await verifyWebhookSignature({
       rawBody,
       signature: 'invalid_webhook_signature',
     });

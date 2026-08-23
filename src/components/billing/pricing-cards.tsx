@@ -1,7 +1,6 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { PLAN_LIST, type PlanConfig, type PlanId } from '@/lib/billing/plans';
 import { Button } from '@/components/ui/button';
@@ -34,7 +33,19 @@ interface PricingCardsProps {
 
 export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: PricingCardsProps) {
   const router = useRouter();
+  const [plans, setPlans] = useState<PlanConfig[]>(PLAN_LIST);
   const [loadingPlan, setLoadingPlan] = useState<PlanId | null>(null);
+
+  useEffect(() => {
+    fetch('/api/plans')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.plans) && data.plans.length > 0) {
+          setPlans(data.plans);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Load Razorpay Checkout Script Dynamically
   const loadRazorpayScript = (): Promise<boolean> => {
@@ -147,7 +158,7 @@ export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: Pricing
     <div className="space-y-10">
       {/* Plan Grid */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4 items-stretch">
-        {PLAN_LIST.map((plan) => {
+        {plans.map((plan) => {
           const isCurrent = plan.id === currentPlanId;
           const isPopular = plan.id === 'pro';
           const isEnterprise = plan.id === 'enterprise';

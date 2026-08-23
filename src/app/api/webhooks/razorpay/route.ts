@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     }
 
     // 1. Cryptographic HMAC-SHA256 signature verification
-    const isValid = verifyWebhookSignature({ rawBody, signature });
+    const isValid = await verifyWebhookSignature({ rawBody, signature });
     if (!isValid) {
       console.error('[razorpay-webhook] Invalid signature rejected.');
       return NextResponse.json({ error: 'Invalid webhook signature' }, { status: 401 });

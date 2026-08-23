@@ -15,7 +15,7 @@ describe('Razorpay Webhook & Checkout Cryptographic Signatures', () => {
   });
 
   describe('verifyWebhookSignature', () => {
-    it('validates a valid HMAC SHA256 signature against raw body', () => {
+    it('validates a valid HMAC SHA256 signature against raw body', async () => {
       const rawBody = JSON.stringify({
         event: 'subscription.charged',
         payload: { subscription: { entity: { id: 'sub_123' } } },
@@ -26,11 +26,11 @@ describe('Razorpay Webhook & Checkout Cryptographic Signatures', () => {
         .update(rawBody)
         .digest('hex');
 
-      const isValid = verifyWebhookSignature({ rawBody, signature });
+      const isValid = await verifyWebhookSignature({ rawBody, signature });
       expect(isValid).toBe(true);
     });
 
-    it('rejects an altered payload with original signature', () => {
+    it('rejects an altered payload with original signature', async () => {
       const originalBody = JSON.stringify({ event: 'subscription.charged' });
       const tamperedBody = JSON.stringify({ event: 'subscription.cancelled' });
 
@@ -39,17 +39,17 @@ describe('Razorpay Webhook & Checkout Cryptographic Signatures', () => {
         .update(originalBody)
         .digest('hex');
 
-      const isValid = verifyWebhookSignature({ rawBody: tamperedBody, signature });
+      const isValid = await verifyWebhookSignature({ rawBody: tamperedBody, signature });
       expect(isValid).toBe(false);
     });
 
-    it('rejects when signature or secret is missing', () => {
-      expect(verifyWebhookSignature({ rawBody: 'body', signature: '' })).toBe(false);
+    it('rejects when signature or secret is missing', async () => {
+      expect(await verifyWebhookSignature({ rawBody: 'body', signature: '' })).toBe(false);
     });
   });
 
   describe('verifySubscriptionCheckoutSignature', () => {
-    it('validates checkout return signature paymentId|subscriptionId', () => {
+    it('validates checkout return signature paymentId|subscriptionId', async () => {
       const paymentId = 'pay_987654321';
       const subscriptionId = 'sub_123456789';
 
@@ -58,7 +58,7 @@ describe('Razorpay Webhook & Checkout Cryptographic Signatures', () => {
         .update(`${paymentId}|${subscriptionId}`)
         .digest('hex');
 
-      const isValid = verifySubscriptionCheckoutSignature({
+      const isValid = await verifySubscriptionCheckoutSignature({
         paymentId,
         subscriptionId,
         signature: expectedSignature,
@@ -67,8 +67,8 @@ describe('Razorpay Webhook & Checkout Cryptographic Signatures', () => {
       expect(isValid).toBe(true);
     });
 
-    it('rejects invalid checkout signature', () => {
-      const isValid = verifySubscriptionCheckoutSignature({
+    it('rejects invalid checkout signature', async () => {
+      const isValid = await verifySubscriptionCheckoutSignature({
         paymentId: 'pay_1',
         subscriptionId: 'sub_1',
         signature: 'invalid_sig',

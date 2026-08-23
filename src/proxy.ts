@@ -47,15 +47,16 @@ export async function proxy(request: NextRequest) {
     return response
   }
 
-  // SuperAdmin route protection
+  // Admin & SuperAdmin route protection
   if (
-    request.nextUrl.pathname.startsWith('/superadmin') &&
+    (request.nextUrl.pathname.startsWith('/admin') || request.nextUrl.pathname.startsWith('/superadmin')) &&
+    request.nextUrl.pathname !== '/admin/login' &&
     request.nextUrl.pathname !== '/superadmin/login'
   ) {
-    const superAdminToken = request.cookies.get('wacrm_superadmin_session')?.value;
-    if (!superAdminToken) {
+    const adminToken = request.cookies.get('wacrm_superadmin_session')?.value;
+    if (!adminToken) {
       const url = request.nextUrl.clone();
-      url.pathname = '/superadmin/login';
+      url.pathname = '/admin/login';
       return NextResponse.redirect(url);
     }
   }
