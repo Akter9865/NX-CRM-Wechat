@@ -207,53 +207,6 @@ function LoginPageInner() {
             </div>
           )}
         </Button>
-
-        {/* Divider */}
-        <div className="relative my-4">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-border/60" />
-          </div>
-          <div className="relative flex justify-center text-[11px] uppercase tracking-wider">
-            <span className="bg-card px-3 text-muted-foreground font-semibold">Or continue with</span>
-          </div>
-        </div>
-
-        {/* Google OAuth Button */}
-        <Button
-          type="button"
-          variant="outline"
-          onClick={async () => {
-            setError(null);
-            const { error: gErr } = await supabase.auth.signInWithOAuth({
-              provider: 'google',
-              options: {
-                redirectTo: `${window.location.origin}/auth/callback`,
-              },
-            });
-            if (gErr) setError(gErr.message);
-          }}
-          className="h-11 w-full rounded-xl border-border bg-card hover:bg-muted/50 text-foreground font-semibold text-xs transition-all flex items-center justify-center gap-2.5 shadow-sm"
-        >
-          <svg className="size-4 shrink-0" viewBox="0 0 24 24">
-            <path
-              fill="#EA4335"
-              d="M12 5c1.54 0 2.92.54 4.02 1.43l3.01-3.01C17.21 1.74 14.77 1 12 1 7.39 1 3.51 3.63 1.63 7.42l3.66 2.84C6.18 7.32 8.84 5 12 5z"
-            />
-            <path
-              fill="#4285F4"
-              d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58l3.67 2.84c2.14-1.98 3.75-4.89 3.75-8.66z"
-            />
-            <path
-              fill="#FBBC05"
-              d="M5.29 14.74c-.25-.74-.39-1.53-.39-2.74s.14-2 .39-2.74L1.63 6.42C.59 8.5 0 10.82 0 13.26s.59 4.76 1.63 6.84l3.66-2.84z"
-            />
-            <path
-              fill="#34A853"
-              d="M12 23c3.24 0 5.95-1.08 7.93-2.91l-3.67-2.84c-1.07.72-2.45 1.16-4.26 1.16-3.16 0-5.82-2.32-6.71-5.26L1.63 16C3.51 19.79 7.39 23 12 23z"
-            />
-          </svg>
-          <span>Continue with Google</span>
-        </Button>
       </form>
 
       {/* Switch to Sign Up */}
