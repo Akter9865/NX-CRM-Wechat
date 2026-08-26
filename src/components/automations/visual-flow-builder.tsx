@@ -1115,26 +1115,41 @@ export function VisualFlowBuilder({
       }
 
       // Check account context
-      const { data: member } = await supabase
-        .from('organization_members')
+      const { data: profile } = await supabase
+        .from('profiles')
         .select('account_id')
         .eq('user_id', session.user.id)
         .limit(1)
         .maybeSingle();
 
-      const accountId = member?.account_id;
+      const accountId = profile?.account_id;
       if (!accountId) {
         toast.error('No active workspace account found');
         return;
       }
 
+      const triggerNode = nodes.find(
+        (n) => getNodeMeta(n.data.type as string).category === 'triggers'
+      );
+      const rawTriggerType = (triggerNode?.data?.type as string) || 'trigger_message';
+      const triggerTypeMap: Record<string, string> = {
+        trigger_message: 'new_message_received',
+        trigger_keyword: 'keyword_match',
+        trigger_tag: 'tag_added',
+        trigger_interactive_reply: 'interactive_reply',
+      };
+      const standardTriggerType = triggerTypeMap[rawTriggerType] || rawTriggerType;
+
       const workflowPayload = {
         account_id: accountId,
+        user_id: session.user.id,
         name: flowName.trim() || 'Untitled Automation Flow',
         status,
-        trigger_type: (nodes.find((n) => getNodeMeta(n.data.type as string).category === 'triggers')?.data.type as string) || 'trigger_message',
-        nodes,
-        edges,
+        is_active: status === 'published',
+        trigger_type: standardTriggerType,
+        trigger_config: triggerNode?.data?.config || {},
+        canvas_data: { nodes, edges },
+        published_version: status === 'published' ? { nodes, edges } : undefined,
         updated_at: new Date().toISOString(),
       };
 

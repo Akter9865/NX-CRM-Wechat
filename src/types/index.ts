@@ -224,7 +224,6 @@ export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed'
 export interface Message {
   id: string;
   conversation_id: string;
-  whatsapp_connection_id?: string | null;
   sender_type: SenderType;
   sender_id?: string;
   content_type: ContentType;

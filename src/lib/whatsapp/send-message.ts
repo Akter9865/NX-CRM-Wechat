@@ -487,7 +487,6 @@ export async function sendMessageToConversation(
     .from('messages')
     .insert({
       conversation_id: conversationId,
-      whatsapp_connection_id: config.id,
       sender_type: 'agent',
       content_type: messageType,
       content_text: persistedText,

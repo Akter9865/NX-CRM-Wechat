@@ -24,6 +24,7 @@ import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from '@/lib/contacts/tag-chain'
 import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
+import { executeVisualWorkflow } from './visual-engine'
 
 // ------------------------------------------------------------
 // Public API
@@ -207,16 +208,38 @@ async function executeAutomation(automation: Automation, input: DispatchInput) {
     return
   }
 
-  await executeStepsFrom({
-    automation,
-    contactId: input.contactId ?? null,
-    context: input.context ?? {},
-    parentStepId: null,
-    branch: null,
-    startPosition: 0,
-    logId: log.id,
-    triggerEvent: input.triggerType,
-  })
+  const canvasNodes =
+    (automation as any).published_version?.nodes ||
+    (automation as any).canvas_data?.nodes
+
+  if (Array.isArray(canvasNodes) && canvasNodes.length > 0 && input.contactId) {
+    const visualRes = await executeVisualWorkflow({
+      automationId: automation.id,
+      accountId: automation.account_id,
+      contactId: input.contactId,
+      conversationId: input.context?.conversation_id,
+      triggerEvent: input.triggerType,
+      triggerData: input.context ? (input.context as Record<string, unknown>) : undefined,
+      client: db,
+    })
+    if (visualRes.success) {
+      await db
+        .from('automation_logs')
+        .update({ status: 'success', completed_at: new Date().toISOString() })
+        .eq('id', log.id)
+    }
+  } else {
+    await executeStepsFrom({
+      automation,
+      contactId: input.contactId ?? null,
+      context: input.context ?? {},
+      parentStepId: null,
+      branch: null,
+      startPosition: 0,
+      logId: log.id,
+      triggerEvent: input.triggerType,
+    })
+  }
 
   // Atomic counter update via the SQL function from migration 007.
   // Doing this with a client-side read-modify-write raced when the

@@ -82,11 +82,15 @@ export async function engineSendText(
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
 
-  const { data: config, error: configErr } = await db
+  const { data: configs, error: configErr } = await db
     .from('whatsapp_config')
     .select('*')
     .eq('account_id', args.accountId)
-    .single()
+    .eq('is_archived', false)
+    .order('is_default', { ascending: false })
+    .limit(1)
+
+  const config = configs?.[0]
   if (configErr || !config) {
     throw new Error('WhatsApp not configured for this account')
   }
@@ -192,11 +196,15 @@ export async function engineSendMedia(
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
 
-  const { data: config, error: configErr } = await db
+  const { data: configs, error: configErr } = await db
     .from('whatsapp_config')
     .select('*')
     .eq('account_id', args.accountId)
-    .single()
+    .eq('is_archived', false)
+    .order('is_default', { ascending: false })
+    .limit(1)
+
+  const config = configs?.[0]
   if (configErr || !config) {
     throw new Error('WhatsApp not configured for this account')
   }
@@ -344,11 +352,15 @@ async function sendInteractiveViaMeta(
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
 
-  const { data: config, error: configErr } = await db
+  const { data: configs, error: configErr } = await db
     .from('whatsapp_config')
     .select('*')
     .eq('account_id', input.accountId)
-    .single()
+    .eq('is_archived', false)
+    .order('is_default', { ascending: false })
+    .limit(1)
+
+  const config = configs?.[0]
   if (configErr || !config) {
     throw new Error('WhatsApp not configured for this account')
   }

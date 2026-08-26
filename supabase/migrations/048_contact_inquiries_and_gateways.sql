@@ -30,11 +30,13 @@ CREATE INDEX IF NOT EXISTS idx_contact_inquiries_status ON public.contact_inquir
 ALTER TABLE public.contact_inquiries ENABLE ROW LEVEL SECURITY;
 
 -- Allow public insertion (for website visitors)
+DROP POLICY IF EXISTS "Allow public insert to contact_inquiries" ON public.contact_inquiries;
 CREATE POLICY "Allow public insert to contact_inquiries"
   ON public.contact_inquiries FOR INSERT
   WITH CHECK (true);
 
 -- Allow service role full access
+DROP POLICY IF EXISTS "Allow service role full access on contact_inquiries" ON public.contact_inquiries;
 CREATE POLICY "Allow service role full access on contact_inquiries"
   ON public.contact_inquiries FOR ALL
   USING (auth.jwt() ->> 'role' = 'service_role');

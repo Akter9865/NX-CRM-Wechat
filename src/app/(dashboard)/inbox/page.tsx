@@ -199,13 +199,16 @@ function InboxPageInner() {
         return;
       }
 
-      const { data } = await supabase
+      const { data: configs } = await supabase
         .from("whatsapp_config")
         .select("status")
         .eq("account_id", accountId)
-        .maybeSingle();
+        .eq("is_archived", false);
 
-      setWhatsappConnected(data?.status === "connected");
+      const isAnyConnected = Boolean(
+        configs && configs.some((c: { status: string }) => c.status === "connected")
+      );
+      setWhatsappConnected(isAnyConnected);
     };
 
     checkConnection();
