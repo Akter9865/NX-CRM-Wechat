@@ -43,15 +43,35 @@ interface MessageBubbleProps {
 function StatusIcon({ status }: { status: Message["status"] }) {
   switch (status) {
     case "sending":
-      return <Clock className="h-3 w-3 text-muted-foreground" />;
+      return (
+        <span title="Sending...">
+          <Clock className="h-3 w-3 text-primary-foreground/60 animate-pulse" />
+        </span>
+      );
     case "sent":
-      return <Check className="h-3 w-3 text-muted-foreground" />;
+      return (
+        <span title="Sent to WhatsApp">
+          <Check className="h-3 w-3 text-primary-foreground/75" />
+        </span>
+      );
     case "delivered":
-      return <CheckCheck className="h-3 w-3 text-muted-foreground" />;
+      return (
+        <span title="Delivered to recipient">
+          <CheckCheck className="h-3 w-3 text-primary-foreground/90" />
+        </span>
+      );
     case "read":
-      return <CheckCheck className="h-3 w-3 text-blue-400" />;
+      return (
+        <span title="Seen / Read">
+          <CheckCheck className="h-3 w-3 text-sky-300 drop-shadow-[0_0_2px_rgba(56,189,248,0.4)]" />
+        </span>
+      );
     case "failed":
-      return <XCircle className="h-3 w-3 text-red-400" />;
+      return (
+        <span title="Delivery Failed / Error">
+          <XCircle className="h-3 w-3 text-rose-300 drop-shadow-[0_0_2px_rgba(244,63,94,0.4)]" />
+        </span>
+      );
     default:
       return null;
   }

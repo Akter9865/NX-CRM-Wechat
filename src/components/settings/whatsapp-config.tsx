@@ -1039,10 +1039,10 @@ export function WhatsAppConfigForm() {
           <DialogHeader>
             <DialogTitle className="text-base font-semibold text-rose-400 flex items-center gap-2">
               <AlertTriangle className="size-5 text-rose-500" />
-              {t('removeConfirmTitle')}
+              Disconnect WhatsApp Connection
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground mt-2 leading-relaxed">
-              {t('removeConfirmDesc')}
+              Are you sure you want to disconnect this WhatsApp number?
             </DialogDescription>
           </DialogHeader>
 
@@ -1053,6 +1053,21 @@ export function WhatsAppConfigForm() {
             </div>
           )}
 
+          <div className="space-y-2 text-xs my-2">
+            <div className="flex items-start gap-2 p-2.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-300">
+              <CheckCircle2 className="size-4 text-emerald-400 shrink-0 mt-0.5" />
+              <span>
+                <strong>Contacts Preserved:</strong> All your customer phone numbers, names, tags, and audience lists remain 100% saved in the Contacts section for future broadcasting.
+              </span>
+            </div>
+            <div className="flex items-start gap-2 p-2.5 rounded-md bg-rose-500/10 border border-rose-500/20 text-rose-300">
+              <AlertTriangle className="size-4 text-rose-400 shrink-0 mt-0.5" />
+              <span>
+                <strong>Storage Optimized:</strong> Chat message history tied to this disconnected number will be cleaned from your Supabase database to free up storage.
+              </span>
+            </div>
+          </div>
+
           <DialogFooter className="gap-2">
             <Button variant="outline" size="sm" onClick={() => setRemoveModalOpen(false)}>
               Cancel
@@ -1061,10 +1076,10 @@ export function WhatsAppConfigForm() {
               size="sm"
               onClick={handleRemoveConnection}
               disabled={removing}
-              className="bg-rose-600 hover:bg-rose-700 text-white"
+              className="bg-rose-600 hover:bg-rose-700 text-white font-medium"
             >
               {removing ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : null}
-              {removing ? 'Disconnecting...' : 'Disconnect WhatsApp'}
+              {removing ? 'Disconnecting...' : 'Disconnect & Clean Chat Storage'}
             </Button>
           </DialogFooter>
         </DialogContent>

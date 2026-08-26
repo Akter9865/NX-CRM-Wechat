@@ -141,6 +141,13 @@ describe("matchesKeywordTrigger", () => {
     expect(matchesKeywordTrigger("support center", cfg)).toBe(true);
     expect(matchesKeywordTrigger("nope", cfg)).toBe(false);
   });
+
+  it("handles whitespace-padded greetings and exact keywords seamlessly", () => {
+    const cfg = { keywords: ["hi", "hello"], match_type: "exact" as const };
+    expect(matchesKeywordTrigger(" hi \n", cfg)).toBe(true);
+    expect(matchesKeywordTrigger("HELLO", cfg)).toBe(true);
+    expect(matchesKeywordTrigger("  hello  ", cfg)).toBe(true);
+  });
 });
 
 describe("node classification helpers", () => {

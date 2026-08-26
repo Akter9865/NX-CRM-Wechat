@@ -505,10 +505,12 @@ export function MessageThread({
           return;
         }
 
-        // Success — the realtime INSERT event will replace the temp bubble
-        // with the real DB row. If realtime hasn't arrived yet, at least
-        // flip status to 'sent' so the UI stops showing "sending".
-        onUpdateMessage(tempId, { status: "sent" });
+        // Success — immediately attach real DB UUID and Meta WhatsApp message ID
+        onUpdateMessage(tempId, {
+          id: payload.message_id || tempId,
+          message_id: payload.whatsapp_message_id || undefined,
+          status: "sent",
+        });
       } catch (err) {
         console.error("Failed to send message:", err);
         const reason = err instanceof Error ? err.message : "network error";
@@ -573,7 +575,11 @@ export function MessageThread({
           return;
         }
 
-        onUpdateMessage(tempId, { status: "sent" });
+        onUpdateMessage(tempId, {
+          id: data.message_id || tempId,
+          message_id: data.whatsapp_message_id || undefined,
+          status: "sent",
+        });
       } catch (err) {
         console.error("Failed to send media:", err);
         const reason = err instanceof Error ? err.message : "network error";
@@ -627,7 +633,11 @@ export function MessageThread({
           return;
         }
 
-        onUpdateMessage(tempId, { status: "sent" });
+        onUpdateMessage(tempId, {
+          id: data.message_id || tempId,
+          message_id: data.whatsapp_message_id || undefined,
+          status: "sent",
+        });
       } catch (err) {
         console.error("Failed to send interactive message:", err);
         const reason = err instanceof Error ? err.message : "network error";
@@ -716,7 +726,11 @@ export function MessageThread({
           return;
         }
 
-        onUpdateMessage(tempId, { status: "sent" });
+        onUpdateMessage(tempId, {
+          id: payload.message_id || tempId,
+          message_id: payload.whatsapp_message_id || undefined,
+          status: "sent",
+        });
       } catch (err) {
         console.error("Failed to send template:", err);
         const reason = err instanceof Error ? err.message : "network error";

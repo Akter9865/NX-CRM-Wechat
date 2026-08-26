@@ -135,13 +135,41 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
 
-  const { data: configs, error: configErr } = await db
+  let targetConnectionId: string | null = null
+  if (input.conversationId) {
+    const { data: conv } = await db
+      .from('conversations')
+      .select('whatsapp_connection_id')
+      .eq('id', input.conversationId)
+      .maybeSingle()
+    targetConnectionId = conv?.whatsapp_connection_id || null
+  }
+
+  let configQuery = db
     .from('whatsapp_config')
     .select('*')
     .eq('account_id', input.accountId)
     .eq('is_archived', false)
+
+  if (targetConnectionId) {
+    configQuery = configQuery.eq('id', targetConnectionId)
+  }
+
+  let { data: configs, error: configErr } = await configQuery
     .order('is_default', { ascending: false })
     .limit(1)
+
+  if ((!configs || configs.length === 0) && targetConnectionId) {
+    const fallbackRes = await db
+      .from('whatsapp_config')
+      .select('*')
+      .eq('account_id', input.accountId)
+      .eq('is_archived', false)
+      .order('is_default', { ascending: false })
+      .limit(1)
+    configs = fallbackRes.data
+    configErr = fallbackRes.error
+  }
 
   const config = configs?.[0]
   if (configErr || !config) {

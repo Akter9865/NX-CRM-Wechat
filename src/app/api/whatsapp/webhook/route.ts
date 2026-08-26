@@ -195,7 +195,6 @@ export async function POST(request: Request) {
       .from('whatsapp_config')
       .select('app_secret')
       .eq('is_archived', false)
-      .not('app_secret', 'is', null)
 
     if (configs && configs.length > 0) {
       for (const c of configs) {
@@ -283,15 +282,13 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
 
       const phoneNumberId = value.metadata.phone_number_id
 
-      // Find user's config by phone_number_id. `.single()` returns
-      // PGRST116 for both 0 rows AND ≥2 rows — distinguish them so
-      // operators see the real cause in logs. ≥2 rows shouldn't happen
-      // post-migration 013 (UNIQUE constraint), but a row created
-      // before the constraint, or a race, would still surface here.
+      // Find user's active config by phone_number_id. Filter by is_archived=false
+      // so previously archived/disconnected connections don't create false duplicates.
       const { data: configRows, error: configError } = await supabaseAdmin()
         .from('whatsapp_config')
         .select('*')
         .eq('phone_number_id', phoneNumberId)
+        .eq('is_archived', false)
 
       if (configError) {
         console.error(
@@ -303,22 +300,15 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
       }
 
       if (!configRows || configRows.length === 0) {
-        console.error('No config found for phone_number_id:', phoneNumberId)
+        console.error('No active config found for phone_number_id:', phoneNumberId)
         continue
       }
 
-      if (configRows.length > 1) {
-        console.error(
-          `Multiple configs (${configRows.length}) found for phone_number_id:`,
-          phoneNumberId,
-          '— inbound message dropped. Resolve duplicates so each number maps to a single account.',
-          'Account owners:',
-          configRows.map((r: { account_id: string; user_id: string }) => `${r.account_id} (admin ${r.user_id})`)
-        )
-        continue
-      }
-
-      const config = configRows[0]
+      // If multiple active rows exist, pick the default or most relevant active config
+      const config =
+        configRows.find((r: { is_default: boolean; status: string }) => r.is_default && r.status === 'connected') ||
+        configRows.find((r: { status: string }) => r.status === 'connected') ||
+        configRows[0]
 
       // Record live heartbeat on incoming webhook
       void supabaseAdmin()

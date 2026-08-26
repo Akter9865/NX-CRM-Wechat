@@ -211,7 +211,37 @@ export async function DELETE(
       return NextResponse.json({ error: 'Connection not found' }, { status: 404 });
     }
 
-    // Soft delete: set is_archived = true, status = 'disconnected', deleted_at = NOW()
+    // Clean up chat message history from Supabase for this disconnected number to save storage
+    // Contacts remain 100% preserved in the contacts table for future broadcasting
+    const { data: convs } = await supabaseAdmin()
+      .from('conversations')
+      .select('id')
+      .eq('account_id', accountId)
+      .eq('whatsapp_connection_id', id);
+
+    if (convs && convs.length > 0) {
+      const convIds = convs.map((c: { id: string }) => c.id);
+      
+      // Delete message reactions associated with these conversations
+      await supabaseAdmin()
+        .from('message_reactions')
+        .delete()
+        .in('conversation_id', convIds);
+
+      // Delete messages from Supabase database to free storage
+      await supabaseAdmin()
+        .from('messages')
+        .delete()
+        .in('conversation_id', convIds);
+
+      // Delete conversation threads for this disconnected connection
+      await supabaseAdmin()
+        .from('conversations')
+        .delete()
+        .in('id', convIds);
+    }
+
+    // Soft delete / archive: set is_archived = true, status = 'disconnected', deleted_at = NOW()
     const { error: archiveError } = await supabaseAdmin()
       .from('whatsapp_config')
       .update({
@@ -245,10 +275,15 @@ export async function DELETE(
         connection_name: existing.connection_name,
         phone_number_id: existing.phone_number_id,
         display_phone_number: existing.display_phone_number,
+        chat_history_cleared: Boolean(convs && convs.length > 0),
+        contacts_preserved: true,
       },
     });
 
-    return NextResponse.json({ success: true, message: 'WhatsApp connection disconnected and archived.' });
+    return NextResponse.json({
+      success: true,
+      message: 'WhatsApp connection disconnected. Chat message history cleared to free storage, and all contacts remain preserved.',
+    });
   } catch (error) {
     console.error('Error in DELETE /api/whatsapp/connections/[id]:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

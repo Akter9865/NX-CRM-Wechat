@@ -721,16 +721,17 @@ export function triggerMatches(automation: Automation, ctx: AutomationContext | 
   if (automation.trigger_type === 'keyword_match') {
     const cfg = automation.trigger_config as KeywordMatchTriggerConfig
     if (!cfg?.keywords || cfg.keywords.length === 0) return false
-    const text = (ctx?.message_text ?? '').toString()
+    const text = (ctx?.message_text ?? '').toString().trim()
     if (!text) return false
     if (cfg.match_type === 'word') {
       return cfg.keywords.some((raw) =>
-        matchesWholeWord(text, raw, cfg.case_sensitive),
+        raw.trim() ? matchesWholeWord(text, raw.trim(), cfg.case_sensitive) : false,
       )
     }
     const haystack = cfg.case_sensitive ? text : text.toLowerCase()
     return cfg.keywords.some((raw) => {
-      const k = cfg.case_sensitive ? raw : raw.toLowerCase()
+      const k = (cfg.case_sensitive ? raw : raw.toLowerCase()).trim()
+      if (!k) return false
       return cfg.match_type === 'exact' ? haystack === k : haystack.includes(k)
     })
   }

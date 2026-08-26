@@ -45,27 +45,31 @@ vi.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
     from(table: string) {
       switch (table) {
-        case 'whatsapp_config':
+        case 'whatsapp_config': {
+          const cfgData = [
+            {
+              id: 'cfg-1',
+              account_id: 'acc-1',
+              user_id: 'user-1',
+              access_token: 'enc',
+              mirror_inbound_media: h.state.mirrorInboundMedia,
+            },
+          ]
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const cfgChain: any = {
+            eq: () => cfgChain,
+            order: () => cfgChain,
+            limit: () => cfgChain,
+            then: (resolve: (val: any) => any) =>
+              Promise.resolve({ data: cfgData, error: null }).then(resolve),
+          }
           return {
-            select: () => ({
-              eq: () =>
-                Promise.resolve({
-                  data: [
-                    {
-                      id: 'cfg-1',
-                      account_id: 'acc-1',
-                      user_id: 'user-1',
-                      access_token: 'enc',
-                      mirror_inbound_media: h.state.mirrorInboundMedia,
-                    },
-                  ],
-                  error: null,
-                }),
-            }),
+            select: () => cfgChain,
             update: () => ({
               eq: () => Promise.resolve({ data: null, error: null }),
             }),
           }
+        }
         case 'conversations': {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const convChain: any = {

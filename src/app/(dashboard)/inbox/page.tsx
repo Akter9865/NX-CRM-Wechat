@@ -226,13 +226,39 @@ function InboxPageInner() {
           newMsg.conversation_id === activeConversation.id
         ) {
           setMessages((prev) => {
-            // Avoid duplicates
-            if (prev.some((m) => m.id === newMsg.id)) return prev;
-            // Replace optimistic message if it exists
-            const withoutOptimistic = prev.filter(
-              (m) => !m.id.startsWith("temp-")
+            // If message already exists by UUID or Meta Message ID, update it
+            if (
+              prev.some(
+                (m) =>
+                  m.id === newMsg.id ||
+                  (newMsg.message_id && m.message_id === newMsg.message_id)
+              )
+            ) {
+              return prev.map((m) =>
+                m.id === newMsg.id ||
+                (newMsg.message_id && m.message_id === newMsg.message_id)
+                  ? { ...m, ...newMsg }
+                  : m
+              );
+            }
+
+            // Check if there is an in-flight optimistic message to reconcile
+            const tempIdx = prev.findIndex(
+              (m) =>
+                m.id.startsWith("temp-") &&
+                m.conversation_id === newMsg.conversation_id &&
+                m.sender_type === newMsg.sender_type &&
+                (m.content_text === newMsg.content_text ||
+                  m.content_type === newMsg.content_type)
             );
-            return [...withoutOptimistic, newMsg];
+
+            if (tempIdx >= 0) {
+              const updated = [...prev];
+              updated[tempIdx] = newMsg;
+              return updated;
+            }
+
+            return [...prev, newMsg];
           });
         }
 
@@ -268,9 +294,14 @@ function InboxPageInner() {
       }
 
       if (event.eventType === "UPDATE") {
-        // Update message status
+        // Update message status by id or Meta message_id
         setMessages((prev) =>
-          prev.map((m) => (m.id === newMsg.id ? { ...m, ...newMsg } : m))
+          prev.map((m) =>
+            m.id === newMsg.id ||
+            (newMsg.message_id && m.message_id === newMsg.message_id)
+              ? { ...m, ...newMsg }
+              : m
+          )
         );
       }
     },
@@ -518,11 +549,28 @@ function InboxPageInner() {
   const handleUpdateMessage = useCallback(
     (id: string, updates: Partial<Message>) => {
       setMessages((prev) =>
-        prev.map((m) => (m.id === id ? { ...m, ...updates } : m))
+        prev.map((m) =>
+          m.id === id || (updates.message_id && m.message_id === updates.message_id)
+            ? { ...m, ...updates }
+            : m
+        )
       );
     },
     []
   );
+
+  // Background fallback sync: when an active conversation is open, poll periodically
+  // so any status transitions (e.g. sent -> delivered -> read) or inbound messages
+  // are refreshed even if Realtime drops packets.
+  useEffect(() => {
+    if (!activeConversation?.id) return;
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        setResyncToken((n) => n + 1);
+      }
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [activeConversation?.id]);
 
   const handleStatusChange = useCallback(
     (conversationId: string, status: ConversationStatus) => {

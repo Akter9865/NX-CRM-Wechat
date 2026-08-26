@@ -100,10 +100,13 @@ export function matchesKeywordTrigger(
 ): boolean {
   if (!text || !cfg.keywords?.length) return false;
   const matchType = cfg.match_type ?? "contains";
-  const haystack = cfg.case_sensitive ? text : text.toLowerCase();
+  const cleanText = text.trim();
+  const haystack = cfg.case_sensitive ? cleanText : cleanText.toLowerCase();
   for (const raw of cfg.keywords) {
     if (!raw) continue;
-    const needle = cfg.case_sensitive ? raw : raw.toLowerCase();
+    const cleanRaw = raw.trim();
+    if (!cleanRaw) continue;
+    const needle = cfg.case_sensitive ? cleanRaw : cleanRaw.toLowerCase();
     if (matchType === "exact" ? haystack === needle : haystack.includes(needle)) {
       return true;
     }
@@ -221,7 +224,19 @@ async function loadActiveRunForContact(
     return null;
   }
   const rows = (data as FlowRunRow[] | null) ?? [];
-  return rows[0] ?? null;
+  const run = rows[0] ?? null;
+  if (!run) return null;
+
+  // Auto-expire abandoned/stale runs (e.g. older than 24h) so new greetings ("hi", "hello")
+  // and trigger keywords are not blocked forever by old unfinished sessions.
+  const lastActive = new Date(run.last_advanced_at || run.started_at).getTime();
+  const hoursSince = (Date.now() - lastActive) / (1000 * 60 * 60);
+  if (hoursSince >= 24) {
+    await endRun(db, run.id, "timed_out", "inactivity_timeout");
+    return null;
+  }
+
+  return run;
 }
 
 async function loadFlow(

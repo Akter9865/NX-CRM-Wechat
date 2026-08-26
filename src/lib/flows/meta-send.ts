@@ -62,6 +62,54 @@ interface SendTextEngineArgs {
  * `engineSendBase` once the v2 features (templates with variables,
  * media sends) settle.
  */
+async function resolveWhatsAppConfig(
+  db: ReturnType<typeof supabaseAdmin>,
+  accountId: string,
+  conversationId?: string,
+) {
+  let targetConnectionId: string | null = null
+  if (conversationId) {
+    const { data: conv } = await db
+      .from('conversations')
+      .select('whatsapp_connection_id')
+      .eq('id', conversationId)
+      .maybeSingle()
+    targetConnectionId = conv?.whatsapp_connection_id || null
+  }
+
+  let configQuery = db
+    .from('whatsapp_config')
+    .select('*')
+    .eq('account_id', accountId)
+    .eq('is_archived', false)
+
+  if (targetConnectionId) {
+    configQuery = configQuery.eq('id', targetConnectionId)
+  }
+
+  let { data: configs, error: configErr } = await configQuery
+    .order('is_default', { ascending: false })
+    .limit(1)
+
+  if ((!configs || configs.length === 0) && targetConnectionId) {
+    const fallbackRes = await db
+      .from('whatsapp_config')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('is_archived', false)
+      .order('is_default', { ascending: false })
+      .limit(1)
+    configs = fallbackRes.data
+    configErr = fallbackRes.error
+  }
+
+  const config = configs?.[0]
+  if (configErr || !config) {
+    throw new Error('WhatsApp not configured for this account')
+  }
+  return config
+}
+
 export async function engineSendText(
   args: SendTextEngineArgs,
 ): Promise<{ whatsapp_message_id: string }> {
@@ -82,18 +130,7 @@ export async function engineSendText(
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
 
-  const { data: configs, error: configErr } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', args.accountId)
-    .eq('is_archived', false)
-    .order('is_default', { ascending: false })
-    .limit(1)
-
-  const config = configs?.[0]
-  if (configErr || !config) {
-    throw new Error('WhatsApp not configured for this account')
-  }
+  const config = await resolveWhatsAppConfig(db, args.accountId, args.conversationId)
 
   const accessToken = decrypt(config.access_token)
 
@@ -196,18 +233,7 @@ export async function engineSendMedia(
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
 
-  const { data: configs, error: configErr } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', args.accountId)
-    .eq('is_archived', false)
-    .order('is_default', { ascending: false })
-    .limit(1)
-
-  const config = configs?.[0]
-  if (configErr || !config) {
-    throw new Error('WhatsApp not configured for this account')
-  }
+  const config = await resolveWhatsAppConfig(db, args.accountId, args.conversationId)
 
   const accessToken = decrypt(config.access_token)
 
@@ -352,18 +378,7 @@ async function sendInteractiveViaMeta(
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
 
-  const { data: configs, error: configErr } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', input.accountId)
-    .eq('is_archived', false)
-    .order('is_default', { ascending: false })
-    .limit(1)
-
-  const config = configs?.[0]
-  if (configErr || !config) {
-    throw new Error('WhatsApp not configured for this account')
-  }
+  const config = await resolveWhatsAppConfig(db, input.accountId, input.conversationId)
 
   const accessToken = decrypt(config.access_token)
 
