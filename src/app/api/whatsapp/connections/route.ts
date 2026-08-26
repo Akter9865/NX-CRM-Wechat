@@ -347,19 +347,50 @@ export async function POST(request: Request) {
       registered_at: registeredAt,
       subscribed_apps_at: subscribedAppsAt,
       last_registration_error: registrationError,
+      deleted_at: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
 
-    const { data: inserted, error: insertError } = await supabaseAdmin()
+    // Check if this phone number already exists in whatsapp_config (e.g. was previously disconnected/archived or re-added)
+    const { data: existingConfig } = await supabaseAdmin()
       .from('whatsapp_config')
-      .insert(rowData)
-      .select('*')
-      .single();
+      .select('id, account_id, is_archived')
+      .eq('phone_number_id', phone_number_id)
+      .maybeSingle();
 
-    if (insertError) {
-      console.error('Failed to insert whatsapp connection:', insertError);
-      return NextResponse.json({ error: 'Failed to store WhatsApp connection in database' }, { status: 500 });
+    let inserted: any = null;
+
+    if (existingConfig) {
+      const { data: updated, error: updateError } = await supabaseAdmin()
+        .from('whatsapp_config')
+        .update({
+          ...rowData,
+          deleted_at: null,
+          is_archived: false,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existingConfig.id)
+        .select('*')
+        .single();
+
+      if (updateError || !updated) {
+        console.error('Failed to reactivate whatsapp connection:', updateError);
+        return NextResponse.json({ error: 'Failed to store WhatsApp connection in database' }, { status: 500 });
+      }
+      inserted = updated;
+    } else {
+      const { data: created, error: insertError } = await supabaseAdmin()
+        .from('whatsapp_config')
+        .insert(rowData)
+        .select('*')
+        .single();
+
+      if (insertError || !created) {
+        console.error('Failed to insert whatsapp connection:', insertError);
+        return NextResponse.json({ error: 'Failed to store WhatsApp connection in database' }, { status: 500 });
+      }
+      inserted = created;
     }
 
     // Record audit log
