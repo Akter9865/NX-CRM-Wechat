@@ -16,6 +16,7 @@ import {
   Users,
   PhoneCall,
   Loader2,
+  Sparkles,
 } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/client"
@@ -178,30 +179,80 @@ export default function AutomationsPage() {
         </GatedButton>
       </div>
 
-      {showTemplates && (
-        <section>
-          <h2 className="mb-3 text-sm font-semibold text-muted-foreground">{t("templatesTitle")}</h2>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {TEMPLATE_ORDER.map((slug) => {
-              const t = AUTOMATION_TEMPLATES[slug]
-              const Icon = TEMPLATE_ICON[slug]
-              return (
-                <button
-                  key={slug}
-                  onClick={() => startFromTemplate(slug)}
-                  className="group flex flex-col items-start rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-card/80"
-                >
-                  <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/15">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <div className="text-sm font-semibold text-foreground">{t.name}</div>
-                  <p className="mt-1 text-xs text-muted-foreground">{t.description}</p>
-                </button>
-              )
-            })}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className="text-sm font-bold text-foreground flex items-center gap-1.5">
+              <Sparkles className="size-4 text-primary" />
+              <span>1-Click Starter Automations</span>
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Pick a ready-made automation recipe to get started instantly without manual setup.
+            </p>
           </div>
-        </section>
-      )}
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            {
+              slug: 'keyword_greeting',
+              title: '💬 Keyword Auto-Reply',
+              desc: 'Replies to "hi", "hello", "pricing", and common greetings instantly.',
+              badge: 'Popular',
+              icon: Zap,
+            },
+            {
+              slug: 'gemini_ai_assistant',
+              title: '🤖 24/7 AI Smart Bot',
+              desc: 'Answers customer questions using your CRM Knowledge Base automatically.',
+              badge: 'AI Smart',
+              icon: Sparkles,
+            },
+            {
+              slug: 'welcome_lead_capture',
+              title: '🔘 Interactive Menu',
+              desc: 'Sends 3 quick-reply buttons (Sales, Support, Advisor) on first message.',
+              badge: 'Sales',
+              icon: MessageCircle,
+            },
+            {
+              slug: 'after_hours_autoreply',
+              title: '🌙 Away / Night Reply',
+              desc: 'Replies when messages arrive outside office hours with opening notice.',
+              badge: 'Support',
+              icon: Clock,
+            },
+          ].map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.slug}
+                onClick={() => router.push(`/automations/new?template=${item.slug}`)}
+                className="group flex flex-col items-start justify-between rounded-xl border border-border/80 bg-card p-4 text-left transition-all hover:border-primary/60 hover:shadow-md hover:bg-card/90"
+              >
+                <div>
+                  <div className="flex items-center justify-between w-full mb-2.5">
+                    <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:scale-105 transition-transform">
+                      <Icon className="size-4.5" />
+                    </div>
+                    <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                      {item.badge}
+                    </span>
+                  </div>
+                  <div className="text-xs font-bold text-foreground group-hover:text-primary transition-colors">
+                    {item.title}
+                  </div>
+                  <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed line-clamp-2">
+                    {item.desc}
+                  </p>
+                </div>
+                <span className="mt-3 text-[11px] font-semibold text-primary group-hover:underline">
+                  Use Recipe ➔
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
 
       {automations.length === 0 ? (
         <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/40">

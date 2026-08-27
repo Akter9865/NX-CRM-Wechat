@@ -2,6 +2,7 @@ import { createClient as createServerSupabase, type SupabaseClient } from '@supa
 import { trackOutboundMessage, checkCanExecuteAutomation } from '@/lib/billing/entitlements';
 import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send';
 import { addContactTagAndDispatch } from '@/lib/contacts/tag-events';
+import { isDeliverableUrl } from '@/lib/webhooks/ssrf';
 
 function getServiceSupabase() {
   const url =
@@ -17,17 +18,21 @@ function getServiceSupabase() {
 const lastContactExecution = new Map<string, number>();
 const contactExecutionDepth = new Map<string, number>();
 
-const MAX_EXECUTION_DEPTH = 3;
-const COOLDOWN_MS = 2000; // 2 seconds per contact
+const MAX_EXECUTION_DEPTH = 5;
+const COOLDOWN_MS = 1500; // 1.5 seconds cooldown per contact-automation pair
 
 export interface VisualEngineNodeData {
+  type?: string;
   nodeType?: string;
+  category?: string;
   title?: string;
+  label?: string;
   config?: Record<string, unknown>;
 }
 
 export interface VisualEngineNode {
   id: string;
+  type?: string;
   data?: VisualEngineNodeData;
 }
 
@@ -35,6 +40,9 @@ export interface VisualEngineEdge {
   id?: string;
   source?: string;
   target?: string;
+  sourceHandle?: string;
+  targetHandle?: string;
+  handle?: string;
 }
 
 export interface VisualEngineInput {
@@ -47,6 +55,71 @@ export interface VisualEngineInput {
   client?: SupabaseClient | any; // eslint-disable-line @typescript-eslint/no-explicit-any
 }
 
+export function getNodeType(node?: VisualEngineNode): string {
+  if (!node) return '';
+  return (
+    (node.data?.type as string) ||
+    (node.data?.nodeType as string) ||
+    (node.type && node.type !== 'customNode' && node.type !== 'custom' ? node.type : '') ||
+    ''
+  );
+}
+
+export function getNodeTitle(node?: VisualEngineNode, fallback = 'Step'): string {
+  if (!node) return fallback;
+  return (
+    (node.data?.label as string) ||
+    (node.data?.title as string) ||
+    fallback
+  );
+}
+
+function evaluateVisualCondition(
+  config: Record<string, any>,
+  contact: Record<string, any>,
+  triggerData?: Record<string, unknown>
+): boolean {
+  const field = (config.field || 'contact.tag').toString().toLowerCase();
+  const operator = (config.operator || 'contains').toString().toLowerCase();
+  const targetValue = (config.value || '').toString().toLowerCase().trim();
+
+  let actualValue = '';
+  if (field.includes('tag')) {
+    const tags = Array.isArray(contact.contact_tags)
+      ? contact.contact_tags
+          .map((ct: any) => ct.tags?.name || ct.tag?.name || ct.name || '')
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+      : '';
+    actualValue = tags;
+  } else if (field.includes('message') || field.includes('text')) {
+    actualValue = (triggerData?.message_text || '').toString().toLowerCase();
+  } else if (field.includes('name')) {
+    actualValue = (contact.name || '').toString().toLowerCase();
+  } else if (field.includes('phone')) {
+    actualValue = (contact.phone || '').toString().toLowerCase();
+  } else if (field.includes('email')) {
+    actualValue = (contact.email || '').toString().toLowerCase();
+  } else {
+    actualValue = (contact[config.field] || '').toString().toLowerCase();
+  }
+
+  if (operator === 'equals' || operator === '=' || operator === 'exact') {
+    return actualValue === targetValue;
+  }
+  if (operator === 'not_equals' || operator === '!=') {
+    return actualValue !== targetValue;
+  }
+  if (operator === 'starts_with') {
+    return actualValue.startsWith(targetValue);
+  }
+  if (operator === 'ends_with') {
+    return actualValue.endsWith(targetValue);
+  }
+  return actualValue.includes(targetValue);
+}
+
 /**
  * Execute a published visual workflow graph in the backend.
  */
@@ -56,7 +129,7 @@ export async function executeVisualWorkflow({
   contactId,
   conversationId: providedConversationId,
   triggerEvent,
-  triggerData: _triggerData = {},
+  triggerData = {},
   client,
 }: VisualEngineInput) {
   const supabase = client || getServiceSupabase();
@@ -69,7 +142,7 @@ export async function executeVisualWorkflow({
   }
 
   // 1. Loop Protection & Recursion Guard
-  const contactKey = `${accountId}:${contactId}`;
+  const contactKey = `${accountId}:${contactId}:${automationId}`;
   const now = Date.now();
   const lastTime = lastContactExecution.get(contactKey) || 0;
   const currentDepth = contactExecutionDepth.get(contactKey) || 0;
@@ -119,6 +192,10 @@ export async function executeVisualWorkflow({
     const nodes: VisualEngineNode[] = canvasData.nodes || [];
     const edges: VisualEngineEdge[] = canvasData.edges || [];
 
+    if (nodes.length === 0) {
+      return { success: false, reason: 'empty_workflow_canvas' };
+    }
+
     // Resolve conversationId if not provided
     let conversationId = providedConversationId;
     if (!conversationId) {
@@ -131,6 +208,21 @@ export async function executeVisualWorkflow({
         .limit(1)
         .maybeSingle();
       conversationId = conv?.id;
+    }
+
+    if (!conversationId) {
+      const { data: newConv } = await supabase
+        .from('conversations')
+        .insert({
+          account_id: accountId,
+          user_id: automation.user_id,
+          contact_id: contactId,
+          status: 'open',
+          unread_count: 0,
+        })
+        .select('id')
+        .maybeSingle();
+      conversationId = newConv?.id;
     }
 
     // 3. Create Automation Run Log
@@ -157,22 +249,36 @@ export async function executeVisualWorkflow({
     const executedSteps: Array<{ nodeId: string; title: string; status: string }> = [];
 
     // 4. Find Starting Trigger Node
-    const triggerNode = nodes.find((n) => {
-      const type = (n.data?.nodeType as string) || '';
-      return type.startsWith('trigger_') || type === 'start';
+    let triggerNode = nodes.find((n) => {
+      const type = getNodeType(n);
+      return (
+        type.startsWith('trigger_') ||
+        type === 'start' ||
+        n.data?.category === 'triggers'
+      );
     });
+
+    // Fallback: If no explicit trigger node, use the first root node without incoming edges
+    if (!triggerNode) {
+      const targets = new Set(edges.map((e) => e.target));
+      triggerNode = nodes.find((n) => !targets.has(n.id)) || nodes[0];
+    }
 
     if (!triggerNode) {
       await supabase
         .from('automation_runs')
-        .update({ status: 'failed', error_message: 'No trigger node found in graph', completed_at: new Date().toISOString() })
+        .update({
+          status: 'failed',
+          error_message: 'No trigger node found in graph',
+          completed_at: new Date().toISOString(),
+        })
         .eq('id', runId);
       return { success: false, reason: 'no_trigger' };
     }
 
     executedSteps.push({
       nodeId: triggerNode.id,
-      title: triggerNode.data?.title || 'Trigger',
+      title: getNodeTitle(triggerNode, 'Trigger'),
       status: 'completed',
     });
 
@@ -180,25 +286,64 @@ export async function executeVisualWorkflow({
     let currentNodeId: string | null = triggerNode.id;
     let stepCount = 0;
 
-    while (currentNodeId && stepCount < 20) {
+    while (currentNodeId && stepCount < 30) {
       stepCount++;
       const currentEdges = edges.filter((e) => e.source === currentNodeId);
       if (currentEdges.length === 0) break;
 
-      const edge = currentEdges[0];
-      const nextNode = nodes.find((n) => n.id === edge.target);
+      const currentNode = nodes.find((n) => n.id === currentNodeId);
+      const currentNodeType = getNodeType(currentNode);
+
+      let chosenEdge = currentEdges[0];
+
+      // Handle Condition Branching
+      if (currentNodeType === 'condition_match' || currentNodeType === 'condition') {
+        const config = (currentNode?.data?.config || {}) as Record<string, any>;
+        const conditionResult = evaluateVisualCondition(config, contact, triggerData);
+        const branchHandle = conditionResult ? 'true' : 'false';
+
+        const matchingEdge = currentEdges.find(
+          (e) =>
+            e.sourceHandle === branchHandle ||
+            (e as any).handle === branchHandle ||
+            e.sourceHandle === `source-${branchHandle}` ||
+            (conditionResult && e.sourceHandle?.includes('true')) ||
+            (!conditionResult && e.sourceHandle?.includes('false'))
+        );
+
+        chosenEdge = matchingEdge || currentEdges[0];
+      }
+
+      if (!chosenEdge || !chosenEdge.target) break;
+
+      const nextNode = nodes.find((n) => n.id === chosenEdge.target);
       if (!nextNode) break;
 
-      const nodeType = nextNode.data?.nodeType as string;
+      const nodeType = getNodeType(nextNode);
+      const nodeTitle = getNodeTitle(nextNode, 'Workflow Action');
       const config = (nextNode.data?.config || {}) as Record<string, any>;
 
       try {
-        // Execute Action: Send WhatsApp Message
-        if (nodeType === 'action_send_text' || nodeType === 'action_send_message') {
-          let rawText = typeof config.message === 'string' ? config.message : typeof config.text === 'string' ? config.text : '';
+        // Execute Action: Send WhatsApp Message / Text
+        if (
+          nodeType === 'action_send_text' ||
+          nodeType === 'action_send_message' ||
+          nodeType === 'send_message'
+        ) {
+          let rawText =
+            typeof config.message === 'string'
+              ? config.message
+              : typeof config.text === 'string'
+                ? config.text
+                : '';
+
           rawText = rawText.replace(/\{\{contact\.name\}\}/g, contact.name || contact.phone || '');
           rawText = rawText.replace(/\{\{contact\.phone\}\}/g, contact.phone || '');
           rawText = rawText.replace(/\{\{contact\.email\}\}/g, contact.email || '');
+          rawText = rawText.replace(
+            /\{\{(?:message\.text|message_text)\}\}/g,
+            typeof triggerData.message_text === 'string' ? triggerData.message_text : ''
+          );
 
           if (conversationId && rawText.trim()) {
             await engineSendText({
@@ -210,18 +355,21 @@ export async function executeVisualWorkflow({
             });
           }
 
-          // Record step
           await supabase.from('automation_run_steps').insert({
             run_id: runId,
             node_id: nextNode.id,
             node_type: nodeType,
-            node_title: nextNode.data?.title || 'Send Message',
+            node_title: nodeTitle,
             status: 'completed',
             input_data: { text: rawText },
           });
 
           await trackOutboundMessage(accountId, 1, supabase);
-        } else if (nodeType === 'action_send_interactive' && config.buttons?.length && conversationId) {
+        } else if (
+          (nodeType === 'action_send_interactive' || nodeType === 'send_buttons') &&
+          config.buttons?.length &&
+          conversationId
+        ) {
           await engineSendInteractive({
             accountId,
             userId: automation.user_id,
@@ -229,9 +377,9 @@ export async function executeVisualWorkflow({
             contactId,
             payload: {
               kind: 'buttons',
-              body: config.bodyText || 'Please select an option below:',
-              header: config.headerText,
-              footer: config.footerText,
+              body: config.bodyText || config.body || 'Please select an option below:',
+              header: config.headerText || config.header,
+              footer: config.footerText || config.footer,
               buttons: config.buttons.map((b: { id: string; title: string }) => ({
                 id: b.id,
                 title: b.title,
@@ -243,13 +391,17 @@ export async function executeVisualWorkflow({
             run_id: runId,
             node_id: nextNode.id,
             node_type: nodeType,
-            node_title: nextNode.data?.title || 'Send Interactive',
+            node_title: nodeTitle,
             status: 'completed',
             input_data: config,
           });
 
           await trackOutboundMessage(accountId, 1, supabase);
-        } else if (nodeType === 'action_send_template' && config.templateName && conversationId) {
+        } else if (
+          (nodeType === 'action_send_template' || nodeType === 'send_template') &&
+          config.templateName &&
+          conversationId
+        ) {
           await engineSendTemplate({
             accountId,
             userId: automation.user_id,
@@ -263,15 +415,15 @@ export async function executeVisualWorkflow({
             run_id: runId,
             node_id: nextNode.id,
             node_type: nodeType,
-            node_title: nextNode.data?.title || 'Send Template',
+            node_title: nodeTitle,
             status: 'completed',
             input_data: config,
           });
 
           await trackOutboundMessage(accountId, 1, supabase);
-        } else if (nodeType === 'action_add_tag') {
+        } else if (nodeType === 'action_add_tag' || nodeType === 'add_tag') {
           const tagName = config.tag || config.tagName;
-          let tagId = config.tagId;
+          let tagId = config.tagId || config.tag_id;
           if (!tagId && tagName) {
             const { data: existingTag } = await supabase
               .from('tags')
@@ -305,15 +457,89 @@ export async function executeVisualWorkflow({
             run_id: runId,
             node_id: nextNode.id,
             node_type: nodeType,
-            node_title: nextNode.data?.title || 'Add Tag',
+            node_title: nodeTitle,
             status: 'completed',
-            input_data: { tagName },
+            input_data: { tagName, tagId },
+          });
+        } else if (nodeType === 'action_assign_agent' || nodeType === 'assign_agent') {
+          let agentId = config.agentId || config.agent_id;
+          if (!agentId || config.mode === 'round_robin') {
+            const { data: profiles } = await supabase
+              .from('profiles')
+              .select('user_id')
+              .eq('account_id', accountId)
+              .limit(1);
+            agentId = profiles?.[0]?.user_id;
+          }
+          if (agentId && conversationId) {
+            await supabase
+              .from('conversations')
+              .update({ assigned_agent_id: agentId })
+              .eq('id', conversationId);
+          }
+
+          await supabase.from('automation_run_steps').insert({
+            run_id: runId,
+            node_id: nextNode.id,
+            node_type: nodeType,
+            node_title: nodeTitle,
+            status: 'completed',
+            input_data: { agentId },
+          });
+        } else if (nodeType === 'action_update_stage' || nodeType === 'update_stage') {
+          const stageId = config.stageId || config.stage_id;
+          if (stageId) {
+            await supabase
+              .from('deals')
+              .update({ stage_id: stageId, updated_at: new Date().toISOString() })
+              .eq('account_id', accountId)
+              .eq('contact_id', contactId);
+          }
+
+          await supabase.from('automation_run_steps').insert({
+            run_id: runId,
+            node_id: nextNode.id,
+            node_type: nodeType,
+            node_title: nodeTitle,
+            status: 'completed',
+            input_data: { stageId },
+          });
+        } else if (nodeType === 'action_webhook' || nodeType === 'send_webhook') {
+          const url = config.url;
+          if (url && (await isDeliverableUrl(url))) {
+            const payload = config.body ? config.body : JSON.stringify({ contact, triggerData });
+            await fetch(url, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json', ...(config.headers || {}) },
+              body: payload,
+              redirect: 'manual',
+              signal: AbortSignal.timeout(8000),
+            }).catch((err) => console.warn('[visual-engine] Webhook call failed:', err));
+          }
+
+          await supabase.from('automation_run_steps').insert({
+            run_id: runId,
+            node_id: nextNode.id,
+            node_type: nodeType,
+            node_title: nodeTitle,
+            status: 'completed',
+            input_data: { url },
+          });
+        } else {
+          // General completed step record for other logic/action nodes
+          await supabase.from('automation_run_steps').insert({
+            run_id: runId,
+            node_id: nextNode.id,
+            node_type: nodeType || 'step',
+            node_title: nodeTitle,
+            status: 'completed',
+            input_data: config,
           });
         }
 
         executedSteps.push({
           nodeId: nextNode.id,
-          title: nextNode.data?.title || nextNode.id,
+          title: nodeTitle,
           status: 'completed',
         });
 
@@ -324,8 +550,8 @@ export async function executeVisualWorkflow({
         await supabase.from('automation_run_steps').insert({
           run_id: runId,
           node_id: nextNode.id,
-          node_type: nodeType,
-          node_title: nextNode.data?.title || nextNode.id,
+          node_type: nodeType || 'unknown',
+          node_title: nodeTitle,
           status: 'failed',
           error_message: errorMessage,
         });

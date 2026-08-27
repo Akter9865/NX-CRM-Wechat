@@ -719,20 +719,32 @@ export function matchesWholeWord(
 
 export function triggerMatches(automation: Automation, ctx: AutomationContext | undefined): boolean {
   if (automation.trigger_type === 'keyword_match') {
-    const cfg = automation.trigger_config as KeywordMatchTriggerConfig
-    if (!cfg?.keywords || cfg.keywords.length === 0) return false
+    const cfg = (automation.trigger_config || {}) as any
+    let keywords: string[] = []
+    if (Array.isArray(cfg?.keywords)) {
+      keywords = cfg.keywords
+    } else if (typeof cfg?.keywords === 'string') {
+      keywords = cfg.keywords.split(',').map((s: string) => s.trim()).filter(Boolean)
+    } else if (typeof cfg?.keyword === 'string') {
+      keywords = [cfg.keyword.trim()]
+    }
+    if (keywords.length === 0) return false
     const text = (ctx?.message_text ?? '').toString().trim()
     if (!text) return false
-    if (cfg.match_type === 'word') {
-      return cfg.keywords.some((raw) =>
-        raw.trim() ? matchesWholeWord(text, raw.trim(), cfg.case_sensitive) : false,
+
+    const matchType = cfg.match_type || cfg.matchType || 'contains'
+    const caseSensitive = Boolean(cfg.case_sensitive || cfg.caseSensitive)
+
+    if (matchType === 'word') {
+      return keywords.some((raw) =>
+        raw.trim() ? matchesWholeWord(text, raw.trim(), caseSensitive) : false,
       )
     }
-    const haystack = cfg.case_sensitive ? text : text.toLowerCase()
-    return cfg.keywords.some((raw) => {
-      const k = (cfg.case_sensitive ? raw : raw.toLowerCase()).trim()
+    const haystack = caseSensitive ? text : text.toLowerCase()
+    return keywords.some((raw) => {
+      const k = (caseSensitive ? raw : raw.toLowerCase()).trim()
       if (!k) return false
-      return cfg.match_type === 'exact' ? haystack === k : haystack.includes(k)
+      return matchType === 'exact' ? haystack === k : haystack.includes(k)
     })
   }
 
@@ -740,18 +752,26 @@ export function triggerMatches(automation: Automation, ctx: AutomationContext | 
   // menus be chained: automation A sends buttons, automation B fires on
   // the reply id and sends the next step.
   if (automation.trigger_type === 'interactive_reply') {
-    const cfg = automation.trigger_config as InteractiveReplyTriggerConfig
+    const cfg = (automation.trigger_config || {}) as any
     const replyId = ctx?.interactive_reply_id
-    if (!replyId || !Array.isArray(cfg?.reply_ids) || cfg.reply_ids.length === 0) {
+    const replyIds: string[] = Array.isArray(cfg?.reply_ids)
+      ? cfg.reply_ids
+      : Array.isArray(cfg?.replyIds)
+        ? cfg.replyIds
+        : cfg?.buttonId
+          ? [cfg.buttonId]
+          : []
+    if (!replyId || replyIds.length === 0) {
       return false
     }
-    return cfg.reply_ids.includes(replyId)
+    return replyIds.includes(replyId)
   }
 
   if (automation.trigger_type === 'tag_added') {
-    const cfg = automation.trigger_config as TagTriggerConfig
+    const cfg = (automation.trigger_config || {}) as any
     const tagId = ctx?.tag_id
-    return Boolean(tagId && cfg?.tag_id && cfg.tag_id === tagId)
+    const targetTag = cfg?.tag_id || cfg?.tagId || cfg?.tag || cfg?.tagName
+    return Boolean(tagId && targetTag && targetTag === tagId)
   }
 
   return true

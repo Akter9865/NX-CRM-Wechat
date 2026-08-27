@@ -1,7 +1,31 @@
-import { describe, it, expect } from 'vitest';
-import { executeVisualWorkflow } from './visual-engine';
+import { describe, it, expect, vi } from 'vitest';
+import { executeVisualWorkflow, getNodeType, getNodeTitle } from './visual-engine';
 
 describe('Visual Automation Execution Engine', () => {
+  it('correctly resolves node type and title across builder formats', () => {
+    const nodeWithType = {
+      id: 'n1',
+      data: {
+        type: 'trigger_keyword',
+        label: 'Keyword Match Trigger',
+        config: { keywords: ['hi bhaiya'] },
+      },
+    };
+    expect(getNodeType(nodeWithType)).toBe('trigger_keyword');
+    expect(getNodeTitle(nodeWithType)).toBe('Keyword Match Trigger');
+
+    const nodeWithNodeType = {
+      id: 'n2',
+      data: {
+        nodeType: 'action_send_message',
+        title: 'Send WhatsApp Message',
+        config: { message: 'Hello {{contact.name}}!' },
+      },
+    };
+    expect(getNodeType(nodeWithNodeType)).toBe('action_send_message');
+    expect(getNodeTitle(nodeWithNodeType)).toBe('Send WhatsApp Message');
+  });
+
   it('returns failure when automation or contact is not found', async () => {
     const mockSupabase = {
       from: () => ({

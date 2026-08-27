@@ -378,8 +378,8 @@ export function ChannelsPanel() {
                           conn.channel_type === 'telegram'
                             ? 'bg-sky-500/10 border-sky-500/20 text-sky-400'
                             : conn.channel_type === 'whatsapp_web'
-                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                            : 'bg-green-500/10 border-green-500/20 text-green-400'
+                              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                              : 'bg-green-500/10 border-green-500/20 text-green-400'
                         )}
                       >
                         {conn.channel_type === 'telegram' ? (
@@ -430,8 +430,8 @@ export function ChannelsPanel() {
                         {conn.channel_type === 'telegram'
                           ? 'Telegram Bot'
                           : conn.channel_type === 'whatsapp_web'
-                          ? 'Linked QR Session'
-                          : 'Meta Cloud API'}
+                            ? 'Linked QR Session'
+                            : 'Meta Cloud API'}
                       </div>
                     </div>
                   </div>
