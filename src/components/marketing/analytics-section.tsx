@@ -84,12 +84,12 @@ export function AnalyticsSection() {
             return (
               <div
                 key={idx}
-                className="rounded-3xl border border-slate-200 bg-slate-50/70 p-6 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all duration-200"
+                className="group rounded-3xl border border-slate-200 bg-slate-50/70 p-6 shadow-sm hover:shadow-xl hover:bg-white hover:border-indigo-300 hover:-translate-y-1 transition-all duration-300"
               >
-                <div className={`flex size-10 items-center justify-center rounded-xl border ${metric.iconBg} mb-4`}>
+                <div className={`flex size-10 items-center justify-center rounded-xl border ${metric.iconBg} mb-4 group-hover:scale-110 transition-transform shadow-2xs`}>
                   <Icon className={`size-5 ${metric.color}`} />
                 </div>
-                <h3 className="text-base font-bold text-slate-900 mb-2">{metric.title}</h3>
+                <h3 className="text-base font-bold text-slate-900 mb-2 group-hover:text-indigo-700 transition-colors">{metric.title}</h3>
                 <p className="text-xs text-slate-500 leading-relaxed">{metric.desc}</p>
               </div>
             );

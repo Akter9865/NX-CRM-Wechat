@@ -11,6 +11,7 @@ import { CommerceSection } from '@/components/marketing/commerce-section';
 import { AnalyticsSection } from '@/components/marketing/analytics-section';
 import { IntegrationsPreview } from '@/components/marketing/integrations-preview';
 import { PricingPreview } from '@/components/marketing/pricing-preview';
+import { ContactSection } from '@/components/marketing/contact-section';
 import { FaqSection } from '@/components/marketing/faq-section';
 import { FinalCtaSection } from '@/components/marketing/final-cta-section';
 
@@ -30,6 +31,7 @@ export default function HomePage() {
       <AnalyticsSection />
       <IntegrationsPreview />
       <PricingPreview />
+      <ContactSection />
       <FaqSection />
       <FinalCtaSection />
     </>

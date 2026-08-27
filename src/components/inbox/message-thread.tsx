@@ -27,6 +27,8 @@ import {
   RefreshCw,
   PanelRightOpen,
   PanelRightClose,
+  Send,
+  Smartphone,
 } from "lucide-react";
 import { format, isToday, isYesterday, differenceInHours } from "date-fns";
 import { useTranslations } from "next-intl";
@@ -483,7 +485,12 @@ export function MessageThread({
       setReplyTo(null);
 
       try {
-        const res = await fetch("/api/whatsapp/send", {
+        const endpoint =
+          conversation.channel_type === 'telegram' || conversation.channel_type === 'whatsapp_web'
+            ? '/api/channels/send'
+            : '/api/whatsapp/send';
+
+        const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -505,10 +512,10 @@ export function MessageThread({
           return;
         }
 
-        // Success — immediately attach real DB UUID and Meta WhatsApp message ID
+        // Success — immediately attach real DB UUID and Meta WhatsApp / channel message ID
         onUpdateMessage(tempId, {
           id: payload.message_id || tempId,
-          message_id: payload.whatsapp_message_id || undefined,
+          message_id: payload.whatsapp_message_id || payload.externalMessageId || undefined,
           status: "sent",
         });
       } catch (err) {
@@ -549,7 +556,12 @@ export function MessageThread({
       setReplyTo(null);
 
       try {
-        const res = await fetch("/api/whatsapp/send", {
+        const endpoint =
+          conversation.channel_type === 'telegram' || conversation.channel_type === 'whatsapp_web'
+            ? '/api/channels/send'
+            : '/api/whatsapp/send';
+
+        const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -577,7 +589,7 @@ export function MessageThread({
 
         onUpdateMessage(tempId, {
           id: data.message_id || tempId,
-          message_id: data.whatsapp_message_id || undefined,
+          message_id: data.whatsapp_message_id || data.externalMessageId || undefined,
           status: "sent",
         });
       } catch (err) {
@@ -612,7 +624,12 @@ export function MessageThread({
       onNewMessage(optimisticMsg);
 
       try {
-        const res = await fetch("/api/whatsapp/send", {
+        const endpoint =
+          conversation.channel_type === 'telegram' || conversation.channel_type === 'whatsapp_web'
+            ? '/api/channels/send'
+            : '/api/whatsapp/send';
+
+        const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -635,7 +652,7 @@ export function MessageThread({
 
         onUpdateMessage(tempId, {
           id: data.message_id || tempId,
-          message_id: data.whatsapp_message_id || undefined,
+          message_id: data.whatsapp_message_id || data.externalMessageId || undefined,
           status: "sent",
         });
       } catch (err) {
@@ -933,7 +950,25 @@ export function MessageThread({
             {displayName.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
+              {conversation.channel_type === 'telegram' ? (
+                <Badge variant="outline" className="border-sky-500/30 bg-sky-500/10 text-sky-400 text-[10px] gap-1 font-medium shrink-0">
+                  <Send className="size-2.5" />
+                  Telegram
+                </Badge>
+              ) : conversation.channel_type === 'whatsapp_web' ? (
+                <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-[10px] gap-1 font-medium shrink-0">
+                  <Smartphone className="size-2.5" />
+                  WhatsApp Web
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="border-green-500/30 bg-green-500/10 text-green-400 text-[10px] gap-1 font-medium shrink-0">
+                  <MessageSquare className="size-2.5" />
+                  WhatsApp API
+                </Badge>
+              )}
+            </div>
             <p className="truncate text-xs text-muted-foreground">{contact.phone}</p>
           </div>
           {/* Session timer badge — hidden on the narrowest phones so

@@ -1,6 +1,7 @@
 import { AnnouncementBar } from '@/components/marketing/announcement-bar';
 import { Navbar } from '@/components/marketing/navbar';
 import { Footer } from '@/components/marketing/footer';
+import { FloatingWhatsApp } from '@/components/marketing/floating-whatsapp';
 
 export const metadata = {
   title: {
@@ -35,6 +36,7 @@ export default function MarketingLayout({
       <Navbar />
       <main className="flex-1">{children}</main>
       <Footer />
+      <FloatingWhatsApp />
     </div>
   );
 }

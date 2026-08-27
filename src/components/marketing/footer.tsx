@@ -1,15 +1,24 @@
 import Link from 'next/link';
 import { siteConfig } from '@/lib/config/site';
+import { BrandLogo } from './brand-logo';
 import {
   MessageSquare,
   Shield,
   Zap,
   Lock,
   ExternalLink,
+  MessageCircle,
+  PhoneCall,
+  Mail,
+  MapPin,
 } from 'lucide-react';
 
 export function Footer() {
   const currentYear = new Date().getFullYear();
+  const cleanPhone = siteConfig.phone.replace(/[^0-9]/g, '');
+  const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(
+    'Hi NX CRM Team! I would like more information about your WhatsApp Cloud CRM platform.'
+  )}`;
 
   return (
     <footer className="border-t border-slate-200 bg-slate-50 text-slate-600">
@@ -55,44 +64,46 @@ export function Footer() {
       </div>
 
       {/* Main Footer Links */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-8 lg:gap-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-16">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-12">
           {/* Brand Column */}
-          <div className="col-span-2 space-y-4">
-            <Link href="/" className="flex items-center gap-2.5">
-              <div className="flex size-9 items-center justify-center rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white font-extrabold text-sm shadow-md shadow-emerald-600/20">
-                NX
-              </div>
-              <div className="flex flex-col">
-                <span className="font-extrabold text-base tracking-tight text-slate-900">
-                  NX CRM
-                </span>
-                <span className="text-[10px] text-slate-500 font-medium">
-                  Powered by Nexora Spark Agency
-                </span>
-              </div>
-            </Link>
+          <div className="sm:col-span-2 space-y-4">
+            <BrandLogo size="md" />
 
             <p className="text-xs text-slate-500 leading-relaxed max-w-sm">
               The modern WhatsApp CRM, Shared Inbox, and Visual Automation platform designed for growing businesses, sales teams, and agencies.
             </p>
 
-            <div className="pt-2 text-xs space-y-1 text-slate-500">
-              <div>
-                <span className="text-slate-700 font-medium">Official Contact: </span>
-                <a href={`tel:${siteConfig.phone}`} className="text-emerald-700 font-semibold hover:underline">
+            <div className="pt-2 text-xs space-y-2 text-slate-600">
+              <div className="flex items-center gap-2">
+                <PhoneCall className="size-3.5 text-emerald-600 shrink-0" />
+                <a href={`tel:${siteConfig.phone}`} className="text-slate-800 font-semibold hover:text-emerald-700 hover:underline">
                   {siteConfig.phone}
                 </a>
               </div>
-              <div>
-                <span className="text-slate-700 font-medium">Support & Sales: </span>
-                <a href={`mailto:${siteConfig.supportEmail}`} className="text-emerald-700 font-semibold hover:underline">
+              <div className="flex items-center gap-2">
+                <Mail className="size-3.5 text-blue-600 shrink-0" />
+                <a href={`mailto:${siteConfig.supportEmail}`} className="text-slate-800 font-semibold hover:text-blue-700 hover:underline">
                   {siteConfig.supportEmail}
                 </a>
               </div>
-              <p className="text-[11px] text-slate-400 pt-1">
-                {siteConfig.businessAddress}
-              </p>
+              <div className="flex items-start gap-2 text-[11px] text-slate-500 pt-1">
+                <MapPin className="size-3.5 text-slate-400 shrink-0 mt-0.5" />
+                <span>{siteConfig.businessAddress}</span>
+              </div>
+            </div>
+
+            {/* Quick WhatsApp Chat Button in Footer */}
+            <div className="pt-1">
+              <a
+                href={waUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100/80 transition-colors text-xs font-semibold shadow-2xs"
+              >
+                <MessageCircle className="size-3.5 text-emerald-600" />
+                <span>Chat with WhatsApp Support</span>
+              </a>
             </div>
           </div>
 

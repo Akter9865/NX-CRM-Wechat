@@ -85,11 +85,11 @@ export function SharedInboxSection() {
 
           {/* Right Column: Realistic Interactive Inbox UI Component */}
           <div className="relative">
-            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-xl space-y-4">
+            <div className="rounded-3xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xl space-y-4 hover-lift">
               {/* Inbox Mock Header */}
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-3">
-                  <div className="size-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">
+                  <div className="size-9 shrink-0 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">
                     RS
                   </div>
                   <div>
@@ -99,11 +99,11 @@ export function SharedInboxSection() {
                         Active Now
                       </span>
                     </div>
-                    <p className="text-[10px] text-slate-500">+91 98765 43210 • Assigned to Sarah Jenkins</p>
+                    <p className="text-[10px] text-slate-500 truncate max-w-[200px] sm:max-w-none">+91 98765 43210 • Assigned to Sarah Jenkins</p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1.5 text-[10px] text-amber-800 bg-amber-50 border border-amber-200 px-2 py-1 rounded-full font-medium">
+                <div className="inline-flex items-center gap-1.5 text-[10px] text-amber-800 bg-amber-50 border border-amber-200 px-2 py-1 rounded-full font-medium self-start sm:self-auto shrink-0">
                   <Clock className="size-3 text-amber-600" />
                   <span>21h 45m left in 24h window</span>
                 </div>

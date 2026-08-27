@@ -164,6 +164,9 @@ export interface Conversation {
   contact_id: string;
   whatsapp_connection_id?: string | null;
   whatsapp_connection?: WhatsAppConfig | null;
+  channel_type?: 'whatsapp_cloud' | 'whatsapp_web' | 'telegram' | 'wechat' | 'custom' | string;
+  channel_connection_id?: string | null;
+  channel_connection?: any;
   status: ConversationStatus;
   assigned_agent_id?: string;
   last_message_text?: string;
@@ -237,6 +240,7 @@ export interface Message {
   media_type?: string | null;
   template_name?: string;
   message_id?: string;
+  channel_type?: 'whatsapp_cloud' | 'whatsapp_web' | 'telegram' | 'wechat' | 'custom' | string;
   status: MessageStatus;
   created_at: string;
   reply_to_message_id?: string;

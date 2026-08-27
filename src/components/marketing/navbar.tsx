@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MobileNav } from './mobile-nav';
+import { BrandLogo } from './brand-logo';
 import { cn } from '@/lib/utils';
 
 export function Navbar() {
@@ -67,29 +68,7 @@ export function Navbar() {
     >
       <div className="max-w-7xl mx-auto flex h-18 items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Brand Logo */}
-        <Link href="/" className="flex items-center gap-3 group">
-          <div className="relative flex size-10 items-center justify-center rounded-xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-emerald-500 p-0.5 shadow-md shadow-emerald-600/20 transition-transform duration-200 group-hover:scale-105">
-            <div className="flex size-full items-center justify-center rounded-[10px] bg-white">
-              <span className="font-extrabold text-lg tracking-tighter bg-gradient-to-r from-emerald-600 to-teal-500 bg-clip-text text-transparent">
-                NX
-              </span>
-            </div>
-          </div>
-
-          <div className="flex flex-col">
-            <div className="flex items-center gap-1.5">
-              <span className="font-extrabold text-lg tracking-tight text-slate-900">
-                NX CRM
-              </span>
-              <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.2 text-[9px] font-bold uppercase tracking-wider text-emerald-700">
-                WhatsApp
-              </span>
-            </div>
-            <span className="text-[10px] font-medium text-slate-500 tracking-wide">
-              Powered by Nexora Spark Agency
-            </span>
-          </div>
-        </Link>
+        <BrandLogo size="md" />
 
         {/* Desktop Navigation Links */}
         <nav className="hidden lg:flex items-center gap-1">
@@ -232,6 +211,13 @@ export function Navbar() {
             Pricing
           </Link>
 
+          <Link
+            href="/contact"
+            className="rounded-xl px-3.5 py-2 text-sm font-semibold text-slate-600 transition-colors hover:text-slate-900 hover:bg-slate-100/80"
+          >
+            Contact
+          </Link>
+
           {/* Resources Dropdown */}
           <div className="group relative">
             <button
@@ -278,30 +264,30 @@ export function Navbar() {
         </nav>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           {isAuthenticated ? (
-            <Link href="/dashboard">
+            <Link href="/dashboard" className="hidden sm:inline-flex">
               <Button
-                className="h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center gap-1.5"
+                className="h-9 sm:h-10 px-3.5 sm:px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center gap-1.5"
               >
                 <LayoutDashboard className="size-3.5" />
-                <span>Open Dashboard</span>
+                <span>Dashboard</span>
               </Button>
             </Link>
           ) : (
             <>
-              <Link href="/login" className="hidden sm:inline-flex">
+              <Link href="/login" className="hidden md:inline-flex">
                 <Button
                   variant="ghost"
-                  className="h-10 px-4 rounded-xl text-slate-700 hover:text-slate-900 hover:bg-slate-100 font-semibold text-xs"
+                  className="h-9 sm:h-10 px-3.5 sm:px-4 rounded-xl text-slate-700 hover:text-slate-900 hover:bg-slate-100 font-semibold text-xs"
                 >
                   Log In
                 </Button>
               </Link>
 
-              <Link href="/signup">
+              <Link href="/signup" className="hidden sm:inline-flex">
                 <Button
-                  className="h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center gap-1.5 transition-all hover:scale-[1.02]"
+                  className="h-9 sm:h-10 px-3.5 sm:px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center gap-1.5 transition-all hover:scale-[1.02]"
                 >
                   <span>Start Free Trial</span>
                   <ArrowRight className="size-3.5" />

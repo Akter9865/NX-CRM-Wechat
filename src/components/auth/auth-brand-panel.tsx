@@ -11,6 +11,7 @@ import {
   Users,
   GitBranch,
 } from 'lucide-react';
+import { BrandLogo } from '@/components/marketing/brand-logo';
 
 export function AuthBrandPanel() {
   return (
@@ -34,32 +35,7 @@ export function AuthBrandPanel() {
 
       {/* Top Header: Brand & Badge */}
       <div className="relative z-10 space-y-4">
-        <div className="flex items-center gap-3">
-          <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-500 to-emerald-400 p-0.5 shadow-lg shadow-emerald-500/20">
-            <div className="flex h-full w-full items-center justify-center rounded-[14px] bg-card/90 backdrop-blur-xs">
-              <MessageSquare className="size-5 text-emerald-400" />
-            </div>
-            <span className="absolute -top-1 -right-1 flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border-2 border-card"></span>
-            </span>
-          </div>
-
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xl font-black tracking-tight text-foreground">
-                NX CRM
-              </span>
-              <span className="rounded-md bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400">
-                WeChat
-              </span>
-            </div>
-            <p className="text-[11px] text-muted-foreground font-medium">
-              Powered by{' '}
-              <span className="font-semibold text-foreground">Nexora Spark Agency</span>
-            </p>
-          </div>
-        </div>
+        <BrandLogo size="lg" />
 
         {/* Headline */}
         <div className="pt-4 max-w-md">

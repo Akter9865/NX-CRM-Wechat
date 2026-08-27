@@ -1,3 +1,6 @@
+'use client';
+
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Zap,
@@ -8,10 +11,9 @@ import {
   Clock,
   UserCheck,
   CheckCircle2,
-  Sliders,
-  Webhook,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 const WORKFLOW_STEPS = [
   {
@@ -65,13 +67,23 @@ const WORKFLOW_STEPS = [
 ];
 
 export function AutomationSection() {
+  const [activeStep, setActiveStep] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActiveStep((prev) => (prev + 1) % WORKFLOW_STEPS.length);
+    }, 2400);
+
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <section className="py-20 md:py-28 bg-slate-50/60 border-y border-slate-200/80">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center max-w-3xl mx-auto space-y-4 mb-16">
-          <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3.5 py-1 text-xs font-semibold text-amber-800">
+          <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3.5 py-1 text-xs font-semibold text-amber-800 shadow-2xs">
             <Zap className="size-3.5 text-amber-600" />
-            <span>Drag-and-Drop Workflow Engine</span>
+            <span>Interactive Workflow Engine</span>
           </div>
 
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-slate-900 tracking-tight">
@@ -86,25 +98,42 @@ export function AutomationSection() {
           </p>
         </div>
 
-        {/* Visual Workflow Steps Flow */}
+        {/* Visual Workflow Steps Flow with Dynamic Active Step Indicator */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
           {WORKFLOW_STEPS.map((step, idx) => {
             const Icon = step.icon;
+            const isActive = activeStep === idx;
             return (
               <div
                 key={idx}
-                className="relative rounded-3xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md hover:border-amber-300 transition-all duration-200"
+                onClick={() => setActiveStep(idx)}
+                className={cn(
+                  'cursor-pointer relative rounded-3xl border bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-xl hover:-translate-y-1',
+                  isActive
+                    ? 'border-amber-500 shadow-xl shadow-amber-500/10 ring-2 ring-amber-500/20 scale-[1.02]'
+                    : 'border-slate-200 hover:border-amber-300'
+                )}
               >
+                {isActive && (
+                  <div className="absolute -top-3 right-6">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 text-white font-bold px-2.5 py-0.5 text-[9px] uppercase tracking-wider shadow-sm animate-pulse">
+                      ⚡ Executing Now
+                    </span>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between mb-4">
                   <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
                     Step 0{step.step} • {step.type}
                   </span>
-                  <div className={`flex size-9 items-center justify-center rounded-xl border ${step.color}`}>
+                  <div className={`flex size-9 items-center justify-center rounded-xl border ${step.color} ${isActive ? 'scale-110 shadow-xs' : ''} transition-transform`}>
                     <Icon className="size-4.5" />
                   </div>
                 </div>
 
-                <h3 className="text-sm font-bold text-slate-900 mb-1.5">{step.title}</h3>
+                <h3 className={cn('text-sm font-bold mb-1.5 transition-colors', isActive ? 'text-amber-900' : 'text-slate-900')}>
+                  {step.title}
+                </h3>
                 <p className="text-xs text-slate-500 leading-relaxed">{step.desc}</p>
               </div>
             );
@@ -123,7 +152,7 @@ export function AutomationSection() {
           </div>
           <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-3 py-1.5 rounded-full shadow-sm">
             <CheckCircle2 className="size-3.5 text-amber-600" />
-            <span>Outbound Webhook Webhooks</span>
+            <span>Outbound Webhooks</span>
           </div>
           <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-3 py-1.5 rounded-full shadow-sm">
             <CheckCircle2 className="size-3.5 text-amber-600" />
@@ -133,7 +162,7 @@ export function AutomationSection() {
 
         <div className="text-center">
           <Link href="/features/automation">
-            <Button className="h-11 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs px-6 shadow-md shadow-amber-600/20 inline-flex items-center gap-2">
+            <Button className="h-11 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs px-6 shadow-md shadow-amber-600/20 inline-flex items-center gap-2 transition-all hover:scale-[1.02]">
               <span>Explore Visual Automation</span>
               <ArrowRight className="size-4" />
             </Button>

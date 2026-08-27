@@ -9,7 +9,7 @@ import {
 } from "@/lib/inbox/conversations";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
-import { Search, ChevronDown, X } from "lucide-react";
+import { Search, ChevronDown, X, MessageSquare, Send, Smartphone, Globe } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useTranslations } from "next-intl";
 import { Input } from "@/components/ui/input";
@@ -65,6 +65,7 @@ export function ConversationList({
 
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<InboxFilter>("all");
+  const [selectedChannel, setSelectedChannel] = useState<'all' | 'whatsapp_cloud' | 'whatsapp_web' | 'telegram'>('all');
   const [loading, setLoading] = useState(true);
   // Contact-based filters (issue #272). Tags use OR logic (a conversation
   // matches if its contact carries any selected tag), consistent with
@@ -190,6 +191,15 @@ export function ConversationList({
   const filtered = useMemo(() => {
     let result = conversations;
 
+    // Channel filter
+    if (selectedChannel === 'telegram') {
+      result = result.filter((c) => c.channel_type === 'telegram');
+    } else if (selectedChannel === 'whatsapp_web') {
+      result = result.filter((c) => c.channel_type === 'whatsapp_web');
+    } else if (selectedChannel === 'whatsapp_cloud') {
+      result = result.filter((c) => !c.channel_type || c.channel_type === 'whatsapp_cloud');
+    }
+
     if (filter === "unread") {
       result = result.filter((c) => c.unread_count > 0);
     } else if (filter !== "all") {
@@ -222,7 +232,7 @@ export function ConversationList({
     }
 
     return result;
-  }, [conversations, filter, search, selectedTagIds, selectedCompany, selectedConnectionId]);
+  }, [conversations, filter, selectedChannel, search, selectedTagIds, selectedCompany, selectedConnectionId]);
 
   const toggleTag = useCallback((id: string) => {
     setSelectedTagIds((prev) =>
@@ -258,6 +268,34 @@ export function ConversationList({
     // the single pane showing; fixed 320px on desktop where it shares the
     // row with the thread + contact sidebar.
     <div className="flex h-full w-full flex-col border-r border-border bg-card lg:w-80">
+      {/* Multi-Channel Switcher Tabs */}
+      <div className="flex items-center gap-1 border-b border-border bg-muted/40 p-1.5 overflow-x-auto scrollbar-none">
+        {[
+          { id: 'all', label: 'All Inboxes', icon: Globe },
+          { id: 'whatsapp_cloud', label: 'WhatsApp API', icon: MessageSquare },
+          { id: 'whatsapp_web', label: 'WhatsApp Web', icon: Smartphone },
+          { id: 'telegram', label: 'Telegram', icon: Send },
+        ].map((ch) => {
+          const Icon = ch.icon;
+          const isSelected = selectedChannel === ch.id;
+          return (
+            <button
+              key={ch.id}
+              onClick={() => setSelectedChannel(ch.id as any)}
+              className={cn(
+                'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all',
+                isSelected
+                  ? 'bg-card text-foreground shadow-xs border border-border/80'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+              )}
+            >
+              <Icon className={cn('size-3', isSelected ? 'text-primary' : 'text-muted-foreground')} />
+              <span>{ch.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Search + Filter */}
       <div className="space-y-2 border-b border-border p-3">
         <div className="relative">
@@ -570,11 +608,22 @@ function ConversationItem({
             {conversation.last_message_text || t("noMessagesYet")}
           </p>
           <div className="flex shrink-0 items-center gap-1.5">
-            {conversation.whatsapp_connection && (
-              <span className="inline-flex items-center text-[10px] text-primary/80 font-mono bg-primary/10 px-1 py-0.5 rounded truncate max-w-[90px]">
+            {conversation.channel_type === 'telegram' ? (
+              <span className="inline-flex items-center gap-1 text-[10px] text-sky-400 font-medium bg-sky-500/10 px-1.5 py-0.5 rounded-md truncate max-w-[100px] border border-sky-500/20">
+                <Send className="size-2.5" />
+                Telegram
+              </span>
+            ) : conversation.channel_type === 'whatsapp_web' ? (
+              <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-medium bg-emerald-500/10 px-1.5 py-0.5 rounded-md truncate max-w-[100px] border border-emerald-500/20">
+                <Smartphone className="size-2.5" />
+                WA Web
+              </span>
+            ) : conversation.whatsapp_connection ? (
+              <span className="inline-flex items-center gap-1 text-[10px] text-green-400 font-medium bg-green-500/10 px-1.5 py-0.5 rounded-md truncate max-w-[100px] border border-green-500/20">
+                <MessageSquare className="size-2.5" />
                 {conversation.whatsapp_connection.connection_name || conversation.whatsapp_connection.display_phone_number}
               </span>
-            )}
+            ) : null}
             {conversation.unread_count > 0 && (
               <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
                 {conversation.unread_count}

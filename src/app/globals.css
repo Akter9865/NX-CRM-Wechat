@@ -378,12 +378,36 @@ html[data-theme="slate"] {
   }
 }
 
+@keyframes float-slow {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
 @keyframes pulse-glow {
   0%, 100% {
     box-shadow: 0 0 15px -2px var(--primary-soft-2);
   }
   50% {
     box-shadow: 0 0 28px 2px var(--primary-soft);
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
   }
 }
 
@@ -396,17 +420,39 @@ html[data-theme="slate"] {
   }
 }
 
+@keyframes gradient-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
 @layer utilities {
   .animate-float {
     animation: float 4s ease-in-out infinite;
   }
+  .animate-float-slow {
+    animation: float-slow 6s ease-in-out infinite;
+  }
   .animate-glow {
     animation: pulse-glow 3s ease-in-out infinite;
+  }
+  .animate-pulse-ring {
+    animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }
   .animate-shimmer {
     background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0) 100%);
     background-size: 200% 100%;
     animation: shimmer-sweep 2.5s infinite;
+  }
+  .animate-gradient-flow {
+    background-size: 200% 200%;
+    animation: gradient-flow 6s ease infinite;
   }
   .glow-green {
     box-shadow: 0 0 24px -4px oklch(0.68 0.20 155 / 0.28);
@@ -424,6 +470,13 @@ html[data-theme="slate"] {
     box-shadow: 0 12px 32px -8px var(--primary-soft-2);
     border-color: var(--primary);
     transform: translateY(-2px);
+  }
+  .hover-lift {
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .hover-lift:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 16px 32px -8px rgba(15, 23, 42, 0.08);
   }
   .glass-card {
     background: radial-gradient(circle at top left, oklch(0.18 0.02 240 / 0.7), oklch(0.14 0.015 240 / 0.9));

@@ -48,23 +48,23 @@ const TRUST_POINTS = [
 
 export function TrustPoints() {
   return (
-    <section className="border-y border-slate-200/80 bg-slate-50/70 py-12">
+    <section className="border-y border-slate-200/80 bg-slate-50/70 py-8 sm:py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 sm:gap-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-4">
           {TRUST_POINTS.map((point, idx) => {
             const Icon = point.icon;
             return (
               <div
                 key={idx}
-                className="flex flex-col items-center text-center p-4 rounded-2xl border border-slate-200 bg-white hover:shadow-md hover:border-emerald-300 transition-all duration-200"
+                className="group flex flex-col items-center text-center p-3 sm:p-4 rounded-2xl border border-slate-200 bg-white hover:border-emerald-300 hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
               >
-                <div className={`flex size-11 items-center justify-center rounded-xl border mb-3 ${point.color}`}>
-                  <Icon className="size-5" />
+                <div className={`flex size-10 sm:size-11 items-center justify-center rounded-xl border mb-2.5 ${point.color} group-hover:scale-110 transition-transform duration-300 shadow-2xs`}>
+                  <Icon className="size-4.5 sm:size-5" />
                 </div>
-                <h3 className="text-xs font-bold text-slate-900 mb-1 leading-snug">
+                <h3 className="text-xs font-bold text-slate-900 mb-1 leading-snug group-hover:text-emerald-700 transition-colors line-clamp-1">
                   {point.label}
                 </h3>
-                <p className="text-[11px] text-slate-500 leading-tight">
+                <p className="text-[10px] sm:text-[11px] text-slate-500 leading-tight line-clamp-2 sm:line-clamp-none">
                   {point.description}
                 </p>
               </div>
