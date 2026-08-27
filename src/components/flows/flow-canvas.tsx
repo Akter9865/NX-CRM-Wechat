@@ -57,7 +57,7 @@ import {
   type OnNodeDrag,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Zap } from 'lucide-react';
 
 import { useTranslations } from 'next-intl';
 
@@ -567,8 +567,12 @@ function FlowCanvasInner() {
             maskColor="color-mix(in oklch, var(--background) 70%, transparent)"
             className="!border-border !bg-card !rounded-xl !border !shadow-[0_6px_20px_-8px_rgba(0,0,0,0.5)]"
           />
-          <Panel position="top-left" className="!top-4 !left-4">
+          <Panel position="top-left" className="!top-4 !left-4 flex items-center gap-2.5">
             <CanvasAddNodeButton t={t} />
+            <CanvasTriggerBadge onSelectEntry={() => {
+              if (entryNodeId) setSelectedNodeKey(entryNodeId);
+              else if (builderNodes[0]) setSelectedNodeKey(builderNodes[0].node_key);
+            }} />
           </Panel>
         </ReactFlow>
       </div>
@@ -782,5 +786,44 @@ function CanvasAddNodeButton({ t }: { t: ReturnType<typeof useTranslations> }) {
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+function CanvasTriggerBadge({ onSelectEntry }: { onSelectEntry: () => void }) {
+  const { state } = useFlowEditor();
+
+  const isKeyword = state.trigger_type === "keyword";
+  const rawKeywords = state.trigger_config?.keywords;
+  const keywords = Array.isArray(rawKeywords)
+    ? (rawKeywords as string[])
+    : typeof rawKeywords === "string"
+      ? rawKeywords.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
+
+  const label = isKeyword
+    ? keywords.length > 0
+      ? `Trigger: "${keywords.slice(0, 3).join('", "')}"${keywords.length > 3 ? ` +${keywords.length - 3}` : ''}`
+      : "Trigger: No keywords (Click to set)"
+    : state.trigger_type === "first_inbound_message"
+      ? "Trigger: First inbound message"
+      : "Trigger: Manual start";
+
+  const hasKeywords = !isKeyword || keywords.length > 0;
+
+  return (
+    <button
+      type="button"
+      onClick={onSelectEntry}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold shadow-[0_6px_20px_-8px_rgba(0,0,0,0.5)] transition-colors border",
+        hasKeywords
+          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
+          : "border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 animate-pulse"
+      )}
+      title="Click to view and edit Flow Trigger in Start Node"
+    >
+      <Zap className="h-3.5 w-3.5" />
+      <span>{label}</span>
+    </button>
   );
 }

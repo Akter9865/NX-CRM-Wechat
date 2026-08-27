@@ -1,8 +1,9 @@
 import { createClient as createServerSupabase, type SupabaseClient } from '@supabase/supabase-js';
 import { trackOutboundMessage, checkCanExecuteAutomation } from '@/lib/billing/entitlements';
-import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send';
+import { engineSendText, engineSendTemplate, engineSendInteractive, engineSendMedia } from './meta-send';
 import { addContactTagAndDispatch } from '@/lib/contacts/tag-events';
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf';
+import { matchesKeyword } from '@/lib/whatsapp/keyword-matcher';
 
 function getServiceSupabase() {
   const url =
@@ -362,6 +363,54 @@ export async function executeVisualWorkflow({
             node_title: nodeTitle,
             status: 'completed',
             input_data: { text: rawText },
+          });
+
+          await trackOutboundMessage(accountId, 1, supabase);
+        } else if (
+          (nodeType === 'action_send_media' ||
+            nodeType === 'action_send_image' ||
+            nodeType === 'action_send_video' ||
+            nodeType === 'action_send_audio' ||
+            nodeType === 'action_send_document' ||
+            nodeType === 'send_media') &&
+          (config.mediaUrl || config.media_url || config.url || config.link) &&
+          conversationId
+        ) {
+          const rawKind = (
+            config.mediaType ||
+            config.media_type ||
+            (nodeType.includes('image') ? 'image' : '') ||
+            (nodeType.includes('video') ? 'video' : '') ||
+            (nodeType.includes('audio') ? 'audio' : '') ||
+            (nodeType.includes('document') ? 'document' : '') ||
+            'image'
+          ) as 'image' | 'video' | 'audio' | 'document';
+
+          let rawCaption = typeof config.caption === 'string' ? config.caption : '';
+          rawCaption = rawCaption.replace(/\{\{contact\.name\}\}/g, contact.name || contact.phone || '');
+          rawCaption = rawCaption.replace(/\{\{contact\.phone\}\}/g, contact.phone || '');
+          rawCaption = rawCaption.replace(/\{\{contact\.email\}\}/g, contact.email || '');
+
+          const mediaUrl = config.mediaUrl || config.media_url || config.url || config.link;
+
+          await engineSendMedia({
+            accountId,
+            userId: automation.user_id,
+            conversationId,
+            contactId,
+            kind: rawKind,
+            link: mediaUrl,
+            caption: rawKind !== 'audio' && rawCaption ? rawCaption : undefined,
+            filename: config.filename || config.fileName,
+          });
+
+          await supabase.from('automation_run_steps').insert({
+            run_id: runId,
+            node_id: nextNode.id,
+            node_type: nodeType,
+            node_title: nodeTitle,
+            status: 'completed',
+            input_data: { kind: rawKind, link: mediaUrl, caption: rawCaption },
           });
 
           await trackOutboundMessage(accountId, 1, supabase);

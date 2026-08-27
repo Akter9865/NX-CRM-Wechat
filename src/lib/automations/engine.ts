@@ -25,6 +25,7 @@ import { engineSendText, engineSendTemplate, engineSendInteractive } from './met
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
 import { executeVisualWorkflow } from './visual-engine'
+import { matchesKeyword } from '@/lib/whatsapp/keyword-matcher'
 
 // ------------------------------------------------------------
 // Public API
@@ -720,31 +721,14 @@ export function matchesWholeWord(
 export function triggerMatches(automation: Automation, ctx: AutomationContext | undefined): boolean {
   if (automation.trigger_type === 'keyword_match') {
     const cfg = (automation.trigger_config || {}) as any
-    let keywords: string[] = []
-    if (Array.isArray(cfg?.keywords)) {
-      keywords = cfg.keywords
-    } else if (typeof cfg?.keywords === 'string') {
-      keywords = cfg.keywords.split(',').map((s: string) => s.trim()).filter(Boolean)
-    } else if (typeof cfg?.keyword === 'string') {
-      keywords = [cfg.keyword.trim()]
-    }
-    if (keywords.length === 0) return false
-    const text = (ctx?.message_text ?? '').toString().trim()
-    if (!text) return false
+    const rawKeywords = cfg?.keywords ?? cfg?.keyword
+    const matchType = cfg?.match_type || cfg?.matchType || 'contains'
+    const caseSensitive = Boolean(cfg?.case_sensitive || cfg?.caseSensitive)
 
-    const matchType = cfg.match_type || cfg.matchType || 'contains'
-    const caseSensitive = Boolean(cfg.case_sensitive || cfg.caseSensitive)
-
-    if (matchType === 'word') {
-      return keywords.some((raw) =>
-        raw.trim() ? matchesWholeWord(text, raw.trim(), caseSensitive) : false,
-      )
-    }
-    const haystack = caseSensitive ? text : text.toLowerCase()
-    return keywords.some((raw) => {
-      const k = (caseSensitive ? raw : raw.toLowerCase()).trim()
-      if (!k) return false
-      return matchType === 'exact' ? haystack === k : haystack.includes(k)
+    return matchesKeyword(ctx?.message_text, {
+      keywords: rawKeywords,
+      matchType,
+      caseSensitive,
     })
   }
 

@@ -32,6 +32,7 @@ import {
   Trash2,
   Upload,
   X,
+  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
@@ -49,6 +50,7 @@ import { cn } from "@/lib/utils";
 import { uploadAccountMedia, MEDIA_MAX_BYTES } from "@/lib/storage/upload-media";
 import { slugify, type BuilderNode } from "../shared";
 import { NextNodeRow, NodeKeySelect, TextRow } from "./fields";
+import { useFlowEditor, type BuilderState } from "../flow-editor-state";
 
 interface NodeConfigFormProps {
   node: BuilderNode;
@@ -68,12 +70,12 @@ export function NodeConfigForm({
   switch (node.node_type) {
     case "start":
       return (
-        <NextNodeRow
-          value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
+        <StartNodeForm
+          cfg={cfg as { next_node_key?: string }}
           allNodes={allNodes}
           currentKey={node.node_key}
-          onChange={(v) => onUpdateConfig({ next_node_key: v })}
-          label={t("advancesTo")}
+          onUpdateConfig={onUpdateConfig}
+          t={t}
         />
       );
 
@@ -867,7 +869,7 @@ function useUserTags(): UserTag[] {
 // ============================================================
 
 interface SendMediaCfg {
-  media_type?: "image" | "video" | "document";
+  media_type?: "image" | "video" | "document" | "audio";
   media_url?: string;
   caption?: string;
   filename?: string;
@@ -881,6 +883,7 @@ interface SendMediaCfg {
 const MEDIA_ACCEPT: Record<NonNullable<SendMediaCfg["media_type"]>, string> = {
   image: "image/png,image/jpeg,image/webp",
   video: "video/mp4,video/3gpp",
+  audio: "audio/aac,audio/mp4,audio/mpeg,audio/amr,audio/ogg,audio/opus",
   document:
     "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain",
 };
@@ -905,6 +908,7 @@ function SendMediaForm({
 
   const mediaType = cfg.media_type ?? "image";
   const isDocument = mediaType === "document";
+  const isAudio = mediaType === "audio";
   const displayName =
     cfg.filename ||
     (cfg.media_url ? cfg.media_url.split("/").pop() ?? "" : "");
@@ -966,6 +970,7 @@ function SendMediaForm({
           <SelectContent>
             <SelectItem value="image">{t("imageLabel")}</SelectItem>
             <SelectItem value="video">{t("videoLabel")}</SelectItem>
+            <SelectItem value="audio">Audio / Voice Note</SelectItem>
             <SelectItem value="document">
               {t("documentLabel")}
             </SelectItem>
@@ -1031,12 +1036,14 @@ function SendMediaForm({
         />
       </div>
 
-      <TextRow
-        label={t("captionLabel")}
-        value={cfg.caption ?? ""}
-        onChange={(v) => onUpdateConfig({ caption: v })}
-        rows={2}
-      />
+      {!isAudio && (
+        <TextRow
+          label={t("captionLabel")}
+          value={cfg.caption ?? ""}
+          onChange={(v) => onUpdateConfig({ caption: v })}
+          rows={2}
+        />
+      )}
 
       {isDocument && (
         <div>
@@ -1060,5 +1067,177 @@ function SendMediaForm({
         label={t("advanceAfterSending")}
       />
     </>
+  );
+}
+
+function StartNodeForm({
+  cfg,
+  allNodes,
+  currentKey,
+  onUpdateConfig,
+  t,
+}: {
+  cfg: { next_node_key?: string };
+  allNodes: BuilderNode[];
+  currentKey: string;
+  onUpdateConfig: (patch: Record<string, unknown>) => void;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const { state, setState } = useFlowEditor();
+
+  const rawKeywords = state.trigger_config?.keywords;
+  const keywords = Array.isArray(rawKeywords)
+    ? (rawKeywords as string[])
+    : typeof rawKeywords === "string"
+      ? rawKeywords.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
+
+  const matchType = (state.trigger_config?.match_type as string) || "contains";
+  const caseSensitive = Boolean(state.trigger_config?.case_sensitive);
+
+  const updateKeywords = (newKeywords: string[]) => {
+    setState((s) => ({
+      ...s,
+      trigger_config: {
+        ...s.trigger_config,
+        keywords: newKeywords,
+      },
+    }));
+  };
+
+  const updateMatchType = (mode: string | null) => {
+    if (!mode) return;
+    setState((s) => ({
+      ...s,
+      trigger_config: {
+        ...s.trigger_config,
+        match_type: mode,
+      },
+    }));
+  };
+
+  const updateCaseSensitive = (cs: boolean) => {
+    setState((s) => ({
+      ...s,
+      trigger_config: {
+        ...s.trigger_config,
+        case_sensitive: cs,
+      },
+    }));
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Trigger Event Selector */}
+      <div className="space-y-2 rounded-xl border border-primary/20 bg-primary/5 p-3.5">
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+          <Zap className="h-3.5 w-3.5" />
+          <span>When this flow starts (Trigger)</span>
+        </div>
+        <Select
+          value={state.trigger_type}
+          onValueChange={(v) => {
+            if (!v) return;
+            setState((s) => ({
+              ...s,
+              trigger_type: v as BuilderState["trigger_type"],
+              trigger_config:
+                v === "keyword" ? { keywords: [], match_type: "contains" } : {},
+            }));
+          }}
+        >
+          <SelectTrigger className="bg-background text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="keyword">Customer sends keyword (e.g. &quot;hi&quot;, &quot;pricing&quot;)</SelectItem>
+            <SelectItem value="first_inbound_message">Contact sends their very first message</SelectItem>
+            <SelectItem value="manual">Manual start / API only</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Keywords Trigger Configuration */}
+      {state.trigger_type === "keyword" && (
+        <div className="space-y-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3.5">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-emerald-400">
+              Trigger Keywords (Comma-separated)
+            </label>
+            <Input
+              value={keywords.join(", ")}
+              onChange={(e) => {
+                const parsed = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
+                updateKeywords(parsed);
+              }}
+              placeholder="hi, hello, hi bhaiya, pricing, start, help"
+              className="h-8 bg-background text-xs"
+            />
+          </div>
+
+          {/* Quick Add Chips */}
+          <div>
+            <span className="mb-1.5 block text-[10px] font-medium text-muted-foreground">
+              Quick add common keywords:
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {["hi", "hello", "hi bhaiya", "pricing", "start", "help", "namaste", "হ্যালো"].map((kw) => (
+                <button
+                  key={kw}
+                  type="button"
+                  onClick={() => {
+                    if (!keywords.includes(kw)) {
+                      updateKeywords([...keywords, kw]);
+                    }
+                  }}
+                  className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300 hover:bg-emerald-500/20"
+                >
+                  + &quot;{kw}&quot;
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Matching Mode */}
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Match Mode</label>
+              <Select value={matchType} onValueChange={(v) => updateMatchType(v)}>
+                <SelectTrigger className="h-8 bg-background text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="contains">Contains Word</SelectItem>
+                  <SelectItem value="exact">Exact Match</SelectItem>
+                  <SelectItem value="word">Whole Word Only</SelectItem>
+                  <SelectItem value="starts_with">Starts With</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Case Sensitive</label>
+              <Select value={caseSensitive ? "yes" : "no"} onValueChange={(v) => updateCaseSensitive(v === "yes")}>
+                <SelectTrigger className="h-8 bg-background text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="no">No (Case Insensitive)</SelectItem>
+                  <SelectItem value="yes">Yes (Exact Casing)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Next Node Connection */}
+      <NextNodeRow
+        value={cfg.next_node_key ?? ""}
+        allNodes={allNodes}
+        currentKey={currentKey}
+        onChange={(v) => onUpdateConfig({ next_node_key: v })}
+        label={t("advancesTo")}
+      />
+    </div>
   );
 }

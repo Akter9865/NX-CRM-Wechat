@@ -28,10 +28,10 @@ export interface StartNodeConfig {
 }
 
 export interface SendMessageNodeConfig {
-  /** Plain text sent to the customer; can interpolate {{vars.X}}. */
+  /** Plain text sent to the customer; can interpolate {{vars.X}} and {{contact.X}}. */
   text: string;
-  /** Auto-advance target after the message lands at Meta. */
-  next_node_key: string;
+  /** Auto-advance target after the message lands at Meta. Optional if this is the final step. */
+  next_node_key?: string;
 }
 
 export interface SendButtonsNodeConfig {
@@ -69,32 +69,22 @@ export interface SendListNodeConfig {
 }
 
 /**
- * Sends a single image / video / document via WhatsApp, then
- * auto-advances. The media file is uploaded to the `flow-media`
- * Supabase Storage bucket by the builder; `media_url` is the public
- * URL Meta fetches at send time.
- *
- * Why one node with a `media_type` discriminator (rather than three
- * separate node types): Meta's send-side payload differs only in the
- * top-level key (`image` / `video` / `document`) and the
- * filename-on-document quirk. Modeling three node types would triple
- * the builder forms, engine cases, and add-menu entries for no
- * meaningful behavioural difference.
+ * Sends a single image / video / audio / document via WhatsApp, then
+ * auto-advances.
  */
 export interface SendMediaNodeConfig {
-  media_type: "image" | "video" | "document";
+  media_type: "image" | "video" | "document" | "audio";
   /** Public URL Meta will fetch. Uploaded via the builder's file picker. */
   media_url: string;
-  /** Optional caption shown under the media (Meta caps at 1024 chars). */
+  /** Optional caption shown under the media (Meta caps at 1024 chars). Ignored on audio. */
   caption?: string;
   /**
    * Filename shown in the recipient's chat. Documents only — Meta
-   * ignores it for image/video. Defaults to the file's original name
-   * at upload time; the user can edit it.
+   * ignores it for image/video/audio.
    */
   filename?: string;
-  /** Auto-advance target after the send lands at Meta. */
-  next_node_key: string;
+  /** Auto-advance target after the send lands at Meta. Optional if this is the final step. */
+  next_node_key?: string;
 }
 
 export interface HandoffNodeConfig {
@@ -204,8 +194,8 @@ export type FlowNodeType = FlowNodeConfig["node_type"];
 
 export interface KeywordTriggerConfig {
   /** One or more keywords. Match is case-insensitive by default. */
-  keywords: string[];
-  match_type?: "exact" | "contains";
+  keywords: string[] | string;
+  match_type?: "exact" | "contains" | "word" | "starts_with";
   case_sensitive?: boolean;
 }
 

@@ -89,29 +89,22 @@ export function matchReplyId(
   return null;
 }
 
+import { matchesKeyword } from "@/lib/whatsapp/keyword-matcher";
+
 /**
- * Case-insensitive contains/exact match against a list of keywords.
- * Used by the trigger evaluator. Stable enough that the v3 builder
- * UI can preview matches by passing canned strings.
+ * Case-insensitive contains/exact/word/starts_with match against a list of keywords.
+ * Used by the trigger evaluator.
  */
 export function matchesKeywordTrigger(
   text: string,
   cfg: KeywordTriggerConfig,
 ): boolean {
-  if (!text || !cfg.keywords?.length) return false;
-  const matchType = cfg.match_type ?? "contains";
-  const cleanText = text.trim();
-  const haystack = cfg.case_sensitive ? cleanText : cleanText.toLowerCase();
-  for (const raw of cfg.keywords) {
-    if (!raw) continue;
-    const cleanRaw = raw.trim();
-    if (!cleanRaw) continue;
-    const needle = cfg.case_sensitive ? cleanRaw : cleanRaw.toLowerCase();
-    if (matchType === "exact" ? haystack === needle : haystack.includes(needle)) {
-      return true;
-    }
-  }
-  return false;
+  if (!text || !cfg) return false;
+  return matchesKeyword(text, {
+    keywords: cfg.keywords,
+    matchType: cfg.match_type,
+    caseSensitive: cfg.case_sensitive,
+  });
 }
 
 /**
@@ -557,17 +550,42 @@ async function evaluateConditionNode(
 }
 
 /**
- * Tiny `{{vars.foo}}` interpolation. Used by send_message + collect_input
- * prompt text so a captured `name` can show up in the next prompt
- * ("Thanks {{vars.name}}, what's your email?"). Missing vars render as
- * empty string — the same behavior as the automations engine.
+ * Variable & Contact Field interpolation for flows.
+ * Supports {{contact.name}}, {{contact.phone}}, {{contact.email}}, {{vars.foo}}, and {{foo}}.
  */
-function interpolateVars(template: string, vars: Record<string, unknown>): string {
+export function interpolateFlowVariables(
+  template: string,
+  vars: Record<string, unknown> = {},
+  contact?: Record<string, unknown> | null,
+): string {
   if (!template) return "";
-  return template.replace(/\{\{vars\.([a-zA-Z0-9_]+)\}\}/g, (_, key) => {
-    const v = vars[key];
-    return v === undefined || v === null ? "" : String(v);
+  return template.replace(/\{\{([a-zA-Z0-9_.]+)\}\}/g, (_, rawKey) => {
+    const key = rawKey.trim();
+    if (key.startsWith("vars.")) {
+      const v = vars[key.slice(5)];
+      return v === undefined || v === null ? "" : String(v);
+    }
+    if (key.startsWith("contact.")) {
+      const field = key.slice(8);
+      const c = contact?.[field];
+      return c === undefined || c === null ? "" : String(c);
+    }
+    if (contact && contact[key] !== undefined && contact[key] !== null) {
+      return String(contact[key]);
+    }
+    if (vars && vars[key] !== undefined && vars[key] !== null) {
+      return String(vars[key]);
+    }
+    return "";
   });
+}
+
+function interpolateVars(
+  template: string,
+  vars: Record<string, unknown>,
+  contact?: Record<string, unknown> | null,
+): string {
+  return interpolateFlowVariables(template, vars, contact);
 }
 
 async function endRun(
@@ -600,14 +618,24 @@ async function advanceFromNodeKey(
   nodes: Map<string, FlowNodeRow>,
 ): Promise<{ outcome: "advanced" | "completed" | "handed_off" }> {
   let currentKey: string | null = startNodeKey;
+  let contactRecord: Record<string, unknown> | null = null;
+  if (run.contact_id) {
+    const { data: c } = await db
+      .from("contacts")
+      .select("id, name, phone, email, company, custom_fields")
+      .eq("id", run.contact_id)
+      .maybeSingle();
+    contactRecord = (c as Record<string, unknown> | null) ?? null;
+  }
+
   // Defensive cap — if a flow has a cycle (which the validator
   // SHOULD catch but doesn't yet in v1), we bail rather than loop.
   for (let safety = 0; safety < 64; safety += 1) {
     if (!currentKey) {
-      await logEvent(db, run.id, "error", null, {
-        reason: "next_node_key was null mid-advance",
+      await logEvent(db, run.id, "completed", null, {
+        reason: "end_of_flow",
       });
-      await endRun(db, run.id, "failed", "missing_next_node");
+      await endRun(db, run.id, "completed", "end_of_flow");
       return { outcome: "completed" };
     }
     const node: FlowNodeRow | null = nodes.get(currentKey) ?? null;
@@ -623,7 +651,7 @@ async function advanceFromNodeKey(
     });
 
     if (node.node_type === "start") {
-      currentKey = (node.config as unknown as StartNodeConfig).next_node_key;
+      currentKey = (node.config as unknown as StartNodeConfig).next_node_key || null;
       continue;
     }
     if (node.node_type === "send_message") {
@@ -631,10 +659,10 @@ async function advanceFromNodeKey(
       try {
         const { whatsapp_message_id } = await engineSendText({
           accountId: run.account_id,
-    userId: run.user_id,
+          userId: run.user_id,
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
-          text: interpolateVars(cfg.text, run.vars),
+          text: interpolateVars(cfg.text, run.vars, contactRecord),
         });
         await logEvent(db, run.id, "message_sent", node.node_key, {
           node_type: "send_message",
@@ -648,7 +676,7 @@ async function advanceFromNodeKey(
         await endRun(db, run.id, "failed", "send_text_failed");
         return { outcome: "completed" };
       }
-      currentKey = cfg.next_node_key;
+      currentKey = cfg.next_node_key || null;
       continue;
     }
     if (node.node_type === "send_media") {
@@ -656,13 +684,13 @@ async function advanceFromNodeKey(
       try {
         const { whatsapp_message_id } = await engineSendMedia({
           accountId: run.account_id,
-    userId: run.user_id,
+          userId: run.user_id,
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
           kind: cfg.media_type,
           link: cfg.media_url,
           caption: cfg.caption
-            ? interpolateVars(cfg.caption, run.vars)
+            ? interpolateVars(cfg.caption, run.vars, contactRecord)
             : undefined,
           filename: cfg.filename,
         });
@@ -679,7 +707,7 @@ async function advanceFromNodeKey(
         await endRun(db, run.id, "failed", "send_media_failed");
         return { outcome: "completed" };
       }
-      currentKey = cfg.next_node_key;
+      currentKey = cfg.next_node_key || null;
       continue;
     }
     if (node.node_type === "collect_input") {
@@ -689,10 +717,10 @@ async function advanceFromNodeKey(
       try {
         const { whatsapp_message_id } = await engineSendText({
           accountId: run.account_id,
-    userId: run.user_id,
+          userId: run.user_id,
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
-          text: interpolateVars(cfg.prompt_text, run.vars),
+          text: interpolateVars(cfg.prompt_text, run.vars, contactRecord),
         });
         await logEvent(db, run.id, "message_sent", node.node_key, {
           node_type: "collect_input",

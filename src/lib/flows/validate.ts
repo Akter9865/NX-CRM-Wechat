@@ -24,6 +24,7 @@
  */
 
 import { INTERACTIVE_LIMITS } from "@/lib/whatsapp/meta-api";
+import { parseKeywords } from "@/lib/whatsapp/keyword-matcher";
 
 export interface ValidationIssue {
   severity: "error" | "warning";
@@ -146,9 +147,8 @@ function validateTrigger(
   const issues: ValidationIssue[] = [];
 
   if (trigger_type === "keyword") {
-    const keywords = Array.isArray(trigger_config.keywords)
-      ? (trigger_config.keywords as unknown[])
-      : null;
+    const rawKeywords = trigger_config.keywords as string[] | string | undefined;
+    const keywords = parseKeywords(rawKeywords);
     if (!keywords || keywords.length === 0) {
       issues.push({
         severity: "error",
@@ -156,11 +156,8 @@ function validateTrigger(
         field: "trigger_config.keywords",
         message: "Keyword triggers need at least one keyword.",
       });
-    } else {
-      // Empty / whitespace-only keywords are silent no-ops at match
-      // time — call them out so the user doesn't think they configured
-      // a keyword that never fires.
-      const blanks = keywords.filter(
+    } else if (Array.isArray(rawKeywords)) {
+      const blanks = rawKeywords.filter(
         (k) => typeof k !== "string" || !k.trim(),
       ).length;
       if (blanks > 0) {
@@ -222,15 +219,7 @@ function validateNode(
           message: "Send-message node needs a text body.",
         });
       }
-      if (!cfg.next_node_key) {
-        issues.push({
-          severity: "error",
-          scope: "node",
-          node_key: node.node_key,
-          field: "next_node_key",
-          message: "Send-message node must point to a next node.",
-        });
-      } else if (!knownKeys.has(cfg.next_node_key)) {
+      if (cfg.next_node_key && !knownKeys.has(cfg.next_node_key)) {
         issues.push({
           severity: "error",
           scope: "node",
@@ -244,21 +233,21 @@ function validateNode(
 
     case "send_media": {
       const cfg = node.config as {
-        media_type?: "image" | "video" | "document";
+        media_type?: "image" | "video" | "document" | "audio";
         media_url?: string;
         caption?: string;
         next_node_key?: string;
       };
       if (
         !cfg.media_type ||
-        !["image", "video", "document"].includes(cfg.media_type)
+        !["image", "video", "document", "audio"].includes(cfg.media_type)
       ) {
         issues.push({
           severity: "error",
           scope: "node",
           node_key: node.node_key,
           field: "media_type",
-          message: "Send-media node needs a media type (image, video, or document).",
+          message: "Send-media node needs a media type (image, video, audio, or document).",
         });
       }
       if (!cfg.media_url?.trim()) {
@@ -281,15 +270,7 @@ function validateNode(
           message: `Caption exceeds ${INTERACTIVE_LIMITS.bodyMaxLength} chars (WhatsApp limit).`,
         });
       }
-      if (!cfg.next_node_key) {
-        issues.push({
-          severity: "error",
-          scope: "node",
-          node_key: node.node_key,
-          field: "next_node_key",
-          message: "Send-media node must point to a next node.",
-        });
-      } else if (!knownKeys.has(cfg.next_node_key)) {
+      if (cfg.next_node_key && !knownKeys.has(cfg.next_node_key)) {
         issues.push({
           severity: "error",
           scope: "node",
