@@ -1153,7 +1153,9 @@ export function VisualFlowBuilder({
         updated_at: new Date().toISOString(),
       };
 
-      if (automationId) {
+      const isExisting = Boolean(automationId && automationId !== 'new');
+
+      if (isExisting && automationId) {
         const { error } = await supabase
           .from('automations')
           .update(workflowPayload)

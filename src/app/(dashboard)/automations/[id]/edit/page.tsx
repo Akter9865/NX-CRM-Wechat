@@ -21,6 +21,10 @@ export default function EditAutomationPage({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!id || id === 'new') {
+      setLoading(false);
+      return;
+    }
     async function load() {
       try {
         const { data, error: fetchErr } = await supabase

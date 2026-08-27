@@ -57,6 +57,7 @@ export default function AutomationRunsPage({
   const [openRunId, setOpenRunId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!id || id === 'new') return;
     async function load() {
       try {
         const [autRes, runsRes, logsRes] = await Promise.all([
