@@ -273,8 +273,6 @@ export function ConversationList({
         {[
           { id: 'all', label: 'All Inboxes', icon: Globe },
           { id: 'whatsapp_cloud', label: 'WhatsApp API', icon: MessageSquare },
-          { id: 'whatsapp_web', label: 'WhatsApp Web', icon: Smartphone },
-          { id: 'telegram', label: 'Telegram', icon: Send },
         ].map((ch) => {
           const Icon = ch.icon;
           const isSelected = selectedChannel === ch.id;

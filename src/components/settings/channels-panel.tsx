@@ -281,7 +281,7 @@ export function ChannelsPanel() {
     <div className="space-y-6">
       <SettingsPanelHead
         title="Multi-Channels & Inbox Switcher"
-        description="Connect and manage multiple messaging channels — WhatsApp Cloud API, WhatsApp Web (QR Linked Devices), and Telegram — with dedicated inboxes and instant switching."
+        description="Connect and manage your messaging channels — WhatsApp Cloud API with dedicated inboxes and instant switching."
       />
 
       {/* Top Action & Stats Bar */}
@@ -308,25 +308,6 @@ export function ChannelsPanel() {
             <Sparkles className="size-3.5" />
             Simulate Inbound Chat
           </Button>
-
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={startQrSession}
-            className="h-9 text-xs font-semibold gap-1.5 border-emerald-500/30 bg-emerald-500/5 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
-          >
-            <QrCode className="size-3.5" />
-            Link WhatsApp Web (QR)
-          </Button>
-
-          <Button
-            size="sm"
-            onClick={() => setTgModalOpen(true)}
-            className="h-9 text-xs font-semibold gap-1.5 bg-sky-600 hover:bg-sky-500 text-white"
-          >
-            <Send className="size-3.5" />
-            Connect Telegram
-          </Button>
         </div>
       </div>
 
@@ -338,16 +319,6 @@ export function ChannelsPanel() {
             id: 'whatsapp_cloud',
             label: 'WhatsApp API',
             count: connections.filter((c) => c.channel_type === 'whatsapp_cloud').length,
-          },
-          {
-            id: 'whatsapp_web',
-            label: 'WhatsApp Web (QR)',
-            count: connections.filter((c) => c.channel_type === 'whatsapp_web').length,
-          },
-          {
-            id: 'telegram',
-            label: 'Telegram',
-            count: connections.filter((c) => c.channel_type === 'telegram').length,
           },
         ].map((tab) => (
           <button
@@ -385,18 +356,8 @@ export function ChannelsPanel() {
           <Radio className="size-10 text-muted-foreground/50 mx-auto mb-3" />
           <h4 className="text-sm font-semibold text-foreground">No channel connections yet</h4>
           <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
-            Connect your official WhatsApp Cloud API, link WhatsApp Web via QR code, or add a Telegram Bot to start receiving chats in your unified inbox.
+            Connect your official WhatsApp Cloud API to start receiving chats in your unified inbox.
           </p>
-          <div className="mt-4 flex items-center justify-center gap-3">
-            <Button size="sm" onClick={startQrSession} variant="outline" className="h-8 text-xs gap-1.5">
-              <QrCode className="size-3.5" />
-              Link WhatsApp Web
-            </Button>
-            <Button size="sm" onClick={() => setTgModalOpen(true)} className="h-8 text-xs gap-1.5">
-              <Send className="size-3.5" />
-              Add Telegram Bot
-            </Button>
-          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
