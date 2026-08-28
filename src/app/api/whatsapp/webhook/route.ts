@@ -37,6 +37,13 @@ function supabaseAdmin() {
   return _adminClient
 }
 
+// Fast in-memory deduplication cache for Meta message IDs (wamid)
+const recentlyProcessedMessages = new Map<string, number>()
+
+export function _resetRecentlyProcessedMessagesForTest() {
+  recentlyProcessedMessages.clear()
+}
+
 interface WhatsAppMessage {
   id: string
   from: string
@@ -341,7 +348,8 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
           // read before migration 039 lands would have it undefined,
           // and losing attachments is the failure mode worth avoiding.
           config.mirror_inbound_media !== false,
-          config.id
+          config.id,
+          Boolean(config.is_automations_paused)
         )
       }
     }
@@ -613,8 +621,20 @@ async function processMessage(
   // Per-account opt-out for the inbound-media mirror (migration 039).
   // See parseMessageContent for what it turns off.
   mirrorMedia: boolean,
-  connectionId?: string
+  connectionId?: string,
+  isConnectionAutomationsPaused?: boolean
 ) {
+  // Layer 1 Fast In-Memory Deduplication: Drop duplicate webhook calls arriving in milliseconds
+  if (message.id) {
+    const now = Date.now()
+    const lastProcessed = recentlyProcessedMessages.get(message.id)
+    if (lastProcessed && now - lastProcessed < 900000) {
+      console.info('[webhook] In-memory fast deduplication hit for message:', message.id)
+      return
+    }
+    recentlyProcessedMessages.set(message.id, now)
+  }
+
   const senderPhone = normalizePhone(message.from)
   const contactName = contact.profile.name
 
@@ -795,10 +815,34 @@ async function processMessage(
   // If this contact was a recent broadcast recipient, flag the reply
   // so the broadcast's `replied_count` advances (via the aggregate
   // trigger installed in migration 003).
-  await flagBroadcastReplyIfAny(accountId, contactRecord.id)
+  // Auto-detect Opt-Out keywords (Compliance & Anti-Ban requirement)
+  const inboundTextRaw = (contentText ?? message.text?.body ?? '').trim().toLowerCase()
+  const isOptOutKeyword =
+    inboundTextRaw === 'stop' ||
+    inboundTextRaw === 'unsubscribe' ||
+    inboundTextRaw === 'cancel' ||
+    inboundTextRaw === 'optout' ||
+    inboundTextRaw === 'opt-out' ||
+    inboundTextRaw === 'ar message dio na' ||
+    inboundTextRaw === 'stop message'
 
-  // Check if Bot / Flow Automations are paused by human agent for this thread
-  const isBotAutomationPaused = Boolean(conversation?.ai_autoreply_disabled);
+  if (isOptOutKeyword && contactRecord?.id) {
+    await supabaseAdmin()
+      .from('contacts')
+      .update({ is_opted_out: true, updated_at: new Date().toISOString() })
+      .eq('id', contactRecord.id)
+    contactRecord.is_opted_out = true
+    console.info(`[webhook] Opt-out keyword "${inboundTextRaw}" detected from contact ${contactRecord.id}. Set is_opted_out=true.`)
+  }
+
+  // Check if Bot / Flow Automations are paused:
+  // 1. Thread-level pause (ai_autoreply_disabled)
+  // 2. Contact is opted out (is_opted_out)
+  // 3. Global / Connection-level Emergency Stop (isConnectionAutomationsPaused)
+  const isBotAutomationPaused =
+    Boolean(conversation?.ai_autoreply_disabled) ||
+    Boolean(contactRecord?.is_opted_out) ||
+    Boolean(isConnectionAutomationsPaused);
 
   let flowConsumed = false;
   if (!isBotAutomationPaused) {

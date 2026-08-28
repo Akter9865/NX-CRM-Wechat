@@ -151,11 +151,17 @@ export async function createBroadcast(
       rejected++;
       continue;
     }
-    const { id } = await findOrCreateContact(db, accountId, auditUserId, {
+    const contactRes = await findOrCreateContact(db, accountId, auditUserId, {
       phone: sanitized,
     });
+
+    if (contactRes.is_opted_out) {
+      rejected++;
+      continue;
+    }
+
     resolved.push({
-      contactId: id,
+      contactId: contactRes.id,
       phone: sanitized,
       params: Array.isArray(r.params)
         ? r.params.filter((p): p is string => typeof p === 'string')
@@ -259,7 +265,14 @@ export async function deliverBroadcast(
   db: SupabaseClient,
   plan: BroadcastPlan
 ): Promise<void> {
-  for (const recipient of plan.planned) {
+  for (let i = 0; i < plan.planned.length; i++) {
+    const recipient = plan.planned[i];
+
+    // Pacing delay (50ms) to respect Meta rate limits and protect WABA quality rating
+    if (i > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
     const variants = phoneVariants(recipient.phone);
     let sentMessageId: string | null = null;
     let lastError: string | null = null;

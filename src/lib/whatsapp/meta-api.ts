@@ -24,19 +24,77 @@ export interface MetaPhoneInfo {
   code_verification_status?: string
 }
 
-interface MetaErrorResponse {
-  error?: { message?: string; code?: number; type?: string }
+export interface MetaErrorResponse {
+  error?: {
+    message?: string
+    code?: number
+    error_subcode?: number
+    type?: string
+    error_user_title?: string
+    error_user_msg?: string
+    fbtrace_id?: string
+  }
+}
+
+export class MetaApiError extends Error {
+  code?: number
+  error_subcode?: number
+  type?: string
+  status: number
+  isPermanent: boolean
+
+  constructor(details: {
+    message: string
+    code?: number
+    error_subcode?: number
+    type?: string
+    status: number
+  }) {
+    super(details.message)
+    this.name = 'MetaApiError'
+    this.code = details.code
+    this.error_subcode = details.error_subcode
+    this.type = details.type
+    this.status = details.status
+    // Permanent errors: 4xx (client errors), expired 24h window (131047), undeliverable (131026), invalid phone (131030), auth/token (190, 100)
+    this.isPermanent =
+      details.status === 400 ||
+      details.status === 401 ||
+      details.status === 403 ||
+      details.status === 404 ||
+      details.code === 131026 ||
+      details.code === 131047 ||
+      details.code === 131030 ||
+      details.code === 100 ||
+      details.code === 190
+  }
 }
 
 async function throwMetaError(response: Response, fallback: string): Promise<never> {
   let message = fallback
+  let code: number | undefined
+  let error_subcode: number | undefined
+  let type: string | undefined
+
   try {
     const data = (await response.json()) as MetaErrorResponse
-    if (data.error?.message) message = data.error.message
+    if (data.error?.message) {
+      message = data.error.message
+      code = data.error.code
+      error_subcode = data.error.error_subcode
+      type = data.error.type
+    }
   } catch {
     // response body wasn't JSON — keep the fallback
   }
-  throw new Error(message)
+
+  throw new MetaApiError({
+    message: `Meta API error (${response.status}${code ? ` / code ${code}` : ''}): ${message}`,
+    code,
+    error_subcode,
+    type,
+    status: response.status,
+  })
 }
 
 // ============================================================

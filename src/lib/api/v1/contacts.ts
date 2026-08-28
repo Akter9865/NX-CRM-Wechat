@@ -123,7 +123,7 @@ export async function findOrCreateContact(
   }
 
   const existing = await findExistingContact(db, accountId, sanitized);
-  if (existing) return { id: existing.id, created: false };
+  if (existing) return { id: existing.id, is_opted_out: Boolean((existing as any).is_opted_out), created: false };
 
   // Backend Entitlement Guard: Check contact limit under account plan
   const canAdd = await checkCanAddContact(accountId, db);
@@ -144,7 +144,7 @@ export async function findOrCreateContact(
       email: input.email ?? null,
       company: input.company ?? null,
     })
-    .select('id')
+    .select('id, is_opted_out')
     .single();
 
   if (error || !created) {
@@ -152,13 +152,13 @@ export async function findOrCreateContact(
     // rejected the duplicate. Re-resolve to the winner.
     if (isUniqueViolation(error)) {
       const raced = await findExistingContact(db, accountId, sanitized);
-      if (raced) return { id: raced.id, created: false };
+      if (raced) return { id: raced.id, is_opted_out: Boolean((raced as any).is_opted_out), created: false };
     }
     console.error('[api/v1/contacts] create error:', error);
     throw new ContactError('Failed to create contact', 500);
   }
 
-  return { id: created.id, created: true };
+  return { id: created.id, is_opted_out: Boolean((created as any).is_opted_out), created: true };
 }
 
 /**

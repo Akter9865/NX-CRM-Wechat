@@ -242,6 +242,14 @@ export async function sendMessageToConversation(
     );
   }
 
+  if (contact.is_opted_out) {
+    throw new SendMessageError(
+      'contact_opted_out',
+      'This contact has opted out of receiving messages (STOP). Sending is blocked to protect account compliance.',
+      400
+    );
+  }
+
   const sanitizedPhone = sanitizePhoneForMeta(contact.phone);
   if (!isValidE164(sanitizedPhone)) {
     throw new SendMessageError(

@@ -215,14 +215,11 @@ vi.mock('@/lib/automations/engine', () => ({
 vi.mock('@/lib/flows/engine', () => ({
   dispatchInboundToFlows: h.dispatchInboundToFlows,
 }))
-vi.mock('@/lib/ai/auto-reply', () => ({
-  dispatchInboundToAiReply: h.dispatchInboundToAiReply,
-}))
 vi.mock('@/lib/webhooks/deliver', () => ({
   dispatchWebhookEvent: h.dispatchWebhookEvent,
 }))
 
-import { POST } from './route'
+import { POST, _resetRecentlyProcessedMessagesForTest } from './route'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
 
 const mockGetMediaUrl = vi.mocked(getMediaUrl)
@@ -268,6 +265,7 @@ async function runWebhook(message?: Record<string, unknown>) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  _resetRecentlyProcessedMessagesForTest()
   h.state.messageUpsertResult = [{ id: 'msg-1' }]
   h.state.priorCustomerMsgCount = 0
   h.state.replyContextParent = null

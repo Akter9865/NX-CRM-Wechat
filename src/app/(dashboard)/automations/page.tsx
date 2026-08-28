@@ -17,6 +17,10 @@ import {
   PhoneCall,
   Loader2,
   Sparkles,
+  ShieldAlert,
+  AlertTriangle,
+  Play,
+  Pause,
 } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/client"
@@ -67,6 +71,46 @@ export default function AutomationsPage() {
   const [error, setError] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Automation | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [isEmergencyPaused, setIsEmergencyPaused] = useState(false)
+  const [loadingEmergency, setLoadingEmergency] = useState(false)
+
+  async function loadEmergencyStatus() {
+    try {
+      const res = await fetch("/api/automations/emergency-stop")
+      if (res.ok) {
+        const data = await res.json()
+        setIsEmergencyPaused(Boolean(data.is_paused))
+      }
+    } catch {
+      // best-effort
+    }
+  }
+
+  async function toggleEmergencyStop(nextPaused: boolean) {
+    setLoadingEmergency(true)
+    try {
+      const res = await fetch("/api/automations/emergency-stop", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ paused: nextPaused }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err?.error || "Failed to update emergency pause state")
+        return
+      }
+      setIsEmergencyPaused(nextPaused)
+      toast.success(
+        nextPaused
+          ? "🚨 Emergency Stop Active: All automations paused."
+          : "✅ Automations resumed successfully."
+      )
+    } catch {
+      toast.error("Failed to toggle emergency stop")
+    } finally {
+      setLoadingEmergency(false)
+    }
+  }
 
   async function load() {
     try {
@@ -84,6 +128,7 @@ export default function AutomationsPage() {
 
   useEffect(() => {
     load()
+    loadEmergencyStatus()
   }, [])
 
   async function toggleActive(a: Automation, next: boolean) {
@@ -157,26 +202,81 @@ export default function AutomationsPage() {
     )
   }
 
-  const showTemplates = automations.length < 3
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Emergency Stop / Safety Switch Banner */}
+      {isEmergencyPaused && (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-destructive dark:bg-destructive/20">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-destructive/20 p-2 text-destructive">
+                <AlertTriangle className="size-5 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-sm">🚨 Emergency Stop Active: All Automations Paused</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  All outgoing automated responses, keyword replies, and AI bots are paused to protect your WhatsApp number. Inbound customer messages are safely arriving in your Inbox.
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="default"
+              size="sm"
+              disabled={loadingEmergency}
+              onClick={() => toggleEmergencyStop(false)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
+            >
+              {loadingEmergency ? (
+                <Loader2 className="size-4 animate-spin mr-1.5" />
+              ) : (
+                <Play className="size-4 mr-1.5" />
+              )}
+              Resume Automations
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">{t("title")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {t("subtitle")}
           </p>
         </div>
-        <GatedButton
-          canAct={canCreate}
-          gateReason="create automations"
-          onClick={() => router.push("/automations/new")}
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          <Plus className="h-4 w-4" />
-          {t("create")}
-        </GatedButton>
+        <div className="flex items-center gap-2.5">
+          <Button
+            variant={isEmergencyPaused ? "destructive" : "outline"}
+            size="sm"
+            disabled={loadingEmergency}
+            onClick={() => toggleEmergencyStop(!isEmergencyPaused)}
+            className={cn(
+              "font-medium border shadow-xs transition-colors",
+              isEmergencyPaused
+                ? "border-destructive bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                : "border-border hover:bg-muted text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {loadingEmergency ? (
+              <Loader2 className="size-4 animate-spin mr-1.5" />
+            ) : isEmergencyPaused ? (
+              <Play className="size-4 mr-1.5" />
+            ) : (
+              <ShieldAlert className="size-4 mr-1.5 text-amber-500" />
+            )}
+            {isEmergencyPaused ? "Resume All" : "Emergency Pause"}
+          </Button>
+
+          <GatedButton
+            canAct={canCreate}
+            gateReason="create automations"
+            onClick={() => router.push("/automations/new")}
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            <Plus className="h-4 w-4" />
+            {t("create")}
+          </GatedButton>
+        </div>
       </div>
 
       <section>

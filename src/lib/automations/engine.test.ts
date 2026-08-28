@@ -104,12 +104,13 @@ vi.mock("./meta-send", () => ({
   engineSendInteractive: vi.fn(async () => ({ whatsapp_message_id: "m1" })),
 }));
 
-import { runAutomationsForTrigger, triggerMatches } from "./engine";
+import { runAutomationsForTrigger, triggerMatches, _resetAutomationExecutionTrackerForTest } from "./engine";
 import type { Automation, KeywordMatchTriggerConfig } from "@/types";
 
 const ACCOUNT = "acct-1";
 
 beforeEach(() => {
+  _resetAutomationExecutionTrackerForTest();
   h.state.owned = null;
   h.state.ownedCustomField = null;
   h.state.automations = [];

@@ -124,12 +124,16 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   // new tenancy column.
   const { data: contact, error: contactErr } = await db
     .from('contacts')
-    .select('id, phone')
+    .select('id, phone, is_opted_out')
     .eq('id', input.contactId)
     .eq('account_id', input.accountId)
     .maybeSingle()
   if (contactErr || !contact?.phone) {
     throw new Error('contact not found for this account')
+  }
+
+  if (contact.is_opted_out) {
+    throw new Error(`contact ${input.contactId} is opted out of automated messages`)
   }
 
   const sanitized = sanitizePhoneForMeta(contact.phone)

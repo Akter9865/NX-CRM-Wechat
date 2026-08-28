@@ -58,6 +58,18 @@ export interface DispatchInput {
   context?: AutomationContext
 }
 
+// In-memory per-contact execution timestamp tracker for loop protection & cooldown
+const lastStandardExecution = new Map<string, number>()
+const standardExecutionDepth = new Map<string, number>()
+
+const MAX_STANDARD_DEPTH = 5
+const STANDARD_COOLDOWN_MS = 5000 // 5 seconds cooldown per contact-automation pair
+
+export function _resetAutomationExecutionTrackerForTest() {
+  lastStandardExecution.clear()
+  standardExecutionDepth.clear()
+}
+
 /**
  * Fire all active automations matching the given trigger for an
  * account.
@@ -70,17 +82,11 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
   try {
     const db = supabaseAdmin()
 
-    // Tenant isolation. `contactId` can be caller-supplied (the manual
-    // POST /api/automations/engine entrypoint reads it straight from the
-    // request body), and every step below runs through the service-role
-    // client, which bypasses RLS. So before any step can touch the
-    // contact, verify it actually belongs to this account. A foreign or
-    // forged id is refused silently — callers are fire-and-forget, and a
-    // distinct error would leak whether a given contact UUID exists.
+    // Tenant isolation & Opt-out guard.
     if (input.contactId) {
       const { data: owned, error: ownErr } = await db
         .from('contacts')
-        .select('id')
+        .select('id, is_opted_out')
         .eq('id', input.contactId)
         .eq('account_id', input.accountId)
         .maybeSingle()
@@ -90,6 +96,10 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
       }
       if (!owned) {
         console.warn('[automations] contact not in account, refusing dispatch', input.contactId)
+        return
+      }
+      if (owned.is_opted_out) {
+        console.info('[automations] contact is opted out, skipping automation dispatch:', input.contactId)
         return
       }
     }
@@ -109,6 +119,32 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
 
     for (const automation of automations as Automation[]) {
       if (!triggerMatches(automation, input.context)) continue
+
+      // Cooldown & Rapid-Fire Throttling per contact-automation pair
+      if (input.contactId) {
+        const contactKey = `${input.accountId}:${input.contactId}:${automation.id}`
+        const now = Date.now()
+        const lastTime = lastStandardExecution.get(contactKey) || 0
+        const currentDepth = standardExecutionDepth.get(contactKey) || 0
+
+        if (currentDepth >= MAX_STANDARD_DEPTH) {
+          console.warn(
+            `[automations] Max execution depth (${MAX_STANDARD_DEPTH}) reached for contact ${input.contactId}. Stopping loop.`
+          )
+          continue
+        }
+
+        if (now - lastTime < STANDARD_COOLDOWN_MS) {
+          console.warn(
+            `[automations] Cooldown active for contact ${input.contactId} and automation ${automation.id}. Ignoring rapid duplicate event.`
+          )
+          continue
+        }
+
+        lastStandardExecution.set(contactKey, now)
+        standardExecutionDepth.set(contactKey, currentDepth + 1)
+      }
+
       try {
         await executeAutomation(automation, input)
       } catch (err) {
