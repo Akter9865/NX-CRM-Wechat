@@ -79,8 +79,6 @@ export function AiThreadBanner({
   onChange,
 }: AiThreadBannerProps) {
   const t = useTranslations("Inbox.aiBanner");
-  const { accountId } = useAuth();
-  const [autoReplyOn, setAutoReplyOn] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   // Optimistic local mirror of the pause flag so the banner flips
   // instantly on click; re-seeds whenever the thread (or its server
@@ -88,88 +86,80 @@ export function AiThreadBanner({
   const [paused, setPaused] = useState(disabled);
   useEffect(() => setPaused(disabled), [conversationId, disabled]);
 
-  useEffect(() => {
-    if (!accountId) return;
-    let alive = true;
-    fetchAiAccountStatus(accountId).then((s) => alive && setAutoReplyOn(s.autoReplyOn));
-    return () => {
-      alive = false;
-    };
-  }, [accountId]);
-
   const toggle = useCallback(
-    async (paused: boolean) => {
+    async (nextPaused: boolean) => {
       setBusy(true);
       try {
         const res = await fetch(`/api/ai/autoreply/${conversationId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           // "Take over" also assigns the thread to the acting agent.
-          body: JSON.stringify({ paused, assign_to_me: paused }),
+          body: JSON.stringify({ paused: nextPaused, assign_to_me: nextPaused }),
         });
         if (!res.ok) {
           const j = await res.json().catch(() => ({}));
-          toast.error(j?.error ?? t("updateError"));
+          toast.error(j?.error ?? (nextPaused ? "Failed to pause bot" : "Failed to resume bot"));
           return;
         }
-        setPaused(paused);
+        setPaused(nextPaused);
         onChange?.({
-          ai_autoreply_disabled: paused,
-          // Take over assigns to the acting agent; resume releases only
-          // the caller's own assignment. The realtime UPDATE reconciles
-          // the exact value either way.
-          ...(paused
+          ai_autoreply_disabled: nextPaused,
+          ...(nextPaused
             ? currentUserId
               ? { assigned_agent_id: currentUserId }
               : {}
             : { assigned_agent_id: null }),
         });
-        toast.success(paused ? t("tookOver") : t("resumed"));
+        toast.success(
+          nextPaused
+            ? "Bot & automations paused for this conversation (Human Agent Mode)"
+            : "Bot & flow automations resumed"
+        );
       } catch {
-        toast.error(t("networkError"));
+        toast.error("Network error while updating bot status");
       } finally {
         setBusy(false);
       }
     },
-    [conversationId, currentUserId, onChange, t],
+    [conversationId, currentUserId, onChange],
   );
 
-  // Account has no auto-reply → nothing to show. (Still loading → nothing.)
-  if (!autoReplyOn) return null;
-
-  // Paused here (a human took over, or the model handed off).
+  // Paused here (a human took over, or bot was disabled for this chat).
   if (paused) {
     return (
       <Banner tone="muted">
-        <div className="min-w-0 flex-1">
-          <p className="font-medium text-foreground">{t("pausedTitle")}</p>
-          {handoffSummary && (
-            <p className="truncate text-muted-foreground" title={handoffSummary}>
-              {handoffSummary}
+        <div className="min-w-0 flex-1 flex items-center gap-2">
+          <span className="size-2 rounded-full bg-amber-500 shrink-0 animate-pulse" />
+          <div className="min-w-0">
+            <p className="font-medium text-foreground text-xs">
+              Bot & Automations Paused (Human Agent Mode)
             </p>
-          )}
+            {handoffSummary && (
+              <p className="truncate text-muted-foreground text-[11px]" title={handoffSummary}>
+                {handoffSummary}
+              </p>
+            )}
+          </div>
         </div>
         <BannerButton onClick={() => toggle(false)} busy={busy} icon={Undo2}>
-          {t("resume")}
+          <span>Resume Bot / Automation</span>
         </BannerButton>
       </Banner>
     );
   }
 
-  // Active, but a human already owns it → the bot won't fire; no banner.
-  if (assignedAgentId) return null;
-
-  // Active on this thread.
+  // Active on this thread
   return (
     <Banner tone="primary">
-      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <span className="size-2 rounded-full bg-emerald-500 shrink-0" />
         <Sparkles className="h-3.5 w-3.5 flex-shrink-0 text-primary" />
-        <span className="truncate font-medium text-foreground">
-          {t("activeText")}
+        <span className="truncate font-medium text-foreground text-xs">
+          Bot & Flow Automation Active
         </span>
       </div>
       <BannerButton onClick={() => toggle(true)} busy={busy} icon={Hand}>
-        {t("takeOver")}
+        <span>Pause Bot / Take Over</span>
       </BannerButton>
     </Banner>
   );

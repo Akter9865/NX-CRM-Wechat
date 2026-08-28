@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
 export function ImpersonationBanner() {
-  const router = useRouter();
   const [impersonationData, setImpersonationData] = useState<{
     accountId: string;
     accountName: string;
@@ -27,6 +26,7 @@ export function ImpersonationBanner() {
           const jsonStr = atob(raw);
           const data = JSON.parse(jsonStr);
           if (data && data.accountName) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setImpersonationData(data);
           }
         }

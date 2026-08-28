@@ -33,7 +33,7 @@ export const metadata = {
 };
 
 const COMPARISON_ROWS = [
-  { feature: 'Contact Capacity', free: '10', pro: '1,000', business: '7,000', enterprise: 'Unlimited' },
+  { feature: 'Contact Capacity', free: '10', pro: '700', business: '7,000', enterprise: 'Unlimited' },
   { feature: 'Monthly Message Bandwidth', free: '200', pro: 'Unlimited*', business: 'Unlimited*', enterprise: 'Unlimited*' },
   { feature: 'WhatsApp API Connections', free: '1', pro: '1', business: '5', enterprise: 'Unlimited' },
   { feature: 'Shared Team Inbox', free: true, pro: true, business: true, enterprise: true },

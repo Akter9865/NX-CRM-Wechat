@@ -22,7 +22,7 @@ describe('Subscription Plans Configuration', () => {
     expect(PLANS.free.whatsappConnectionLimit).toBe(1);
 
     expect(PLANS.pro.price).toBe(499);
-    expect(PLANS.pro.contactLimit).toBe(1000);
+    expect(PLANS.pro.contactLimit).toBe(700);
     expect(PLANS.pro.monthlyMessageLimit).toBeNull(); // Unlimited
     expect(PLANS.pro.whatsappConnectionLimit).toBe(1);
 
@@ -79,7 +79,7 @@ describe('Entitlements Evaluation and Limits Logic', () => {
       const result = await checkCanAddContact('account-123', 1, mockSupabase);
       expect(result.allowed).toBe(true);
       expect(result.current).toBe(50);
-      expect(result.limit).toBe(1000);
+      expect(result.limit).toBe(700);
     });
 
     it('rejects adding contact exceeding plan limit', async () => {
@@ -499,7 +499,7 @@ describe('Entitlements Evaluation and Limits Logic', () => {
       const summary = await getAccountEntitlement('account-123', mockSupabase);
       expect(summary.planId).toBe('pro');
       expect(summary.contacts.current).toBe(120);
-      expect(summary.contacts.limit).toBe(1000);
+      expect(summary.contacts.limit).toBe(700);
       expect(summary.contacts.isOverLimit).toBe(false);
       expect(summary.messages.currentMonthSent).toBe(450);
       expect(summary.messages.limit).toBeNull();

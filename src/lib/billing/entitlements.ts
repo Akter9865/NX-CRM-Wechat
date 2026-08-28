@@ -463,6 +463,16 @@ export async function checkCanSendMessage(
     };
   }
 
+  if (summary.contacts.isOverLimit) {
+    return {
+      allowed: false,
+      message: `Contact limit reached (${summary.contacts.current.toLocaleString()} / ${summary.contacts.limit?.toLocaleString()} contacts). Upgrade your ${summary.plan.name} plan to continue messaging and adding contacts.`,
+      plan: summary.plan,
+      currentSent: summary.messages.currentMonthSent,
+      limit: summary.messages.limit,
+    };
+  }
+
   if (summary.messages.limit !== null && summary.messages.currentMonthSent + countToSend > summary.messages.limit) {
     return {
       allowed: false,

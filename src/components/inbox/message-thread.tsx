@@ -890,6 +890,38 @@ export function MessageThread({
     [conversation, onAssignChange],
   );
 
+  const [botToggling, setBotToggling] = useState(false);
+  const isBotPaused = Boolean(conversation?.ai_autoreply_disabled);
+
+  const handleToggleBotAutomation = useCallback(async () => {
+    if (!conversation) return;
+    setBotToggling(true);
+    const nextPaused = !isBotPaused;
+    try {
+      const res = await fetch(`/api/ai/autoreply/${conversation.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paused: nextPaused, assign_to_me: nextPaused }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        toast.error(j?.error ?? "Failed to toggle bot");
+        return;
+      }
+      if (nextPaused) {
+        if (user?.id) onAssignChange(conversation.id, user.id);
+        toast.success("Bot paused for this conversation (Human Agent Mode)");
+      } else {
+        onAssignChange(conversation.id, null);
+        toast.success("Bot & flow automations resumed");
+      }
+    } catch {
+      toast.error("Network error while toggling bot");
+    } finally {
+      setBotToggling(false);
+    }
+  }, [conversation, isBotPaused, user?.id, onAssignChange]);
+
   // Empty state — same WhatsApp-style doodle background as the active
   // thread below, so swapping between empty/selected doesn't change the
   // pattern under the user's eye.
@@ -986,6 +1018,34 @@ export function MessageThread({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Bot / Flow Automation Header Toggle */}
+          <button
+            type="button"
+            onClick={handleToggleBotAutomation}
+            disabled={botToggling}
+            title={
+              isBotPaused
+                ? "Bot is paused. Click to resume bot & automations."
+                : "Bot is active. Click to pause bot & take over."
+            }
+            className={cn(
+              "inline-flex items-center gap-1.5 h-7 px-2.5 text-xs font-semibold rounded-md border transition-all cursor-pointer",
+              isBotPaused
+                ? "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20"
+                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
+            )}
+          >
+            <span
+              className={cn(
+                "size-2 rounded-full shrink-0",
+                isBotPaused ? "bg-amber-500 animate-pulse" : "bg-emerald-500"
+              )}
+            />
+            <span className="hidden sm:inline">
+              {isBotPaused ? "Bot: Paused" : "Bot: Active"}
+            </span>
+          </button>
+
           {/* Contact-panel toggle — desktop only. The contact sidebar
               eats a chunk of horizontal width that crowds the thread on
               smaller laptops; this lets agents reclaim it when they just

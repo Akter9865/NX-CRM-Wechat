@@ -797,46 +797,33 @@ async function processMessage(
   // trigger installed in migration 003).
   await flagBroadcastReplyIfAny(accountId, contactRecord.id)
 
-  // ============================================================
-  // Flow runner dispatch.
-  //
-  // If the runner consumes the message (it either advanced an active
-  // run or started a new one), we suppress the `new_message_received`
-  // + `keyword_match` automation triggers for this inbound. Customer
-  // is navigating the bot menu, not sending a fresh trigger word
-  // that should fork into automations.
-  //
-  // The relationship-level triggers (`new_contact_created`,
-  // `first_inbound_message`) still fire even when consumed — those
-  // are about WHO is messaging, not what they said.
-  //
-  // Awaited (not fire-and-forget) because we need the `consumed`
-  // result before deciding whether to dispatch automations. The
-  // runner has its own try/catch and never throws. Accounts with
-  // no active flows take the runner's early-exit "no_match" path
-  // basically for free (one indexed SELECT for the active run).
-  // ============================================================
-  const flowResult = await dispatchInboundToFlows({
-    accountId,
-    userId: configOwnerUserId,
-    contactId: contactRecord.id,
-    conversationId: conversation.id,
-    message:
-      interactiveReplyId
-        ? {
-          kind: 'interactive_reply',
-          reply_id: interactiveReplyId,
-          reply_title: contentText ?? '',
-          meta_message_id: message.id,
-        }
-        : {
-          kind: 'text',
-          text: contentText ?? message.text?.body ?? '',
-          meta_message_id: message.id,
-        },
-    isFirstInboundMessage,
-  })
-  const flowConsumed = flowResult.consumed
+  // Check if Bot / Flow Automations are paused by human agent for this thread
+  const isBotAutomationPaused = Boolean(conversation?.ai_autoreply_disabled);
+
+  let flowConsumed = false;
+  if (!isBotAutomationPaused) {
+    const flowResult = await dispatchInboundToFlows({
+      accountId,
+      userId: configOwnerUserId,
+      contactId: contactRecord.id,
+      conversationId: conversation.id,
+      message:
+        interactiveReplyId
+          ? {
+            kind: 'interactive_reply',
+            reply_id: interactiveReplyId,
+            reply_title: contentText ?? '',
+            meta_message_id: message.id,
+          }
+          : {
+            kind: 'text',
+            text: contentText ?? message.text?.body ?? '',
+            meta_message_id: message.id,
+          },
+      isFirstInboundMessage,
+    });
+    flowConsumed = flowResult.consumed;
+  }
 
   // Fire any automations that react to this webhook event. All dispatches
   // run here (not earlier) so the contact, conversation, and inbound
@@ -852,8 +839,8 @@ async function processMessage(
     | 'interactive_reply'
   )[] = []
   // Content-level triggers are suppressed when a flow consumed the
-  // message — see the comment block above.
-  if (!flowConsumed) {
+  // message OR when bot automations are explicitly paused for this conversation.
+  if (!flowConsumed && !isBotAutomationPaused) {
     automationTriggers.push('new_message_received', 'keyword_match')
     // Interactive tap → fire the interactive_reply trigger too (only
     // meaningful when a button/list reply actually arrived). Enables
@@ -895,11 +882,9 @@ async function processMessage(
   }
 
   // AI auto-reply. Runs only for plain-text inbound the deterministic
-  // flow runner did NOT consume (flows win over the LLM), and only when
-  // the account has enabled it. Awaited inside `after()` (same reason as
-  // the webhook dispatch below); `dispatchInboundToAiReply` owns its
-  // eligibility gates + try/catch and never throws.
-  if (!flowConsumed && !interactiveReplyId && inboundText.trim()) {
+  // flow runner did NOT consume (flows win over the LLM), when bot automations
+  // are not paused, and only when the account has enabled it.
+  if (!flowConsumed && !isBotAutomationPaused && !interactiveReplyId && inboundText.trim()) {
     await dispatchInboundToAiReply({
       accountId,
       conversationId: conversation.id,

@@ -55,11 +55,11 @@ export const PLANS: Record<PlanId, PlanConfig> = {
     currencySymbol: '₹',
     description: 'Ideal for growing businesses needing higher capacity and unlimited messaging.',
     badge: 'Popular',
-    contactLimit: 1000,
+    contactLimit: 700,
     monthlyMessageLimit: null, // Unlimited*
     whatsappConnectionLimit: 1,
     features: [
-      { name: '1,000 Contacts max', included: true },
+      { name: '700 Contacts max', included: true },
       { name: 'Unlimited Messages*', included: true, note: 'Subject to Meta policies' },
       { name: '1 WhatsApp Connection', included: true },
       { name: 'Advanced CRM & Sales Pipelines', included: true },

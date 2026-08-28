@@ -13,9 +13,11 @@ export function AnnouncementBar() {
     try {
       const isDismissed = localStorage.getItem(ANNOUNCEMENT_STORAGE_KEY);
       if (!isDismissed) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setDismissed(false);
       }
     } catch {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDismissed(false);
     }
   }, []);

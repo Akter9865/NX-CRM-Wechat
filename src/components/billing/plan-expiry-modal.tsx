@@ -3,15 +3,11 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
-  ShieldAlert,
   Zap,
   Lock,
   ArrowRight,
   CheckCircle2,
-  Sparkles,
   CreditCard,
-  MessageSquare,
-  Users,
 } from 'lucide-react';
 import {
   Dialog,
@@ -30,13 +26,15 @@ interface PlanExpiryModalProps {
   onRenewSuccess?: () => void;
 }
 
-export function PlanExpiryModal({ statusInfo, onRenewSuccess }: PlanExpiryModalProps) {
+export function PlanExpiryModal({ statusInfo }: PlanExpiryModalProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
     if (statusInfo && (statusInfo.isLocked || statusInfo.isExpired)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsOpen(true);
     } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsOpen(false);
     }
   }, [statusInfo]);
@@ -98,7 +96,7 @@ export function PlanExpiryModal({ statusInfo, onRenewSuccess }: PlanExpiryModalP
                   ₹499 / mo
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">1,000 Contacts • Unlimited Messages • AI Assist</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">700 Contacts • Unlimited Messages • AI Assist</p>
             </div>
             <Link href="/pricing">
               <Button size="sm" className="h-8 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-sm">

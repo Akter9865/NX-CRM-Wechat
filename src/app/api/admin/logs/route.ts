@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
     let paymentLogs: unknown[] = [];
 
     if (category === 'audit' || category === 'all') {
-      let auditQuery = supabase
+      const auditQuery = supabase
         .from('admin_audit_logs')
         .select('*')
         .order('created_at', { ascending: false })

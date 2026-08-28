@@ -546,7 +546,7 @@ export default function AdminSettingsPage() {
                   <Label className="text-xs font-semibold text-foreground cursor-pointer">
                     Sign in with Google Enabled
                   </Label>
-                  <p className="text-[10px] text-muted-foreground">Show 'Continue with Google' button on login & signup pages.</p>
+                  <p className="text-[10px] text-muted-foreground">Show &apos;Continue with Google&apos; button on login &amp; signup pages.</p>
                 </div>
                 <Switch checked={googleOAuthEnabled} onCheckedChange={setGoogleOAuthEnabled} />
               </div>
