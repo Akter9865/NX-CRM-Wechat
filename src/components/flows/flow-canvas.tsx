@@ -1,39 +1,20 @@
 'use client';
 
 /**
- * Canvas / mind-map view of a flow. Editable, in parity with the
- * list view for everything except the trigger / header / fallback
- * panels (those are list-only — they don't fit visually inside a
- * node graph and the user can switch to List for them).
+ * Canvas / mind-map view of a flow with modern n8n & WhatChimp style
+ * visual builder ergonomics:
  *
- * What this view does:
- *   - Renders every flow_node as a draggable tile, pan + zoom +
- *     minimap. Drag positions persist via the editor context
- *     (writing on dragStop, not every frame).
- *   - Renders edges between nodes, labeled per slot (button title,
- *     "true" / "false", list row title) so a branching flow reads
- *     as a real decision tree.
- *   - Click a node → side-sheet opens with the same per-node form
- *     the list view uses, plus "Set as entry" / "Delete".
- *   - Drag from a source handle on one node to a target handle on
- *     another → wires that slot's `next_node_key`. Per-slot handles
- *     for multi-outgoing types (condition, send_buttons, send_list)
- *     so the user picks which branch they're wiring.
- *   - Backspace / Delete on a selected node → removes it AND clears
- *     every inbound `next_node_key` reference (no dangling arrows).
- *   - Delete on a selected edge → clears just that slot.
- *   - "+ Add node" floating button drops a new node at the visible
- *     viewport center.
- *   - Runs dagre auto-layout once on mount for flows whose
- *     `position_x` / `position_y` are all zero (pre-canvas flows
- *     and brand-new flows) — otherwise everything would pile at
- *     the origin.
- *
- * The toggle in `flow-editor-shell.tsx` swaps this in for
- * `<FlowBuilder>` on the same page. Both views share the same
- * `BuilderState` via `useFlowEditor()` — toggling never resets
- * unsaved edits, and a drag here updates the same nodes array the
- * list view reads.
+ * 1. Left Sidebar: Draggable & Searchable "Flow blocks" categorized into
+ *    Messages, Interactive, Data Collection, and Flow Control.
+ * 2. Drag & Drop: Drag any block from sidebar onto canvas to instantiate at
+ *    cursor position.
+ * 3. Quick-Connect Next Node Menu: Dragging a connection handle to empty
+ *    canvas space opens a floating block picker that auto-creates and wires
+ *    the next step on selection.
+ * 4. Rich FlowNodeCard: WhatChimp-style node presentation with live delivery
+ *    timing tags, image previews, and "Compose Next Message" handles.
+ * 5. Side-panel Configuration Form: Deep editing for messages, buttons, media
+ *    upload/URL, and smart delay options.
  */
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -57,12 +38,27 @@ import {
   type OnNodeDrag,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, Trash2, Zap } from 'lucide-react';
+import {
+  Clock,
+  ChevronDown,
+  ChevronRight,
+  GripVertical,
+  MoveRight,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  Search,
+  Sparkles,
+  Trash2,
+  X,
+  Zap,
+} from 'lucide-react';
 
 import { useTranslations } from 'next-intl';
 
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Sheet,
   SheetContent,
@@ -78,11 +74,14 @@ import {
 } from '@/lib/flows/edges';
 import { autoLayout, shouldAutoLayout } from '@/lib/flows/layout';
 import {
+  FLOW_BLOCKS,
+  FLOW_BLOCK_CATEGORIES,
   NodeIconChip,
   groupNodeTypesByCategory,
   nodeColors,
   summarizeNode,
   type BuilderNode,
+  type FlowBlockItem,
   type NodeType,
 } from './shared';
 import {
@@ -101,27 +100,17 @@ import { NodeConfigForm } from './forms/node-config-form';
 interface NodeData extends Record<string, unknown> {
   node: BuilderNode;
   isEntry: boolean;
-  /** Validator's "look here" pulse — flashes the card border for
-   *  ~1.6s. Drives a CSS animation, doesn't change layout. */
+  /** Validator's "look here" pulse — flashes the card border for ~1.6s. */
   isFlashed: boolean;
 }
 
-const NODE_WIDTH = 240;
-// Best-effort default; actual height varies by summary length but
-// dagre needs SOMETHING to compute rank spacing. Underestimating is
-// safer than over (tighter layout that still doesn't overlap).
-const NODE_HEIGHT = 90;
+const NODE_WIDTH = 260;
+const NODE_HEIGHT = 100;
 
 // ============================================================
-// Custom node — one card per flow node, styled to match the list
-// view's collapsed card so the two views feel like the same product.
+// Custom node — styled with WhatChimp / n8n aesthetic
 // ============================================================
 
-// Echo the design's green/red branch ports for the condition node's
-// true / false slots; every other slot inherits the node's own hue.
-// The true/false hues are derived from the start (emerald) and handoff
-// (rose) node colors so all branch/port colors stay single-sourced in
-// NODE_HUE — a palette tweak there can't leave these stale.
 function slotColor(nodeType: NodeType, slotId: string, fallback: string) {
   if (nodeType === 'condition' && slotId === 'true') {
     return nodeColors('start').solid;
@@ -139,16 +128,18 @@ function FlowNodeCard({ data, selected }: NodeProps) {
   const tSummary = useTranslations('Flows.summary');
   const summary = summarizeNode(node, tSummary);
   const slots = outgoingSlots(node);
-  // Start nodes are entry-only; nothing ever targets them, so they
-  // don't need an incoming Handle. Every other node type accepts
-  // incoming edges (including terminal handoff / end — they're the
-  // common targets).
   const hasTarget = node.node_type !== 'start';
-  // Single-slot nodes get a single source handle floated on the right
-  // edge of the card. Multi-slot nodes (condition, send_buttons,
-  // send_list) render slot rows inline so each handle visually sits
-  // next to the slot it represents.
   const isMultiSlot = slots.length > 1;
+
+  const cfg = node.config as Record<string, unknown>;
+  const delaySec = typeof cfg.delay_seconds === 'number' ? cfg.delay_seconds : 0;
+  const typingOn = Boolean(cfg.typing_on_display);
+  const isMediaImage =
+    node.node_type === 'send_media' &&
+    cfg.media_type === 'image' &&
+    typeof cfg.media_url === 'string' &&
+    cfg.media_url.length > 0;
+
   return (
     <div
       style={
@@ -159,18 +150,15 @@ function FlowNodeCard({ data, selected }: NodeProps) {
           '--nc-text': c.text,
           borderColor: selected ? c.solid : undefined,
           boxShadow: selected
-            ? `0 0 0 1px ${c.solid}, 0 14px 36px -12px ${c.ring}`
-            : undefined,
+            ? `0 0 0 1.5px ${c.solid}, 0 16px 36px -12px ${c.ring}`
+            : '0 4px 14px -4px rgba(0, 0, 0, 0.15)',
         } as React.CSSProperties
       }
       className={cn(
-        'bg-card relative max-w-[260px] min-w-[220px] rounded-xl border px-3.5 py-3 text-left shadow-[0_2px_6px_rgba(0,0,0,0.18)] transition-[box-shadow,border-color]',
+        'group bg-card relative max-w-[270px] min-w-[240px] rounded-xl border px-3.5 py-3 text-left transition-[box-shadow,border-color]',
         selected
-          ? 'border-[var(--nc)]'
-          : 'border-border hover:border-[var(--nc-ring)]',
-        // Flash overrides hover/selected colors briefly. Tailwind's
-        // built-in `animate-pulse` is too gentle; a ring with the
-        // amber accent matches the list view's flash semantics.
+          ? 'border-[var(--nc)] ring-1 ring-[var(--nc-ring)]'
+          : 'border-border/80 hover:border-[var(--nc-ring)]',
         isFlashed && '!border-amber-400 ring-2 ring-amber-400/60'
       )}
     >
@@ -178,44 +166,85 @@ function FlowNodeCard({ data, selected }: NodeProps) {
         <Handle
           type="target"
           position={Position.Left}
-          className="!bg-card !h-2.5 !w-2.5 !border-2 !border-[var(--nc-ring)]"
+          className="!bg-card !h-3 !w-3 !border-2 !border-[var(--nc-ring)] hover:!scale-125 transition-transform"
         />
       )}
 
+      {/* Header */}
       <div className="flex items-center gap-2">
         <NodeIconChip
           type={node.node_type}
-          size={24}
-          iconSize={14}
-          className="rounded-md"
+          size={26}
+          iconSize={15}
+          className="rounded-lg shadow-sm"
         />
-        <span
-          className="truncate text-[10.5px] font-semibold tracking-wider uppercase"
-          style={{ color: c.text }}
-        >
-          {t(`nodes.${node.node_type}.label`)}
-        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span
+              className="truncate text-[11px] font-bold tracking-wider uppercase"
+              style={{ color: c.text }}
+            >
+              {t(`nodes.${node.node_type}.label`)}
+            </span>
+          </div>
+          <div className="text-muted-foreground/80 truncate font-mono text-[10px]">
+            {node.node_key}
+          </div>
+        </div>
+
         {isEntry && (
-          <span className="border-border text-muted-foreground ml-auto rounded border px-1.5 py-0.5 text-[8.5px] font-bold tracking-[0.1em] uppercase">
+          <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-emerald-400 uppercase">
             {t('badgeEntry')}
           </span>
         )}
       </div>
-      <div className="text-muted-foreground mt-2 truncate font-mono text-[11px]">
-        {node.node_key}
-      </div>
+
+      {/* Live Timing & Delivery Badges */}
+      {(delaySec > 0 || typingOn) && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]">
+          {delaySec > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 border border-primary/20 px-1.5 py-0.5 font-mono text-primary font-medium">
+              <Clock className="h-2.5 w-2.5" />
+              {delaySec}s delay
+            </span>
+          )}
+          {typingOn && (
+            <span className="inline-flex items-center gap-0.5 rounded-md bg-sky-500/10 border border-sky-500/20 px-1.5 py-0.5 text-sky-400 font-medium">
+              💬 typing on
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Image Thumbnail Preview */}
+      {isMediaImage && (
+        <div className="mt-2 overflow-hidden rounded-md border border-border/80 bg-black/20 max-h-24 flex items-center justify-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={cfg.media_url as string}
+            alt="Preview"
+            className="max-h-24 w-full object-cover"
+            onError={(e) => {
+              (e.target as HTMLElement).style.display = 'none';
+            }}
+          />
+        </div>
+      )}
+
+      {/* Summary preview */}
       {summary && (
-        <div className="text-muted-foreground mt-1 line-clamp-2 text-xs leading-relaxed">
+        <div className="text-muted-foreground mt-2 line-clamp-2 text-xs leading-relaxed">
           {summary}
         </div>
       )}
 
+      {/* Multi-slot handles (Buttons, List, Condition) */}
       {isMultiSlot && (
-        <div className="border-border mt-2.5 flex flex-col gap-1 border-t pt-2.5">
+        <div className="border-border/70 mt-2.5 flex flex-col gap-1.5 border-t pt-2">
           {slots.map((slot) => (
             <div
               key={slot.id}
-              className="text-muted-foreground relative flex items-center justify-between gap-2 rounded px-1 py-0.5 text-[11px]"
+              className="text-foreground/90 bg-muted/40 hover:bg-muted/70 relative flex items-center justify-between gap-2 rounded-md px-2 py-1 text-[11px] font-medium transition-colors"
             >
               <span className="truncate" title={slot.label}>
                 {slot.label}
@@ -227,25 +256,28 @@ function FlowNodeCard({ data, selected }: NodeProps) {
                 style={{
                   borderColor: slotColor(node.node_type, slot.id, c.solid),
                 }}
-                // Override default absolute positioning so the handle
-                // sits flush with the right edge of the card instead
-                // of floating at vertical center. The negative offset
-                // matches the card's px-3 + the handle's own radius.
-                className="!bg-card !relative !top-auto !right-auto !h-2.5 !w-2.5 !translate-x-[14px] !transform-none !border-2"
+                className="!bg-card !relative !top-auto !right-auto !h-2.5 !w-2.5 !translate-x-[12px] !transform-none !border-2 hover:!scale-125 transition-transform"
               />
             </div>
           ))}
         </div>
       )}
 
+      {/* Single-slot handle with 'Compose Next Message' label */}
       {!isMultiSlot && slots.length === 1 && (
-        <Handle
-          type="source"
-          id={slots[0].id}
-          position={Position.Right}
-          style={{ borderColor: c.solid }}
-          className="!bg-card !h-2.5 !w-2.5 !border-2"
-        />
+        <div className="mt-2.5 flex items-center justify-between border-t border-border/70 pt-2 text-[11px]">
+          <span className="flex items-center gap-1.5 text-muted-foreground text-[10.5px] font-medium group-hover:text-primary transition-colors">
+            <MoveRight className="h-3 w-3 text-primary" />
+            {node.node_type === 'start' ? 'First Action' : 'Compose Next Message'}
+          </span>
+          <Handle
+            type="source"
+            id={slots[0].id}
+            position={Position.Right}
+            style={{ borderColor: c.solid }}
+            className="!bg-card !relative !top-auto !right-auto !h-3 !w-3 !translate-x-[14px] !transform-none !border-2 !border-primary hover:!scale-125 transition-transform cursor-crosshair"
+          />
+        </div>
       )}
     </div>
   );
@@ -254,15 +286,329 @@ function FlowNodeCard({ data, selected }: NodeProps) {
 const NODE_TYPES = { flow: FlowNodeCard };
 
 // ============================================================
+// Left Sidebar: Flow Blocks (Draggable & Searchable)
+// ============================================================
+
+function FlowBlocksSidebar({
+  onAddBlock,
+}: {
+  onAddBlock: (block: FlowBlockItem) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [collapsed, setCollapsed] = useState(false);
+  const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({
+    messages: true,
+    interactive: true,
+    data_collection: true,
+    flow_control: true,
+  });
+
+  const toggleCategory = (catId: string) => {
+    setOpenCategories((prev) => ({ ...prev, [catId]: !prev[catId] }));
+  };
+
+  const filteredBlocks = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return FLOW_BLOCKS;
+    return FLOW_BLOCKS.filter(
+      (b) =>
+        b.label.toLowerCase().includes(q) ||
+        b.blurb.toLowerCase().includes(q) ||
+        b.category.toLowerCase().includes(q)
+    );
+  }, [search]);
+
+  if (collapsed) {
+    return (
+      <div className="border-r border-border bg-card/90 flex flex-col items-center py-3 px-1.5 w-12 shrink-0 z-10">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setCollapsed(false)}
+          className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+          title="Expand Flow Blocks Sidebar"
+        >
+          <PanelLeftOpen className="h-4 w-4" />
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-r border-border bg-card/95 backdrop-blur flex flex-col w-64 shrink-0 h-full z-10 shadow-sm transition-all select-none">
+      {/* Header */}
+      <div className="border-b border-border/80 px-3.5 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <Sparkles className="h-3.5 w-3.5" />
+          </div>
+          <span className="text-xs font-bold text-foreground uppercase tracking-wider">
+            Flow blocks
+          </span>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setCollapsed(true)}
+          className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+          title="Collapse Sidebar"
+        >
+          <PanelLeftClose className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {/* Search Bar */}
+      <div className="p-3 border-b border-border/60">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search blocks..."
+            className="h-8 pl-8 pr-7 text-xs bg-muted/60"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="absolute right-2 top-2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Blocks List */}
+      <div className="flex-1 overflow-y-auto p-2.5 space-y-3">
+        {search ? (
+          // Flat list when searching
+          <div className="space-y-1.5">
+            {filteredBlocks.length === 0 ? (
+              <p className="text-center text-xs text-muted-foreground py-6">
+                No blocks match &quot;{search}&quot;
+              </p>
+            ) : (
+              filteredBlocks.map((block) => (
+                <SidebarBlockCard
+                  key={block.id}
+                  block={block}
+                  onAdd={() => onAddBlock(block)}
+                />
+              ))
+            )}
+          </div>
+        ) : (
+          // Categorized groups
+          FLOW_BLOCK_CATEGORIES.map((cat) => {
+            const catBlocks = FLOW_BLOCKS.filter((b) => b.category === cat.id);
+            const isOpen = openCategories[cat.id] ?? true;
+
+            return (
+              <div key={cat.id} className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => toggleCategory(cat.id)}
+                  className="flex w-full items-center justify-between px-2 py-1 text-[10.5px] font-bold tracking-wider text-muted-foreground hover:text-foreground uppercase transition-colors"
+                >
+                  <span>{cat.label}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] font-normal text-muted-foreground/70">
+                      {catBlocks.length}
+                    </span>
+                    {isOpen ? (
+                      <ChevronDown className="h-3 w-3" />
+                    ) : (
+                      <ChevronRight className="h-3 w-3" />
+                    )}
+                  </div>
+                </button>
+
+                {isOpen && (
+                  <div className="space-y-1.5 pt-0.5">
+                    {catBlocks.map((block) => (
+                      <SidebarBlockCard
+                        key={block.id}
+                        block={block}
+                        onAdd={() => onAddBlock(block)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SidebarBlockCard({
+  block,
+  onAdd,
+}: {
+  block: FlowBlockItem;
+  onAdd: () => void;
+}) {
+  const Icon = block.icon;
+  const c = nodeColors(block.node_type);
+
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData(
+      'application/reactflow-node',
+      JSON.stringify({
+        node_type: block.node_type,
+        initialConfig: block.initialConfig,
+        customKeyBase: block.customKeyBase,
+      })
+    );
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  return (
+    <div
+      draggable
+      onDragStart={handleDragStart}
+      onClick={onAdd}
+      className="group relative flex items-center gap-2.5 rounded-lg border border-border/70 bg-card p-2 text-left shadow-xs transition-all hover:border-primary/50 hover:bg-muted/50 hover:shadow-sm cursor-grab active:cursor-grabbing"
+    >
+      <div
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-transform group-hover:scale-105"
+        style={{ background: c.soft, color: c.solid }}
+      >
+        <Icon size={14} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-xs font-semibold text-foreground truncate">
+          {block.label}
+        </div>
+        <div className="text-[10px] text-muted-foreground truncate">
+          {block.blurb}
+        </div>
+      </div>
+      <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors shrink-0" />
+    </div>
+  );
+}
+
+// ============================================================
+// Quick-Connect Next Node Menu (when wire released on canvas)
+// ============================================================
+
+interface QuickConnectState {
+  fromNodeId: string;
+  fromHandleId: string;
+  screenPos: { x: number; y: number };
+  flowPos: { x: number; y: number };
+}
+
+function QuickConnectMenu({
+  state,
+  onSelect,
+  onClose,
+}: {
+  state: QuickConnectState;
+  onSelect: (block: FlowBlockItem) => void;
+  onClose: () => void;
+}) {
+  const [search, setSearch] = useState('');
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    window.addEventListener('mousedown', handleOutside);
+    return () => window.removeEventListener('mousedown', handleOutside);
+  }, [onClose]);
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return FLOW_BLOCKS;
+    return FLOW_BLOCKS.filter(
+      (b) =>
+        b.label.toLowerCase().includes(q) ||
+        b.blurb.toLowerCase().includes(q) ||
+        b.category.toLowerCase().includes(q)
+    );
+  }, [search]);
+
+  // Bound screen position within window
+  const left = Math.min(state.screenPos.x + 10, window.innerWidth - 300);
+  const top = Math.min(state.screenPos.y - 40, window.innerHeight - 400);
+
+  return (
+    <div
+      ref={menuRef}
+      style={{ left: `${left}px`, top: `${top}px` }}
+      className="fixed z-50 w-72 rounded-xl border border-border bg-popover p-2.5 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+    >
+      <div className="flex items-center justify-between pb-2 border-b border-border/70 mb-2">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+          <Sparkles className="h-3.5 w-3.5 text-primary" />
+          Choose next block
+        </span>
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-muted-foreground hover:text-foreground"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div className="relative mb-2">
+        <Search className="absolute left-2 top-2 h-3 w-3 text-muted-foreground" />
+        <Input
+          autoFocus
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Filter blocks..."
+          className="h-7 pl-7 text-xs bg-muted/60"
+        />
+      </div>
+
+      <div className="max-h-64 overflow-y-auto space-y-1">
+        {filtered.map((b) => {
+          const Icon = b.icon;
+          const c = nodeColors(b.node_type);
+          return (
+            <button
+              key={b.id}
+              type="button"
+              onClick={() => onSelect(b)}
+              className="flex w-full items-center gap-2.5 rounded-lg p-1.5 text-left text-xs hover:bg-muted transition-colors"
+            >
+              <div
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
+                style={{ background: c.soft, color: c.solid }}
+              >
+                <Icon size={13} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-foreground truncate text-[11.5px]">
+                  {b.label}
+                </div>
+                <div className="text-[10px] text-muted-foreground truncate">
+                  {b.blurb}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // Root canvas
 // ============================================================
 
-/**
- * Outer wrapper provides the React-Flow context to the inner body,
- * so `useReactFlow()` works from anywhere in `FlowCanvasInner`
- * (notably, the pan-to-flash effect). The split is required because
- * useReactFlow() must be called inside a ReactFlowProvider.
- */
 export function FlowCanvas() {
   return (
     <ReactFlowProvider>
@@ -276,6 +622,7 @@ function FlowCanvasInner() {
   const {
     state,
     setState,
+    addNode,
     updateNodeConfig,
     updateNodePosition,
     updateNodePositions,
@@ -286,10 +633,13 @@ function FlowCanvasInner() {
   const builderNodes = state.nodes;
   const entryNodeId = state.entry_node_id;
 
-  // Side-panel state — which node's form is open. Canvas-only UI; the
-  // list view's analogue is the per-card expanded set in
-  // flow-builder.tsx.
   const [selectedNodeKey, setSelectedNodeKey] = useState<string | null>(null);
+  const [quickConnect, setQuickConnect] = useState<QuickConnectState | null>(null);
+  const connectingHandleRef = useRef<{
+    nodeId: string | null;
+    handleId: string | null;
+  }>({ nodeId: null, handleId: null });
+
   const selectedNode = useMemo(
     () =>
       selectedNodeKey
@@ -314,10 +664,6 @@ function FlowCanvasInner() {
       : null;
   }, [builderNodes]);
 
-  // If dagre had to place an all-zero flow, persist the generated
-  // positions into editor state once. Otherwise the next drag would
-  // save only the dragged node and every other node would fall back
-  // to (0,0), which feels like nodes teleporting around the canvas.
   const persistedAutoLayoutRef = useRef(false);
   useEffect(() => {
     if (!autoLayoutPositions || persistedAutoLayoutRef.current) return;
@@ -359,21 +705,17 @@ function FlowCanvasInner() {
   const rfEdges = useMemo(() => {
     const canvasEdges = deriveCanvasEdges(builderNodes);
 
-    // sourceHandle is now wired up — the FlowNodeCard renders a Handle
-    // per slot whose id matches the scheme in edges.ts, so React-Flow
-    // can hang the arrow off the right place on each card.
     const rfEdges: RfEdge[] = canvasEdges.map((e) => ({
       id: e.id,
       source: e.source,
       target: e.target,
       sourceHandle: e.sourceHandle,
       label: e.label,
-      // Mode-aware via CSS tokens so edge chrome flips with light/dark.
-      labelStyle: { fill: 'var(--muted-foreground)', fontSize: 11 },
+      labelStyle: { fill: 'var(--muted-foreground)', fontSize: 11, fontWeight: 500 },
       labelBgStyle: { fill: 'var(--card)' },
-      labelBgPadding: [4, 2] as [number, number],
-      labelBgBorderRadius: 4,
-      style: { stroke: 'var(--border)', strokeWidth: 1.5 },
+      labelBgPadding: [6, 3] as [number, number],
+      labelBgBorderRadius: 6,
+      style: { stroke: 'var(--border)', strokeWidth: 2 },
     }));
 
     return rfEdges;
@@ -386,13 +728,6 @@ function FlowCanvasInner() {
     []
   );
 
-  // Drag-to-position: React-Flow tracks the visual drag internally and
-  // fires this once on release. We write the final coordinate back to
-  // the editor context (which flips `dirty`); save then ships the new
-  // positions in the existing PUT /api/flows/[id] body (the route
-  // already destructures position_x / position_y per migration 010).
-  // Writing only on dragStop (not on every position-change tick during
-  // the drag) keeps state updates cheap on long drags.
   const handleNodeDragStop = useCallback<OnNodeDrag<RfNode<NodeData>>>(
     (_event, node) => {
       updateNodePosition(node.id, node.position.x, node.position.y);
@@ -400,9 +735,7 @@ function FlowCanvasInner() {
     [updateNodePosition]
   );
 
-  // Pan to the flashed node when the validator panel requests one.
-  // Animate over 400ms; landing zoom is whatever the user already has
-  // (don't force a zoom reset — that would be jarring mid-edit).
+  // Pan to the flashed node
   useEffect(() => {
     if (!flashKey) return;
     const node = builderNodes.find((n) => n.node_key === flashKey);
@@ -422,12 +755,7 @@ function FlowCanvasInner() {
     []
   );
 
-  // Drag-to-connect: React-Flow fires onConnect when the user drops a
-  // handle drag onto a target handle. We look up the source node,
-  // compute the right config patch via applyEdgeConnection (matches
-  // the same slot scheme as deriveCanvasEdges), and dispatch via
-  // updateNodeConfig. The resulting state change re-derives edges on
-  // the next render — no need to maintain a separate edge list.
+  // Drag-to-connect existing handles
   const handleConnect = useCallback(
     (connection: Connection) => {
       if (
@@ -441,9 +769,6 @@ function FlowCanvasInner() {
         (n) => n.node_key === connection.source
       );
       if (!sourceNode) return;
-      // Self-loops are a footgun (a button whose target is its own
-      // node = infinite reprompt). Reject silently — the user can
-      // still wire one via the per-node dropdown if they really want.
       if (connection.source === connection.target) return;
       const patch = applyEdgeConnection(
         sourceNode,
@@ -455,12 +780,124 @@ function FlowCanvasInner() {
     [builderNodes, updateNodeConfig]
   );
 
-  // Keyboard delete (Backspace / Delete) + drag-to-trash. React-Flow
-  // fires this with the set of deleted-node objects; we route each
-  // through the editor context's removeNode (which now also unlinks
-  // inbound references so no dangling arrows survive). Closing the
-  // side panel on delete keeps the UI honest if the user deleted the
-  // node currently being edited.
+  // Quick-Connect Tracking
+  const handleConnectStart = useCallback(
+    (
+      _event: MouseEvent | TouchEvent,
+      params: { nodeId: string | null; handleId: string | null }
+    ) => {
+      connectingHandleRef.current = {
+        nodeId: params.nodeId,
+        handleId: params.handleId,
+      };
+    },
+    []
+  );
+
+  const handleConnectEnd = useCallback(
+    (event: MouseEvent | TouchEvent) => {
+      const targetIsPane = (event.target as HTMLElement)?.classList.contains(
+        'react-flow__pane'
+      );
+      const { nodeId, handleId } = connectingHandleRef.current;
+
+      if (targetIsPane && nodeId && handleId) {
+        const clientX =
+          'clientX' in event ? event.clientX : event.changedTouches?.[0]?.clientX ?? 0;
+        const clientY =
+          'clientY' in event ? event.clientY : event.changedTouches?.[0]?.clientY ?? 0;
+
+        const flowPos = reactFlow.screenToFlowPosition({
+          x: clientX,
+          y: clientY,
+        });
+
+        setQuickConnect({
+          fromNodeId: nodeId,
+          fromHandleId: handleId,
+          screenPos: { x: clientX, y: clientY },
+          flowPos,
+        });
+      }
+
+      connectingHandleRef.current = { nodeId: null, handleId: null };
+    },
+    [reactFlow]
+  );
+
+  const handleQuickConnectSelect = useCallback(
+    (block: FlowBlockItem) => {
+      if (!quickConnect) return;
+      const { fromNodeId, fromHandleId, flowPos } = quickConnect;
+
+      // 1. Create new node
+      const newKey = addNode(block.node_type, block.initialConfig, block.customKeyBase);
+      updateNodePosition(newKey, flowPos.x - NODE_WIDTH / 2, flowPos.y - NODE_HEIGHT / 2);
+
+      // 2. Connect from source node to new node
+      const sourceNode = builderNodes.find((n) => n.node_key === fromNodeId);
+      if (sourceNode) {
+        const patch = applyEdgeConnection(sourceNode, fromHandleId, newKey);
+        if (patch) updateNodeConfig(fromNodeId, patch);
+      }
+
+      // 3. Open editing sheet for the new node
+      setSelectedNodeKey(newKey);
+      setQuickConnect(null);
+    },
+    [quickConnect, addNode, updateNodePosition, builderNodes, updateNodeConfig]
+  );
+
+  // Drag & drop from left sidebar onto canvas
+  const handleDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const handleDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+      const raw = event.dataTransfer.getData('application/reactflow-node');
+      if (!raw) return;
+
+      try {
+        const { node_type, initialConfig, customKeyBase } = JSON.parse(raw);
+        const pos = reactFlow.screenToFlowPosition({
+          x: event.clientX,
+          y: event.clientY,
+        });
+
+        const newKey = addNode(node_type, initialConfig, customKeyBase);
+        updateNodePosition(newKey, pos.x - NODE_WIDTH / 2, pos.y - NODE_HEIGHT / 2);
+        setSelectedNodeKey(newKey);
+      } catch {
+        // Ignore invalid drop payload
+      }
+    },
+    [addNode, updateNodePosition, reactFlow]
+  );
+
+  const handleAddFromSidebar = useCallback(
+    (block: FlowBlockItem) => {
+      const newKey = addNode(block.node_type, block.initialConfig, block.customKeyBase);
+      const root = document.querySelector('.react-flow') as HTMLElement | null;
+      if (root) {
+        const rect = root.getBoundingClientRect();
+        const center = reactFlow.screenToFlowPosition({
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+        });
+        updateNodePosition(
+          newKey,
+          center.x - NODE_WIDTH / 2,
+          center.y - NODE_HEIGHT / 2
+        );
+      }
+      setSelectedNodeKey(newKey);
+    },
+    [addNode, updateNodePosition, reactFlow]
+  );
+
   const handleNodesDelete = useCallback(
     (deleted: RfNode<NodeData>[]) => {
       for (const n of deleted) {
@@ -471,9 +908,6 @@ function FlowCanvasInner() {
     [removeNode, selectedNodeKey]
   );
 
-  // Edge delete: clear the source node's slot rather than removing
-  // anything. Edges are derived from configs, so the only way to
-  // "delete" one is to null out its underlying next_node_key.
   const handleEdgesDelete = useCallback(
     (deleted: RfEdge[]) => {
       for (const e of deleted) {
@@ -487,9 +921,6 @@ function FlowCanvasInner() {
     [builderNodes, updateNodeConfig]
   );
 
-  // Wrapped mutators that target the currently-selected node — pass to
-  // the form so each keystroke goes through the editor context (which
-  // flips `dirty` and feeds the validator).
   const onSelectedUpdateConfig = useCallback(
     (patch: Record<string, unknown>) => {
       if (selectedNodeKey) updateNodeConfig(selectedNodeKey, patch);
@@ -508,75 +939,84 @@ function FlowCanvasInner() {
     setState((s) => ({ ...s, entry_node_id: selectedNodeKey }));
   }, [selectedNodeKey, setState]);
 
-  if (rfNodes.length === 0) {
-    return (
-      <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-3 text-sm">
-        <p>{t('noNodesYet')}</p>
-        <CanvasAddNodeButton t={t} />
-      </div>
-    );
-  }
-
   return (
     <>
-      <div className="h-full w-full overflow-hidden">
-        <ReactFlow
-          nodes={rfNodes}
-          edges={rfEdges}
-          nodeTypes={NODE_TYPES}
-          fitView
-          fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
-          proOptions={{ hideAttribution: true }}
-          onNodesChange={handleNodesChange}
-          onNodeDragStop={handleNodeDragStop}
-          onNodeClick={handleNodeClick}
-          onConnect={handleConnect}
-          onNodesDelete={handleNodesDelete}
-          onEdgesDelete={handleEdgesDelete}
-          // Default is "Backspace" only — accept both so Mac users
-          // hitting Delete (Fn+Backspace) get the same behavior.
-          deleteKeyCode={['Backspace', 'Delete']}
-          nodesConnectable={true}
-          edgesFocusable={true}
-          elementsSelectable={true}
-          // Lower default min/max zoom than the lib's defaults; the
-          // tiles already truncate their summary at a reasonable
-          // size, so we don't need to zoom past 1.5x.
-          minZoom={0.2}
-          maxZoom={1.5}
+      <div className="relative flex h-full w-full overflow-hidden">
+        {/* Left Sidebar: Draggable & Searchable Flow Blocks */}
+        <FlowBlocksSidebar onAddBlock={handleAddFromSidebar} />
+
+        {/* Main Canvas */}
+        <div
+          className="relative flex-1 h-full w-full overflow-hidden"
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
         >
-          {/* Dot grid, matching the design's faint canvas backdrop. */}
-          <Background
-            variant={BackgroundVariant.Dots}
-            gap={22}
-            size={1.4}
-            color="var(--border)"
-          />
-          <Controls
-            className="!border-border !bg-card [&_button]:!border-border [&_button]:!bg-card [&_button:hover]:!bg-muted [&_button_svg]:!fill-foreground !overflow-hidden !rounded-xl !border !shadow-[0_6px_20px_-8px_rgba(0,0,0,0.5)]"
-            showInteractive={false}
-          />
-          <MiniMap
-            pannable
-            zoomable
-            nodeColor={(n) =>
-              nodeColors((n.data as NodeData).node.node_type).solid
-            }
-            nodeStrokeWidth={0}
-            nodeBorderRadius={3}
-            maskColor="color-mix(in oklch, var(--background) 70%, transparent)"
-            className="!border-border !bg-card !rounded-xl !border !shadow-[0_6px_20px_-8px_rgba(0,0,0,0.5)]"
-          />
-          <Panel position="top-left" className="!top-4 !left-4 flex items-center gap-2.5">
-            <CanvasAddNodeButton t={t} />
-            <CanvasTriggerBadge onSelectEntry={() => {
-              if (entryNodeId) setSelectedNodeKey(entryNodeId);
-              else if (builderNodes[0]) setSelectedNodeKey(builderNodes[0].node_key);
-            }} />
-          </Panel>
-        </ReactFlow>
+          <ReactFlow
+            nodes={rfNodes}
+            edges={rfEdges}
+            nodeTypes={NODE_TYPES}
+            fitView
+            fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+            proOptions={{ hideAttribution: true }}
+            onNodesChange={handleNodesChange}
+            onNodeDragStop={handleNodeDragStop}
+            onNodeClick={handleNodeClick}
+            onConnect={handleConnect}
+            onConnectStart={handleConnectStart}
+            onConnectEnd={handleConnectEnd}
+            onNodesDelete={handleNodesDelete}
+            onEdgesDelete={handleEdgesDelete}
+            deleteKeyCode={['Backspace', 'Delete']}
+            nodesConnectable={true}
+            edgesFocusable={true}
+            elementsSelectable={true}
+            minZoom={0.2}
+            maxZoom={1.5}
+          >
+            <Background
+              variant={BackgroundVariant.Dots}
+              gap={22}
+              size={1.4}
+              color="var(--border)"
+            />
+            <Controls
+              className="!border-border !bg-card [&_button]:!border-border [&_button]:!bg-card [&_button:hover]:!bg-muted [&_button_svg]:!fill-foreground !overflow-hidden !rounded-xl !border !shadow-[0_6px_20px_-8px_rgba(0,0,0,0.5)]"
+              showInteractive={false}
+            />
+            <MiniMap
+              pannable
+              zoomable
+              nodeColor={(n) =>
+                nodeColors((n.data as NodeData).node.node_type).solid
+              }
+              nodeStrokeWidth={0}
+              nodeBorderRadius={4}
+              maskColor="color-mix(in oklch, var(--background) 70%, transparent)"
+              className="!border-border !bg-card !rounded-xl !border !shadow-[0_6px_20px_-8px_rgba(0,0,0,0.5)]"
+            />
+            <Panel position="top-left" className="!top-4 !left-4 flex items-center gap-2.5">
+              <CanvasAddNodeButton t={t} />
+              <CanvasTriggerBadge
+                onSelectEntry={() => {
+                  if (entryNodeId) setSelectedNodeKey(entryNodeId);
+                  else if (builderNodes[0]) setSelectedNodeKey(builderNodes[0].node_key);
+                }}
+              />
+            </Panel>
+          </ReactFlow>
+
+          {/* Floating Quick Connect Menu */}
+          {quickConnect && (
+            <QuickConnectMenu
+              state={quickConnect}
+              onSelect={handleQuickConnectSelect}
+              onClose={() => setQuickConnect(null)}
+            />
+          )}
+        </div>
       </div>
 
+      {/* Node Configuration Side Sheet */}
       <NodeEditSheet
         node={selectedNode}
         isEntry={selectedNode?.node_key === entryNodeId}
@@ -592,9 +1032,7 @@ function FlowCanvasInner() {
 }
 
 // ============================================================
-// Side panel — opens when a canvas node is clicked. Mounts the
-// shared NodeConfigForm dispatcher so edits made here behave
-// identically to the list view's per-card editor.
+// Side panel for Node Configuration
 // ============================================================
 
 function NodeEditSheet({
@@ -616,8 +1054,6 @@ function NodeEditSheet({
   onSetEntry: () => void;
   t: ReturnType<typeof useTranslations>;
 }) {
-  // Sheet is controlled — opens when a node is selected, closes via
-  // Esc / overlay / close button (all delegated to onClose).
   const open = node !== null;
   if (!node) {
     return (
@@ -639,7 +1075,7 @@ function NodeEditSheet({
             <SheetTitle className="flex items-center gap-2 text-[11px] font-semibold tracking-wider uppercase">
               <span style={{ color: c.text }}>{t(`nodes.${node.node_type}.label`)}</span>
               {isEntry && (
-                <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold tracking-wider text-emerald-300 uppercase">
+                <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-[9px] font-semibold tracking-wider text-emerald-300 uppercase">
                   {t('badgeEntry')}
                 </span>
               )}
@@ -686,10 +1122,7 @@ function NodeEditSheet({
 }
 
 // ============================================================
-// Floating add-node button — bottom-right of the canvas. Mirrors
-// the list view's AddNodeButton (same dropdown menu, same NodeType
-// list, same icons via NODE_META) but drops the new node into the
-// center of the visible viewport rather than appending to a list.
+// Add Node Button & Trigger Badge
 // ============================================================
 
 const ADD_NODE_TYPES: NodeType[] = [
@@ -711,11 +1144,6 @@ function CanvasAddNodeButton({ t }: { t: ReturnType<typeof useTranslations> }) {
 
   const handleAdd = (type: NodeType) => {
     const key = addNode(type);
-    // Place the new node at the visible canvas center. The Panel's
-    // own DOM lives inside ReactFlow so we can climb up to find the
-    // .react-flow root and read its bounding rect. If we can't find
-    // it (test envs, etc.), addNode's default (0, 0) is the fallback
-    // and the user can drag the node into view.
     const root = document.querySelector('.react-flow') as HTMLElement | null;
     if (!root) return;
     const rect = root.getBoundingClientRect();
@@ -723,9 +1151,6 @@ function CanvasAddNodeButton({ t }: { t: ReturnType<typeof useTranslations> }) {
       x: rect.left + rect.width / 2,
       y: rect.top + rect.height / 2,
     });
-    // NODE_WIDTH / NODE_HEIGHT are the dagre layout defaults; offset
-    // so the card sits visually centered rather than top-left at the
-    // viewport center.
     updateNodePosition(
       key,
       center.x - NODE_WIDTH / 2,
@@ -747,10 +1172,6 @@ function CanvasAddNodeButton({ t }: { t: ReturnType<typeof useTranslations> }) {
         className="border-border bg-popover w-[268px] p-1.5"
       >
         {groupNodeTypesByCategory(ADD_NODE_TYPES).map((group, i) => (
-          // DropdownMenuGroup (base-ui Menu.Group) is REQUIRED: the
-          // DropdownMenuLabel below is base-ui's Menu.GroupLabel, which
-          // throws at render without a Menu.Group ancestor. A plain <div>
-          // here crashed the page when this menu opened (issue #336).
           <Fragment key={group.id}>
             {i > 0 && <DropdownMenuSeparator />}
             <DropdownMenuGroup>
@@ -792,21 +1213,21 @@ function CanvasAddNodeButton({ t }: { t: ReturnType<typeof useTranslations> }) {
 function CanvasTriggerBadge({ onSelectEntry }: { onSelectEntry: () => void }) {
   const { state } = useFlowEditor();
 
-  const isKeyword = state.trigger_type === "keyword";
+  const isKeyword = state.trigger_type === 'keyword';
   const rawKeywords = state.trigger_config?.keywords;
   const keywords = Array.isArray(rawKeywords)
     ? (rawKeywords as string[])
-    : typeof rawKeywords === "string"
-      ? rawKeywords.split(",").map((s) => s.trim()).filter(Boolean)
+    : typeof rawKeywords === 'string'
+      ? rawKeywords.split(',').map((s) => s.trim()).filter(Boolean)
       : [];
 
   const label = isKeyword
     ? keywords.length > 0
       ? `Trigger: "${keywords.slice(0, 3).join('", "')}"${keywords.length > 3 ? ` +${keywords.length - 3}` : ''}`
-      : "Trigger: No keywords (Click to set)"
-    : state.trigger_type === "first_inbound_message"
-      ? "Trigger: First inbound message"
-      : "Trigger: Manual start";
+      : 'Trigger: No keywords (Click to set)'
+    : state.trigger_type === 'first_inbound_message'
+      ? 'Trigger: First inbound message'
+      : 'Trigger: Manual start';
 
   const hasKeywords = !isKeyword || keywords.length > 0;
 
@@ -815,10 +1236,10 @@ function CanvasTriggerBadge({ onSelectEntry }: { onSelectEntry: () => void }) {
       type="button"
       onClick={onSelectEntry}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold shadow-[0_6px_20px_-8px_rgba(0,0,0,0.5)] transition-colors border",
+        'inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold shadow-[0_6px_20px_-8px_rgba(0,0,0,0.5)] transition-colors border',
         hasKeywords
-          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
-          : "border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 animate-pulse"
+          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+          : 'border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 animate-pulse'
       )}
       title="Click to view and edit Flow Trigger in Start Node"
     >

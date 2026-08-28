@@ -94,7 +94,7 @@ export interface FlowEditorContextValue {
   // Node mutations. addNode returns the generated key so the caller
   // (a NodeCard "Add" button or canvas "+" button) can scroll to /
   // focus / open the new node.
-  addNode: (type: NodeType) => string;
+  addNode: (type: NodeType, initialConfig?: Record<string, unknown>, customKeyBase?: string) => string;
   updateNode: (key: string, patch: Partial<BuilderNode>) => void;
   updateNodeConfig: (key: string, patch: Record<string, unknown>) => void;
   updateNodePosition: (key: string, x: number, y: number) => void;
@@ -473,9 +473,9 @@ export function FlowEditorProvider({
   );
 
   const addNode = useCallback(
-    (type: NodeType): string => {
+    (type: NodeType, initialConfig?: Record<string, unknown>, customKeyBase?: string): string => {
       const meta = NODE_META[type];
-      const base = slugify(meta.label, type);
+      const base = customKeyBase || slugify(meta.label, type);
       let createdKey = base;
       setState((s) => {
         const node_key = uniqueNodeKey(base, s.nodes);
@@ -483,7 +483,7 @@ export function FlowEditorProvider({
         const next: BuilderNode = {
           node_key,
           node_type: type,
-          config: defaultConfigFor(type),
+          config: { ...defaultConfigFor(type), ...(initialConfig ?? {}) },
         };
         return {
           ...s,

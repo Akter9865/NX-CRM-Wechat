@@ -17,16 +17,20 @@
  */
 
 import {
+  FileText,
   Flag,
   GitFork,
+  Image as ImageIcon,
   Inbox,
   ListChecks,
   ListPlus,
   MessageCircle,
+  Music,
   Paperclip,
   PlayCircle,
   Tag,
   UserPlus,
+  Video,
   Workflow,
 } from 'lucide-react';
 
@@ -84,6 +88,156 @@ export const NODE_CATEGORIES: { id: NodeCategory; label: string }[] = [
   { id: 'messaging', label: 'Messaging' },
   { id: 'logic', label: 'Logic & data' },
   { id: 'flow', label: 'Flow control' },
+];
+
+export interface FlowBlockItem {
+  id: string;
+  node_type: NodeType;
+  label: string;
+  blurb: string;
+  category: 'messages' | 'interactive' | 'data_collection' | 'flow_control';
+  icon: typeof Workflow;
+  color: string;
+  initialConfig?: Record<string, unknown>;
+  customKeyBase?: string;
+}
+
+export const FLOW_BLOCK_CATEGORIES = [
+  { id: 'messages', label: 'Messages' },
+  { id: 'interactive', label: 'Interactive' },
+  { id: 'data_collection', label: 'Data Collection' },
+  { id: 'flow_control', label: 'Flow Control' },
+] as const;
+
+export const FLOW_BLOCKS: FlowBlockItem[] = [
+  // MESSAGES
+  {
+    id: 'text',
+    node_type: 'send_message',
+    label: 'Text',
+    blurb: 'Send plain or dynamic text with variables',
+    category: 'messages',
+    icon: MessageCircle,
+    color: 'text-sky-400',
+    customKeyBase: 'text_msg',
+  },
+  {
+    id: 'image',
+    node_type: 'send_media',
+    label: 'Image',
+    blurb: 'Send JPG, PNG image with caption',
+    category: 'messages',
+    icon: ImageIcon,
+    color: 'text-cyan-400',
+    initialConfig: { media_type: 'image', media_url: '', caption: '' },
+    customKeyBase: 'image',
+  },
+  {
+    id: 'video',
+    node_type: 'send_media',
+    label: 'Video',
+    blurb: 'Send MP4 video with caption',
+    category: 'messages',
+    icon: Video,
+    color: 'text-blue-400',
+    initialConfig: { media_type: 'video', media_url: '', caption: '' },
+    customKeyBase: 'video',
+  },
+  {
+    id: 'audio',
+    node_type: 'send_media',
+    label: 'Audio',
+    blurb: 'Send voice message or audio clip',
+    category: 'messages',
+    icon: Music,
+    color: 'text-violet-400',
+    initialConfig: { media_type: 'audio', media_url: '' },
+    customKeyBase: 'audio',
+  },
+  {
+    id: 'file',
+    node_type: 'send_media',
+    label: 'File / Document',
+    blurb: 'Send PDF, document or catalog',
+    category: 'messages',
+    icon: FileText,
+    color: 'text-emerald-400',
+    initialConfig: { media_type: 'document', media_url: '', filename: '' },
+    customKeyBase: 'document',
+  },
+  // INTERACTIVE
+  {
+    id: 'interactive_buttons',
+    node_type: 'send_buttons',
+    label: 'Interactive Buttons',
+    blurb: 'Send quick-reply buttons (Yes/No, options)',
+    category: 'interactive',
+    icon: ListChecks,
+    color: 'text-primary',
+    customKeyBase: 'buttons',
+  },
+  {
+    id: 'interactive_list',
+    node_type: 'send_list',
+    label: 'Interactive List',
+    blurb: 'Send menu with selectable list rows',
+    category: 'interactive',
+    icon: ListPlus,
+    color: 'text-indigo-400',
+    customKeyBase: 'list_menu',
+  },
+  // DATA COLLECTION
+  {
+    id: 'user_input',
+    node_type: 'collect_input',
+    label: 'User Input',
+    blurb: 'Ask customer a question & save their reply',
+    category: 'data_collection',
+    icon: Inbox,
+    color: 'text-teal-400',
+    customKeyBase: 'user_input',
+  },
+  // FLOW CONTROL
+  {
+    id: 'condition',
+    node_type: 'condition',
+    label: 'Condition (If / Else)',
+    blurb: 'Split paths based on tag, variable, or field',
+    category: 'flow_control',
+    icon: GitFork,
+    color: 'text-fuchsia-400',
+    customKeyBase: 'condition',
+  },
+  {
+    id: 'set_tag',
+    node_type: 'set_tag',
+    label: 'Label / Tag Assign',
+    blurb: 'Add or remove tag from contact',
+    category: 'flow_control',
+    icon: Tag,
+    color: 'text-pink-400',
+    customKeyBase: 'tag_contact',
+  },
+  {
+    id: 'handoff',
+    node_type: 'handoff',
+    label: 'Handoff to Agent',
+    blurb: 'Transfer conversation to live support agent',
+    category: 'flow_control',
+    icon: UserPlus,
+    color: 'text-amber-400',
+    customKeyBase: 'handoff',
+  },
+  {
+    id: 'end',
+    node_type: 'end',
+    label: 'End Flow',
+    blurb: 'Finish and close the automation session',
+    category: 'flow_control',
+    icon: Flag,
+    color: 'text-muted-foreground',
+    customKeyBase: 'end',
+  },
 ];
 
 export const NODE_META: Record<

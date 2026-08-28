@@ -26,6 +26,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ChevronDown,
+  Clock,
+  Link as LinkIcon,
   Loader2,
   Paperclip,
   Plus,
@@ -81,11 +84,16 @@ export function NodeConfigForm({
 
     case "send_message":
       return (
-        <>
+        <div className="flex flex-col gap-3">
           <TextRow
             label={t("textToCustomer")}
             value={(cfg as { text?: string }).text ?? ""}
             onChange={(v) => onUpdateConfig({ text: v })}
+          />
+          <DeliveryOptionsSection
+            delaySeconds={(cfg as { delay_seconds?: number }).delay_seconds}
+            typingOnDisplay={(cfg as { typing_on_display?: boolean }).typing_on_display}
+            onChange={onUpdateConfig}
           />
           <NextNodeRow
             value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
@@ -94,7 +102,7 @@ export function NodeConfigForm({
             onChange={(v) => onUpdateConfig({ next_node_key: v })}
             label={t("advancesTo")}
           />
-        </>
+        </div>
       );
 
     case "send_buttons":
@@ -134,7 +142,7 @@ export function NodeConfigForm({
 
     case "collect_input":
       return (
-        <>
+        <div className="flex flex-col gap-3">
           <TextRow
             label={t("promptToCustomer")}
             value={(cfg as { prompt_text?: string }).prompt_text ?? ""}
@@ -165,6 +173,11 @@ export function NodeConfigForm({
               .
             </p>
           </div>
+          <DeliveryOptionsSection
+            delaySeconds={(cfg as { delay_seconds?: number }).delay_seconds}
+            typingOnDisplay={(cfg as { typing_on_display?: boolean }).typing_on_display}
+            onChange={onUpdateConfig}
+          />
           <NextNodeRow
             value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
             allNodes={allNodes}
@@ -172,7 +185,7 @@ export function NodeConfigForm({
             onChange={(v) => onUpdateConfig({ next_node_key: v })}
             label={t("advanceAfterCapture")}
           />
-        </>
+        </div>
       );
 
     case "condition":
@@ -216,6 +229,164 @@ export function NodeConfigForm({
   }
 }
 
+function DeliveryOptionsSection({
+  delaySeconds = 0,
+  typingOnDisplay = false,
+  onChange,
+}: {
+  delaySeconds?: number;
+  typingOnDisplay?: boolean;
+  onChange: (patch: { delay_seconds?: number; typing_on_display?: boolean }) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const safeDelay = typeof delaySeconds === "number" && !isNaN(delaySeconds) ? delaySeconds : 0;
+  const hours = Math.floor(safeDelay / 3600);
+  const minutes = Math.floor((safeDelay % 3600) / 60);
+  const seconds = safeDelay % 60;
+
+  const updateDelay = (newH: number, newM: number, newS: number) => {
+    const total = Math.max(0, newH * 3600 + newM * 60 + newS);
+    onChange({ delay_seconds: total });
+  };
+
+  const delayLabel =
+    safeDelay === 0
+      ? "0 seconds"
+      : [
+          hours > 0 ? `${hours}h` : null,
+          minutes > 0 ? `${minutes}m` : null,
+          seconds > 0 || (hours === 0 && minutes === 0) ? `${seconds}s` : null,
+        ]
+          .filter(Boolean)
+          .join(" ");
+
+  return (
+    <div className="rounded-lg border border-border/80 bg-muted/20 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-3.5 py-2.5 text-left text-xs font-medium text-foreground hover:bg-muted/40 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <Clock className="h-3.5 w-3.5 text-primary" />
+          <span>Delivery Options</span>
+          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground font-normal">
+            Optional
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {safeDelay > 0 && (
+            <span className="text-[11px] font-semibold text-primary font-mono">{delayLabel}</span>
+          )}
+          {typingOnDisplay && (
+            <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[9.5px] font-semibold text-sky-400">
+              Typing ON
+            </span>
+          )}
+          <ChevronDown
+            className={cn(
+              "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",
+              open && "rotate-180"
+            )}
+          />
+        </div>
+      </button>
+
+      {open && (
+        <div className="border-t border-border/60 p-3.5 space-y-4 text-xs bg-background/50">
+          {/* Smart Delay Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="font-medium text-foreground">Smart Delay in Reply</span>
+              <p className="text-[11px] text-muted-foreground">
+                Wait before sending the next message
+              </p>
+            </div>
+            <span className="rounded-md border border-border bg-muted/60 px-2 py-1 text-xs font-semibold text-foreground font-mono">
+              {delayLabel}
+            </span>
+          </div>
+
+          {/* Typing on Display toggle */}
+          <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/30 p-2.5">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-primary text-sm">
+                💬
+              </span>
+              <div>
+                <span className="font-medium text-foreground text-[11.5px]">
+                  Typing on display
+                </span>
+                <p className="text-[10px] text-muted-foreground">
+                  Show typing indicator before the bot replies
+                </p>
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={Boolean(typingOnDisplay)}
+              onChange={(e) => onChange({ typing_on_display: e.target.checked })}
+              className="h-4 w-4 rounded border-border text-primary accent-primary cursor-pointer"
+            />
+          </div>
+
+          {/* Hours / Minutes / Seconds Sliders */}
+          <div className="space-y-3 pt-1">
+            {/* Hours */}
+            <div className="space-y-1">
+              <div className="flex justify-between text-[11px] text-muted-foreground">
+                <span>Hours</span>
+                <span className="font-mono font-semibold text-foreground">{hours}</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={24}
+                value={hours}
+                onChange={(e) => updateDelay(parseInt(e.target.value) || 0, minutes, seconds)}
+                className="w-full accent-primary h-1.5 bg-muted rounded-lg cursor-pointer"
+              />
+            </div>
+
+            {/* Minutes */}
+            <div className="space-y-1">
+              <div className="flex justify-between text-[11px] text-muted-foreground">
+                <span>Minutes</span>
+                <span className="font-mono font-semibold text-foreground">{minutes}</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={59}
+                value={minutes}
+                onChange={(e) => updateDelay(hours, parseInt(e.target.value) || 0, seconds)}
+                className="w-full accent-primary h-1.5 bg-muted rounded-lg cursor-pointer"
+              />
+            </div>
+
+            {/* Seconds */}
+            <div className="space-y-1">
+              <div className="flex justify-between text-[11px] text-muted-foreground">
+                <span>Seconds</span>
+                <span className="font-mono font-semibold text-foreground">{seconds}</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={59}
+                value={seconds}
+                onChange={(e) => updateDelay(hours, minutes, parseInt(e.target.value) || 0)}
+                className="w-full accent-primary h-1.5 bg-muted rounded-lg cursor-pointer"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ============================================================
 // send_buttons
 // ============================================================
@@ -224,6 +395,8 @@ interface SendButtonsCfg {
   text?: string;
   footer_text?: string;
   buttons?: Array<{ reply_id: string; title: string; next_node_key: string }>;
+  delay_seconds?: number;
+  typing_on_display?: boolean;
 }
 
 function SendButtonsForm({
@@ -265,7 +438,7 @@ function SendButtonsForm({
     onUpdateConfig({ buttons: buttons.filter((_, i) => i !== idx) });
 
   return (
-    <>
+    <div className="flex flex-col gap-3">
       <TextRow
         label={t("bodyText")}
         value={cfg.text ?? ""}
@@ -343,7 +516,13 @@ function SendButtonsForm({
           </Button>
         )}
       </div>
-    </>
+
+      <DeliveryOptionsSection
+        delaySeconds={cfg.delay_seconds}
+        typingOnDisplay={cfg.typing_on_display}
+        onChange={onUpdateConfig}
+      />
+    </div>
   );
 }
 
@@ -581,6 +760,12 @@ function SendListForm({
             {t("addSection")}
           </Button>
         )}
+
+        <DeliveryOptionsSection
+          delaySeconds={(cfg as { delay_seconds?: number }).delay_seconds}
+          typingOnDisplay={(cfg as { typing_on_display?: boolean }).typing_on_display}
+          onChange={onUpdateConfig}
+        />
       </div>
     </>
   );
@@ -874,6 +1059,8 @@ interface SendMediaCfg {
   caption?: string;
   filename?: string;
   next_node_key?: string;
+  delay_seconds?: number;
+  typing_on_display?: boolean;
 }
 
 // Mirrors the bucket's allowed_mime_types from migration 016. Kept in
@@ -905,10 +1092,12 @@ function SendMediaForm({
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [tab, setTab] = useState<"upload" | "url">(cfg.media_url?.startsWith("http") && !cfg.filename ? "url" : "upload");
 
   const mediaType = cfg.media_type ?? "image";
   const isDocument = mediaType === "document";
   const isAudio = mediaType === "audio";
+  const isImage = mediaType === "image";
   const displayName =
     cfg.filename ||
     (cfg.media_url ? cfg.media_url.split("/").pop() ?? "" : "");
@@ -923,11 +1112,7 @@ function SendMediaForm({
       }
       setUploading(true);
       try {
-        // Account-scoped upload (path `account-<id>/...`) — see
-        // uploadAccountMedia + migration 020's flow-media RLS policy.
         const { publicUrl } = await uploadAccountMedia(FLOW_MEDIA_BUCKET, file);
-        // Patch all fields in one call so the form doesn't re-render
-        // with a half-uploaded state.
         onUpdateConfig({
           media_url: publicUrl,
           filename: file.name,
@@ -948,15 +1133,12 @@ function SendMediaForm({
   };
 
   return (
-    <>
+    <div className="flex flex-col gap-3">
       <div>
         <label className="mb-1 block text-xs text-muted-foreground">{t("mediaTypeLabel")}</label>
         <Select
           value={mediaType}
           onValueChange={(v) => {
-            // Changing type clears the existing file — the bucket
-            // accepts different MIME sets per type and a previously
-            // uploaded PDF can't be sent as an image.
             onUpdateConfig({
               media_type: v as NonNullable<SendMediaCfg["media_type"]>,
               media_url: "",
@@ -978,62 +1160,128 @@ function SendMediaForm({
         </Select>
       </div>
 
-      <div>
-        <label className="mb-1 block text-xs text-muted-foreground">{t("fileLabel")}</label>
-        {cfg.media_url ? (
-          <div className="flex items-center gap-2 rounded-md border border-border bg-muted px-3 py-2 text-xs">
-            <Paperclip className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
-            <a
-              href={cfg.media_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="min-w-0 flex-1 truncate text-foreground hover:text-cyan-300"
-              title={displayName || cfg.media_url}
-            >
-              {displayName || cfg.media_url}
-            </a>
+      {/* Upload vs URL Tabs */}
+      <div className="rounded-lg border border-border/80 bg-muted/20 p-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-medium text-foreground">
+            {isImage ? "Configure Image" : isDocument ? "Configure Document" : "Configure Media"}
+          </label>
+          <div className="inline-flex rounded-md border border-border bg-muted/60 p-0.5 text-[11px]">
             <button
               type="button"
-              onClick={handleClear}
-              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-              aria-label={t("removeFile")}
-              disabled={uploading}
+              onClick={() => setTab("upload")}
+              className={cn(
+                "rounded px-2 py-0.5 font-medium transition-colors",
+                tab === "upload" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
             >
-              <X className="h-3.5 w-3.5" />
+              Upload
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab("url")}
+              className={cn(
+                "rounded px-2 py-0.5 font-medium transition-colors",
+                tab === "url" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Direct URL
             </button>
           </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-border bg-card px-3 py-4 text-xs text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {uploading ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                {t("uploading")}
-              </>
+        </div>
+
+        {tab === "upload" ? (
+          <div>
+            {cfg.media_url ? (
+              <div className="flex items-center gap-2 rounded-md border border-border bg-muted px-3 py-2 text-xs">
+                <Paperclip className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
+                <a
+                  href={cfg.media_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="min-w-0 flex-1 truncate text-foreground hover:text-cyan-300"
+                  title={displayName || cfg.media_url}
+                >
+                  {displayName || cfg.media_url}
+                </a>
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  aria-label={t("removeFile")}
+                  disabled={uploading}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
             ) : (
-              <>
-                <Upload className="h-3.5 w-3.5" />
-                {t("clickToUpload")}
-              </>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="flex w-full flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-border bg-card/60 px-3 py-6 text-xs text-muted-foreground transition-colors hover:border-primary/60 hover:bg-muted/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {uploading ? (
+                  <>
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                    <span className="font-medium text-foreground">{t("uploading")}</span>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <Upload className="h-5 w-5" />
+                    </div>
+                    <span className="font-semibold text-foreground text-[12.5px] mt-1">
+                      Upload {mediaType} file
+                    </span>
+                    <span className="text-[10.5px] text-muted-foreground">
+                      Supported: {MEDIA_ACCEPT[mediaType].split(",").slice(0, 3).join(", ")} (max 16 MB)
+                    </span>
+                  </>
+                )}
+              </button>
             )}
-          </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={MEDIA_ACCEPT[mediaType]}
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handleFile(f);
+                e.target.value = "";
+              }}
+            />
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <LinkIcon className="h-3.5 w-3.5 text-cyan-400" />
+              <span>Public Media URL</span>
+            </div>
+            <Input
+              value={cfg.media_url ?? ""}
+              onChange={(e) => onUpdateConfig({ media_url: e.target.value })}
+              placeholder="https://example.com/image.jpg or {{vars.file_url}}"
+              className="bg-muted text-xs font-mono"
+            />
+          </div>
         )}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={MEDIA_ACCEPT[mediaType]}
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void handleFile(f);
-            // Reset so picking the same file twice still fires onChange.
-            e.target.value = "";
-          }}
-        />
+
+        {/* Media Preview if image */}
+        {isImage && cfg.media_url && (
+          <div className="relative overflow-hidden rounded-md border border-border/80 bg-black/20 p-1 flex justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={cfg.media_url}
+              alt="Preview"
+              className="max-h-36 rounded object-contain"
+              onError={(e) => {
+                (e.target as HTMLElement).style.display = "none";
+              }}
+            />
+          </div>
+        )}
       </div>
 
       {!isAudio && (
@@ -1059,6 +1307,12 @@ function SendMediaForm({
         </div>
       )}
 
+      <DeliveryOptionsSection
+        delaySeconds={cfg.delay_seconds}
+        typingOnDisplay={cfg.typing_on_display}
+        onChange={onUpdateConfig}
+      />
+
       <NextNodeRow
         value={cfg.next_node_key ?? ""}
         allNodes={allNodes}
@@ -1066,7 +1320,7 @@ function SendMediaForm({
         onChange={(v) => onUpdateConfig({ next_node_key: v })}
         label={t("advanceAfterSending")}
       />
-    </>
+    </div>
   );
 }
 

@@ -22,19 +22,27 @@
 // Node configs (discriminated union by node_type)
 // ============================================================
 
+export interface DeliveryOptions {
+  /** Optional delay before sending this node's message (in seconds). */
+  delay_seconds?: number;
+  /** Whether to simulate typing indicator before sending this node. */
+  typing_on_display?: boolean;
+}
+
 export interface StartNodeConfig {
   /** Stable node_key of the first real node to advance to. */
   next_node_key: string;
 }
 
-export interface SendMessageNodeConfig {
+export interface SendMessageNodeConfig extends DeliveryOptions {
   /** Plain text sent to the customer; can interpolate {{vars.X}} and {{contact.X}}. */
   text: string;
   /** Auto-advance target after the message lands at Meta. Optional if this is the final step. */
   next_node_key?: string;
+  delivery_options?: DeliveryOptions;
 }
 
-export interface SendButtonsNodeConfig {
+export interface SendButtonsNodeConfig extends DeliveryOptions {
   text: string;
   /** Optional header / footer lines around the buttons. */
   header_text?: string;
@@ -48,9 +56,10 @@ export interface SendButtonsNodeConfig {
     /** node_key the runner advances to when this button is tapped. */
     next_node_key: string;
   }>;
+  delivery_options?: DeliveryOptions;
 }
 
-export interface SendListNodeConfig {
+export interface SendListNodeConfig extends DeliveryOptions {
   text: string;
   /** Label of the tap-to-expand button on the message bubble. */
   button_label: string;
@@ -66,13 +75,14 @@ export interface SendListNodeConfig {
       next_node_key: string;
     }>;
   }>;
+  delivery_options?: DeliveryOptions;
 }
 
 /**
  * Sends a single image / video / audio / document via WhatsApp, then
  * auto-advances.
  */
-export interface SendMediaNodeConfig {
+export interface SendMediaNodeConfig extends DeliveryOptions {
   media_type: "image" | "video" | "document" | "audio";
   /** Public URL Meta will fetch. Uploaded via the builder's file picker. */
   media_url: string;
@@ -85,6 +95,7 @@ export interface SendMediaNodeConfig {
   filename?: string;
   /** Auto-advance target after the send lands at Meta. Optional if this is the final step. */
   next_node_key?: string;
+  delivery_options?: DeliveryOptions;
 }
 
 export interface HandoffNodeConfig {
@@ -106,7 +117,7 @@ export interface HandoffNodeConfig {
  * builder still surfaces the field so users can author flows that
  * v2 will start enforcing.
  */
-export interface CollectInputNodeConfig {
+export interface CollectInputNodeConfig extends DeliveryOptions {
   /** Prompt text sent to the customer before they reply. */
   prompt_text: string;
   /**
@@ -115,6 +126,7 @@ export interface CollectInputNodeConfig {
    * `condition` nodes and `handoff` notes via interpolation.
    */
   var_key: string;
+  delivery_options?: DeliveryOptions;
   /**
    * Reserved for v2. Accepted on the config but ignored by the v1.5
    * runner — captures any non-empty text.

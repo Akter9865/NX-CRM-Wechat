@@ -400,6 +400,7 @@ async function sendButtonsAndSuspend(
   node: FlowNodeRow,
 ): Promise<{ outcome: "advanced"; node_key: string }> {
   const cfg = node.config as unknown as SendButtonsNodeConfig;
+  await applyDeliveryDelay(cfg);
   const { whatsapp_message_id } = await engineSendInteractiveButtons({
     accountId: run.account_id,
     userId: run.user_id,
@@ -436,6 +437,7 @@ async function sendListAndSuspend(
   node: FlowNodeRow,
 ): Promise<{ outcome: "advanced"; node_key: string }> {
   const cfg = node.config as unknown as SendListNodeConfig;
+  await applyDeliveryDelay(cfg);
   const { whatsapp_message_id } = await engineSendInteractiveList({
     accountId: run.account_id,
     userId: run.user_id,
@@ -611,6 +613,27 @@ async function endRun(
 // new current_node_key before returning.
 // ============================================================
 
+async function applyDeliveryDelay(cfg: {
+  delay_seconds?: number;
+  typing_on_display?: boolean;
+  delivery_options?: { delay_seconds?: number; typing_on_display?: boolean };
+}): Promise<void> {
+  const delaySec = cfg.delay_seconds ?? cfg.delivery_options?.delay_seconds ?? 0;
+  const typing = cfg.typing_on_display ?? cfg.delivery_options?.typing_on_display ?? false;
+
+  let totalMs = 0;
+  if (delaySec > 0) {
+    // Cap synchronous serverless delay to 20 seconds
+    totalMs += Math.min(delaySec * 1000, 20000);
+  } else if (typing) {
+    // Natural typing simulation pause
+    totalMs = 1200;
+  }
+  if (totalMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, totalMs));
+  }
+}
+
 async function advanceFromNodeKey(
   db: AdminClient,
   run: FlowRunRow,
@@ -656,6 +679,7 @@ async function advanceFromNodeKey(
     }
     if (node.node_type === "send_message") {
       const cfg = node.config as unknown as SendMessageNodeConfig;
+      await applyDeliveryDelay(cfg);
       try {
         const { whatsapp_message_id } = await engineSendText({
           accountId: run.account_id,
@@ -681,6 +705,7 @@ async function advanceFromNodeKey(
     }
     if (node.node_type === "send_media") {
       const cfg = node.config as unknown as SendMediaNodeConfig;
+      await applyDeliveryDelay(cfg);
       try {
         const { whatsapp_message_id } = await engineSendMedia({
           accountId: run.account_id,
@@ -714,6 +739,7 @@ async function advanceFromNodeKey(
       // Send the prompt and suspend. Customer's next TEXT reply will
       // wake us up via handleReplyForActiveRun's collect_input branch.
       const cfg = node.config as unknown as CollectInputNodeConfig;
+      await applyDeliveryDelay(cfg);
       try {
         const { whatsapp_message_id } = await engineSendText({
           accountId: run.account_id,
