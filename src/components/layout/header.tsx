@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ModeToggle } from "@/components/layout/mode-toggle";
 import { ThemePalettePopover } from "@/components/layout/theme-palette-popover";
+import { PwaInstallButton } from "@/components/pwa/pwa-install";
 import { useTranslations } from "next-intl";
 
 const pageTitles: Record<string, string> = {
@@ -181,6 +182,15 @@ export function Header({ onOpenSidebar }: HeaderProps) {
             </span>
           )}
         </Link>
+
+        {/* PWA 1-Click Install Button */}
+        <div className="hidden sm:block">
+          <PwaInstallButton
+            variant="outline"
+            size="sm"
+            className="h-9 rounded-xl border-border/60 hover:border-primary/40 bg-card/60 hover:bg-card text-xs font-semibold"
+          />
+        </div>
 
         {/* Theme Palette Switcher */}
         <ThemePalettePopover />

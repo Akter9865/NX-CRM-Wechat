@@ -62,7 +62,7 @@ export function AppearancePanel() {
     <section className="max-w-6xl animate-in fade-in-50 duration-200 space-y-8">
       <SettingsPanelHead
         title={t("title")}
-        description="Choose from 200+ curated color themes or enter your agency's custom brand color with real-time live preview."
+        description="Choose from curated premium color themes or enter your agency's custom brand color with real-time live preview."
       />
 
       {/* 1. Mode Selector (Light / Dark) */}
@@ -155,7 +155,7 @@ export function AppearancePanel() {
         </div>
       </div>
 
-      {/* 3. 200+ Curated Color Themes Gallery */}
+      {/* 3. Curated Color Themes Gallery */}
       <div className="space-y-4 pt-2">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
@@ -163,11 +163,11 @@ export function AppearancePanel() {
               <Palette className="size-4 text-primary" />
               <span>Curated Theme Palette Collection</span>
               <span className="rounded-md bg-primary/10 border border-primary/20 px-2 py-0.5 text-xs font-mono font-bold text-primary">
-                230+ Themes
+                18 Presets
               </span>
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Instant one-click theme presets crafted for modern dark and light interfaces.
+              Hand-picked theme presets designed for modern SaaS interfaces.
             </p>
           </div>
 
@@ -175,7 +175,7 @@ export function AppearancePanel() {
           <div className="relative w-full sm:w-64 shrink-0">
             <Search className="size-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search by name, vibe, or hex..."
+              placeholder="Search theme or hex..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-8 text-xs h-9 bg-card"
@@ -201,7 +201,7 @@ export function AppearancePanel() {
         </div>
 
         {/* Themes Grid */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 max-h-[600px] overflow-y-auto p-1 pr-2 rounded-2xl border border-border/40 bg-muted/10">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 p-1 rounded-2xl border border-border/40 bg-muted/10">
           {filteredThemes.map((tObj) => (
             <ThemeCard
               key={tObj.id}

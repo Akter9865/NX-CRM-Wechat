@@ -36,6 +36,7 @@ import { ConversationsChart } from '@/components/dashboard/conversations-chart'
 import { PipelineDonut } from '@/components/dashboard/pipeline-donut'
 import { ResponseTimeChart } from '@/components/dashboard/response-time-chart'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
+import { PwaInstallBanner } from '@/components/pwa/pwa-install'
 
 import { useTranslations } from 'next-intl'
 
@@ -159,6 +160,9 @@ export default function DashboardPage() {
           </Button>
         </div>
       </div>
+
+      {/* PWA Add to Home Screen Banner */}
+      <PwaInstallBanner />
 
       {/* SaaS Plan & Quota Usage Banner */}
       <PlanQuotaStrip />

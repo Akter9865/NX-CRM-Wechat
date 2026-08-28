@@ -15,6 +15,7 @@ import {
   CheckCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { PwaInstallButton } from '@/components/pwa/pwa-install';
 import { siteConfig } from '@/lib/config/site';
 
 const ROTATING_WORDS = [
@@ -134,6 +135,13 @@ export function HeroSection() {
                 <span>WhatsApp Demo</span>
               </Button>
             </a>
+
+            <PwaInstallButton
+              variant="outline"
+              size="lg"
+              label="Install App"
+              className="w-full sm:w-auto h-11 sm:h-13 px-5 sm:px-7 rounded-2xl border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs sm:text-sm shadow-sm transition-all hover:scale-[1.02] flex items-center justify-center gap-2"
+            />
 
             <Link href="/#contact" className="w-full sm:w-auto">
               <Button
