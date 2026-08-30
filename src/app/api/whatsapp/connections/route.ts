@@ -268,6 +268,24 @@ export async function POST(request: Request) {
       );
     }
 
+    // Auto-detect app_id if omitted
+    let resolvedAppId = app_id?.trim() || null;
+    if (!resolvedAppId) {
+      try {
+        const debugRes = await fetch(
+          `https://graph.facebook.com/debug_token?input_token=${access_token}&access_token=${access_token}`
+        );
+        if (debugRes.ok) {
+          const debugData = await debugRes.json();
+          if (debugData?.data?.app_id) {
+            resolvedAppId = String(debugData.data.app_id);
+          }
+        }
+      } catch (err) {
+        console.warn('[connections] Token debug inspection skipped:', err);
+      }
+    }
+
     // 4. Encrypt sensitive credentials
     let encryptedAccessToken: string;
     let encryptedVerifyToken: string | null;
@@ -276,6 +294,20 @@ export async function POST(request: Request) {
       encryptedAccessToken = encrypt(access_token);
       encryptedVerifyToken = verify_token ? encrypt(verify_token) : null;
       encryptedAppSecret = app_secret ? encrypt(app_secret) : null;
+
+      // If app_secret was omitted but app_id matches a known configured secret, inherit it
+      if (!encryptedAppSecret && resolvedAppId) {
+        const { data: siblingConfigs } = await supabaseAdmin()
+          .from('whatsapp_config')
+          .select('app_secret')
+          .eq('app_id', resolvedAppId)
+          .not('app_secret', 'is', null)
+          .limit(1);
+
+        if (siblingConfigs && siblingConfigs.length > 0 && siblingConfigs[0].app_secret) {
+          encryptedAppSecret = siblingConfigs[0].app_secret;
+        }
+      }
     } catch (err) {
       console.error('Encryption failed:', err);
       return NextResponse.json(
@@ -332,7 +364,7 @@ export async function POST(request: Request) {
       phone_number_id,
       waba_id: waba_id?.trim() || null,
       business_portfolio_id: business_portfolio_id?.trim() || null,
-      app_id: app_id?.trim() || null,
+      app_id: resolvedAppId,
       app_secret: encryptedAppSecret,
       display_phone_number: phoneInfo.display_phone_number || null,
       business_name: phoneInfo.verified_name || null,

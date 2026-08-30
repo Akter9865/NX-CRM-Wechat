@@ -121,6 +121,15 @@ export async function GET(request: Request) {
       )
     }
 
+    // Check environment fallback verify token first
+    const envVerifyToken = process.env.WEBHOOK_VERIFY_TOKEN?.trim()
+    if (envVerifyToken && verifyToken === envVerifyToken) {
+      return new Response(challenge, {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain' },
+      })
+    }
+
     // Fetch all whatsapp configs to check verify tokens
     const { data: configs, error: configError } = await supabaseAdmin()
       .from('whatsapp_config')
@@ -134,9 +143,7 @@ export async function GET(request: Request) {
       )
     }
 
-    // Check if any config's verify_token matches. Also collect the
-    // matching row so we can opportunistically upgrade its token to
-    // GCM if it was still in the legacy CBC format.
+    // Check if any config's verify_token matches
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let matchedConfig: any = null
     for (const config of configs) {
@@ -152,8 +159,7 @@ export async function GET(request: Request) {
     }
 
     if (matchedConfig) {
-      // Fire-and-forget GCM upgrade. Safe to run on every subscribe
-      // since it's a no-op once the column is already GCM.
+      // Fire-and-forget GCM upgrade if needed
       if (isLegacyFormat(matchedConfig.verify_token)) {
         void supabaseAdmin()
           .from('whatsapp_config')
@@ -168,7 +174,6 @@ export async function GET(request: Request) {
             }
           })
       }
-      // Return challenge as plain text
       return new Response(challenge, {
         status: 200,
         headers: { 'Content-Type': 'text/plain' },
@@ -195,20 +200,19 @@ export async function POST(request: Request) {
   const rawBody = await request.text()
   const signature = request.headers.get('x-hub-signature-256')
 
-  // Multi-tenant: collect custom app_secrets from active whatsapp_config connections
+  // Multi-tenant: collect custom app_secrets from all whatsapp_config connections
   const candidateSecrets: string[] = []
   try {
     const { data: configs } = await supabaseAdmin()
       .from('whatsapp_config')
       .select('app_secret')
-      .eq('is_archived', false)
 
     if (configs && configs.length > 0) {
       for (const c of configs) {
         if (c.app_secret) {
           try {
             const dec = decrypt(c.app_secret)
-            if (dec) candidateSecrets.push(dec)
+            if (dec && !candidateSecrets.includes(dec)) candidateSecrets.push(dec)
           } catch { }
         }
       }
@@ -218,12 +222,10 @@ export async function POST(request: Request) {
   }
 
   if (!verifyMetaWebhookSignature(rawBody, signature, candidateSecrets)) {
-    // 401 (not 200) — we want Meta's delivery dashboard to show failures
-    // loudly if a misconfiguration causes signatures to stop matching,
-    // rather than silently eating events.
     console.warn('[webhook] rejected request with invalid signature')
     return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
   }
+
 
   let body: { entry?: WhatsAppWebhookEntry[] }
   try {
@@ -285,9 +287,13 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
       }
 
       // Handle incoming messages
-      if (!value.messages || !value.contacts) continue
+      if (!value.messages || value.messages.length === 0) continue
 
-      const phoneNumberId = value.metadata.phone_number_id
+      const phoneNumberId = value.metadata?.phone_number_id
+      if (!phoneNumberId) {
+        console.warn('[webhook] Inbound message missing phone_number_id in metadata')
+        continue
+      }
 
       // Find user's active config by phone_number_id. Filter by is_archived=false
       // so previously archived/disconnected connections don't create false duplicates.
@@ -318,20 +324,30 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
         configRows[0]
 
       // Record live heartbeat on incoming webhook
-      void supabaseAdmin()
+      await supabaseAdmin()
         .from('whatsapp_config')
         .update({
           last_webhook_at: new Date().toISOString(),
           last_message_received_at: new Date().toISOString(),
+          status: 'connected',
         })
         .eq('id', config.id)
-        .then(() => { })
 
-      const decryptedAccessToken = decrypt(config.access_token)
+      let decryptedAccessToken: string
+      try {
+        decryptedAccessToken = decrypt(config.access_token)
+      } catch (decErr) {
+        console.error('[webhook] Failed to decrypt access_token for config:', config.id, decErr)
+        continue
+      }
 
       for (let i = 0; i < value.messages.length; i++) {
         const message = value.messages[i]
-        const contact = value.contacts[i] || value.contacts[0]
+        const rawContact = value.contacts?.[i] || value.contacts?.[0]
+        const contact = rawContact || {
+          profile: { name: message.from },
+          wa_id: message.from,
+        }
 
         await processMessage(
           message,
@@ -794,6 +810,7 @@ async function processMessage(
   // both reads see the same value and write the same increment, losing one
   // (issue #369). The RPC increments in a single UPDATE and refreshes the
   // last-message summary in the same statement.
+  const messageTimeIso = new Date(parseInt(message.timestamp) * 1000).toISOString()
   const { error: convError } = await supabaseAdmin().rpc(
     'bump_conversation_on_inbound',
     {
@@ -805,6 +822,16 @@ async function processMessage(
   if (convError) {
     console.error('Error updating conversation:', convError)
   }
+
+  // Ensure last_customer_message_at and whatsapp_connection_id are refreshed
+  await supabaseAdmin()
+    .from('conversations')
+    .update({
+      last_customer_message_at: messageTimeIso,
+      whatsapp_connection_id: connectionId || conversation.whatsapp_connection_id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', conversation.id)
 
   // A customer writing again re-opens the thread (issue #409). Kept as a
   // separate conditional statement rather than a `status` field on the
@@ -1235,20 +1262,13 @@ async function findOrCreateConversation(
   contactId: string,
   connectionId?: string,
 ) {
-  // Look for an existing conversation in this account for this contact & connection.
-  let query = supabaseAdmin()
+  // Look for an existing conversation in this account for this contact.
+  const { data: existingRows, error: findError } = await supabaseAdmin()
     .from('conversations')
     .select('*')
     .eq('account_id', accountId)
-    .eq('contact_id', contactId);
-
-  if (connectionId) {
-    query = query.eq('whatsapp_connection_id', connectionId);
-  }
-
-  const { data: existingRows, error: findError } = await query
-    .order('created_at', { ascending: true })
-    .limit(1);
+    .eq('contact_id', contactId)
+    .limit(1)
 
   if (findError) {
     console.error('Error finding conversation:', findError)
@@ -1256,31 +1276,25 @@ async function findOrCreateConversation(
   }
 
   if (existingRows && existingRows.length > 0) {
-    return { conversation: existingRows[0], created: false }
-  }
-
-  // If not found with connectionId, check if an unassigned conversation exists and adopt it
-  if (connectionId) {
-    const { data: unassigned } = await supabaseAdmin()
-      .from('conversations')
-      .select('*')
-      .eq('account_id', accountId)
-      .eq('contact_id', contactId)
-      .is('whatsapp_connection_id', null)
-      .order('created_at', { ascending: true })
-      .limit(1);
-
-    if (unassigned && unassigned.length > 0) {
+    const existing = existingRows[0]
+    // If incoming message belongs to a specific connection, bind it to this conversation
+    if (connectionId && existing.whatsapp_connection_id !== connectionId) {
       await supabaseAdmin()
         .from('conversations')
-        .update({ whatsapp_connection_id: connectionId })
-        .eq('id', unassigned[0].id);
-      return { conversation: { ...unassigned[0], whatsapp_connection_id: connectionId }, created: false };
+        .update({
+          whatsapp_connection_id: connectionId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id)
+      return {
+        conversation: { ...existing, whatsapp_connection_id: connectionId },
+        created: false,
+      }
     }
+    return { conversation: existing, created: false }
   }
 
-  // Create new conversation. Same tenancy + audit split as
-  // findOrCreateContact above.
+  // Create new conversation
   const { data: newConv, error: createError } = await supabaseAdmin()
     .from('conversations')
     .insert({
@@ -1293,18 +1307,28 @@ async function findOrCreateConversation(
     .single()
 
   if (createError) {
-    // Lost a race: a concurrent inbound delivery created the
-    // conversation between our lookup and insert, and the unique index
-    // rejected the duplicate. Re-resolve the winning row.
+    // Race condition handle
     if (isUniqueViolation(createError)) {
       const { data: raced } = await supabaseAdmin()
         .from('conversations')
         .select('*')
         .eq('account_id', accountId)
         .eq('contact_id', contactId)
-        .order('created_at', { ascending: true })
         .limit(1)
       if (raced && raced.length > 0) {
+        if (connectionId && raced[0].whatsapp_connection_id !== connectionId) {
+          await supabaseAdmin()
+            .from('conversations')
+            .update({
+              whatsapp_connection_id: connectionId,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', raced[0].id)
+          return {
+            conversation: { ...raced[0], whatsapp_connection_id: connectionId },
+            created: false,
+          }
+        }
         return { conversation: raced[0], created: false }
       }
     }
@@ -1314,3 +1338,4 @@ async function findOrCreateConversation(
 
   return { conversation: newConv, created: true }
 }
+

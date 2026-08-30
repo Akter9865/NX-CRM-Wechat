@@ -877,6 +877,9 @@ export function WhatsAppConfigForm() {
                   {t('advancedSettings')}
                 </AccordionTrigger>
                 <AccordionContent className="space-y-3 pt-2">
+                  <p className="text-[11px] text-muted-foreground">
+                    If your organization uses a custom Meta App, provide your App ID &amp; App Secret below so incoming WhatsApp webhooks are securely verified.
+                  </p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label className="text-xs text-muted-foreground">{t('appId')}</Label>

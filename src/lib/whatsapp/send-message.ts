@@ -259,24 +259,60 @@ export async function sendMessageToConversation(
     );
   }
 
-  // WhatsApp config, account-scoped.
+  // WhatsApp config, account-scoped, non-archived.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let config: any = null;
   let configError: { message?: string } | null = null;
 
   try {
-    let q = db
-      .from('whatsapp_config')
-      .select('*')
-      .eq('account_id', accountId);
-
+    // 1. If conversation has a specific connection id, attempt to load that active connection
     if (conversation.whatsapp_connection_id) {
-      q = q.eq('id', conversation.whatsapp_connection_id);
+      const { data: specificConn } = await db
+        .from('whatsapp_config')
+        .select('*')
+        .eq('id', conversation.whatsapp_connection_id)
+        .eq('account_id', accountId)
+        .eq('is_archived', false)
+        .maybeSingle();
+
+      if (specificConn) {
+        config = specificConn;
+      }
     }
 
-    const res = await q.order('is_default', { ascending: false }).limit(1);
-    config = Array.isArray(res?.data) ? (res.data[0] || null) : (res?.data || null);
-    configError = res?.error || null;
+    // 2. If no specific connection or it was archived/not found, pick the account's default or active connection
+    if (!config) {
+      const { data: rawConfigs, error: actErr } = await db
+        .from('whatsapp_config')
+        .select('*')
+        .eq('account_id', accountId)
+        .eq('is_archived', false)
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: true });
+
+      const activeConfigs = Array.isArray(rawConfigs)
+        ? rawConfigs
+        : rawConfigs
+          ? [rawConfigs]
+          : [];
+
+      if (actErr) {
+        configError = actErr;
+      } else if (activeConfigs.length > 0) {
+        config =
+          activeConfigs.find((c: { is_default?: boolean; status?: string }) => c.is_default && c.status === 'connected') ||
+          activeConfigs.find((c: { status?: string }) => c.status === 'connected') ||
+          activeConfigs[0];
+
+        // Backfill / update conversation's whatsapp_connection_id
+        if (config && conversation.whatsapp_connection_id !== config.id) {
+          void db
+            .from('conversations')
+            .update({ whatsapp_connection_id: config.id })
+            .eq('id', conversation.id);
+        }
+      }
+    }
   } catch (err: unknown) {
     configError = { message: err instanceof Error ? err.message : String(err) };
   }
@@ -284,12 +320,22 @@ export async function sendMessageToConversation(
   if (configError || !config) {
     throw new SendMessageError(
       'whatsapp_not_configured',
-      'WhatsApp not configured. Please set up your WhatsApp integration first.',
+      'No active WhatsApp connection found. Please connect your WhatsApp Business number in Settings → WhatsApp.',
       400
     );
   }
 
-  const accessToken = decrypt(config.access_token);
+  let accessToken: string;
+  try {
+    accessToken = decrypt(config.access_token);
+  } catch (decErr) {
+    console.error('[send-message] Token decryption failed for connection:', config.id, decErr);
+    throw new SendMessageError(
+      'token_corrupted',
+      'The stored WhatsApp access token could not be decrypted. Please reconnect your WhatsApp number in Settings → WhatsApp.',
+      500
+    );
+  }
 
   // Self-heal legacy CBC ciphertexts. Fire-and-forget; idempotent.
   if (isLegacyFormat(config.access_token)) {
@@ -454,10 +500,33 @@ export async function sendMessageToConversation(
 
     if (lastError) throw lastError;
   } catch (err) {
-    const message =
+    const rawMessage =
       err instanceof Error ? err.message : 'Unknown Meta API error';
-    console.error('[send-message] Meta send failed for all variants:', message);
-    throw new SendMessageError('meta_error', `Meta API error: ${message}`, 502);
+    console.error('[send-message] Meta send failed for all variants:', rawMessage);
+
+    if (rawMessage.includes('131047') || /re-engagement|24 hours/i.test(rawMessage)) {
+      throw new SendMessageError(
+        'window_expired',
+        '24-hour customer window expired. Meta requires sending a pre-approved Message Template to re-engage this customer.',
+        400
+      );
+    }
+    if (rawMessage.includes('190') || /Session has expired|OAuthException/i.test(rawMessage)) {
+      throw new SendMessageError(
+        'token_invalid',
+        'WhatsApp access token is invalid or expired. Please update it in Settings → WhatsApp.',
+        401
+      );
+    }
+    if (rawMessage.includes('131026')) {
+      throw new SendMessageError(
+        'undeliverable',
+        'Message undeliverable. The recipient number may not be active on WhatsApp or unable to receive business messages.',
+        400
+      );
+    }
+
+    throw new SendMessageError('meta_error', `Meta API error: ${rawMessage}`, 502);
   }
 
   if (workingPhone !== sanitizedPhone) {
