@@ -32,6 +32,7 @@ import { MetricCard } from '@/components/dashboard/metric-card'
 import { SkeletonCard } from '@/components/dashboard/skeleton'
 import { QuickActions } from '@/components/dashboard/quick-actions'
 import { PlanQuotaStrip } from '@/components/dashboard/plan-quota-strip'
+import { WhatsAppStatusBanner } from '@/components/dashboard/whatsapp-status-banner'
 import { ConversationsChart } from '@/components/dashboard/conversations-chart'
 import { PipelineDonut } from '@/components/dashboard/pipeline-donut'
 import { ResponseTimeChart } from '@/components/dashboard/response-time-chart'
@@ -44,7 +45,7 @@ type RangeDays = 7 | 30 | 90
 
 export default function DashboardPage() {
   const t = useTranslations('Dashboard.page')
-  const { defaultCurrency } = useAuth()
+  const { profile, account, defaultCurrency } = useAuth()
   const [metrics, setMetrics] = useState<MetricsBundle | null>(null)
   const [metricsLoading, setMetricsLoading] = useState(true)
 
@@ -67,6 +68,15 @@ export default function DashboardPage() {
 
   const [activity, setActivity] = useState<ActivityItem[] | null>(null)
   const [activityLoading, setActivityLoading] = useState(true)
+
+  // Time of day greeting
+  const [greeting, setGreeting] = useState('Welcome back')
+  useEffect(() => {
+    const hour = new Date().getHours()
+    if (hour < 12) setGreeting('Good morning')
+    else if (hour < 18) setGreeting('Good afternoon')
+    else setGreeting('Good evening')
+  }, [])
 
   const loadAll = useCallback(() => {
     const db = createClient()
@@ -125,22 +135,24 @@ export default function DashboardPage() {
     [series],
   )
 
+  const userName = profile?.full_name?.split(' ')[0] || account?.name || ''
+
   return (
     <div className="space-y-6">
-      {/* Header & Dynamic Greeting */}
+      {/* Header & Dynamic Personalized Greeting */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
             <h1 className="text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">
-              {t('title')}
+              {greeting}{userName ? `, ${userName}` : ''} 👋
             </h1>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-0.5 text-xs font-semibold text-emerald-400">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Live Sync
+              Live Workspace
             </span>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            {t('description')}
+            {account?.name ? `${account.name} CRM overview & real-time analytics` : t('description')}
           </p>
         </div>
 
@@ -163,6 +175,9 @@ export default function DashboardPage() {
 
       {/* PWA Add to Home Screen Banner */}
       <PwaInstallBanner />
+
+      {/* Live WhatsApp Connection Status Banner */}
+      <WhatsAppStatusBanner />
 
       {/* SaaS Plan & Quota Usage Banner */}
       <PlanQuotaStrip />
