@@ -26,6 +26,10 @@ import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
 import { executeVisualWorkflow } from './visual-engine'
 import { matchesKeyword } from '@/lib/whatsapp/keyword-matcher'
+import {
+  checkAndRecordAutomatedSend,
+  ensureNaturalSpacing,
+} from '@/lib/whatsapp/anti-flood'
 
 // ------------------------------------------------------------
 // Public API
@@ -424,6 +428,15 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       if (!args.contactId) throw new Error('send_message needs a contact')
       const text = interpolate(cfg.text, args)
       if (!text.trim()) throw new Error('send_message has empty text')
+
+      // Anti-flood & rapid duplicate suppression
+      const floodCheck = checkAndRecordAutomatedSend(args.automation.account_id, args.contactId, text)
+      if (!floodCheck.allowed) {
+        console.warn(`[automations] Anti-flood guard suppressed send to contact ${args.contactId}: ${floodCheck.reason}`)
+        return `skipped: anti-flood guard (${floodCheck.reason})`
+      }
+      await ensureNaturalSpacing(args.automation.account_id, args.contactId)
+
       const conversationId = await resolveConversationId(args)
       const { whatsapp_message_id } = await engineSendText({
         accountId: args.automation.account_id,

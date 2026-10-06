@@ -4,6 +4,10 @@ import { engineSendText, engineSendTemplate, engineSendInteractive, engineSendMe
 import { addContactTagAndDispatch } from '@/lib/contacts/tag-events';
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf';
 import { matchesKeyword } from '@/lib/whatsapp/keyword-matcher';
+import {
+  checkAndRecordAutomatedSend,
+  ensureNaturalSpacing,
+} from '@/lib/whatsapp/anti-flood';
 
 function getServiceSupabase() {
   const url =
@@ -20,7 +24,7 @@ const lastContactExecution = new Map<string, number>();
 const contactExecutionDepth = new Map<string, number>();
 
 const MAX_EXECUTION_DEPTH = 5;
-const COOLDOWN_MS = 1500; // 1.5 seconds cooldown per contact-automation pair
+const COOLDOWN_MS = 4000; // 4 seconds cooldown per contact-automation pair
 
 export interface VisualEngineNodeData {
   type?: string;
@@ -283,11 +287,12 @@ export async function executeVisualWorkflow({
       status: 'completed',
     });
 
-    // 5. Traverse and Execute Downstream Nodes
+    // 5. Traverse and Execute Downstream Nodes with Anti-Ban Cycle Protection
     let currentNodeId: string | null = triggerNode.id;
     let stepCount = 0;
+    const visitedNodeIds = new Set<string>();
 
-    while (currentNodeId && stepCount < 30) {
+    while (currentNodeId && stepCount < 20) {
       stepCount++;
       const currentEdges = edges.filter((e) => e.source === currentNodeId);
       if (currentEdges.length === 0) break;
@@ -320,6 +325,21 @@ export async function executeVisualWorkflow({
       const nextNode = nodes.find((n) => n.id === chosenEdge.target);
       if (!nextNode) break;
 
+      // Anti-Ban Guard: Detect loop cycles in visual graph
+      if (visitedNodeIds.has(nextNode.id)) {
+        console.warn(`[visual-engine] Anti-Ban Protection: Loop cycle detected on node ${nextNode.id}. Halting execution.`);
+        await supabase.from('automation_run_steps').insert({
+          run_id: runId,
+          node_id: nextNode.id,
+          node_type: getNodeType(nextNode),
+          node_title: getNodeTitle(nextNode, 'Workflow Action'),
+          status: 'failed',
+          error_message: 'Anti-Ban Protection: Loop cycle detected. Stopped to protect WhatsApp account from ban.',
+        });
+        break;
+      }
+      visitedNodeIds.add(nextNode.id);
+
       const nodeType = getNodeType(nextNode);
       const nodeTitle = getNodeTitle(nextNode, 'Workflow Action');
       const config = (nextNode.data?.config || {}) as Record<string, any>;
@@ -347,6 +367,26 @@ export async function executeVisualWorkflow({
           );
 
           if (conversationId && rawText.trim()) {
+            // Anti-flood & rapid duplicate suppression
+            const floodCheck = checkAndRecordAutomatedSend(accountId, contactId, rawText);
+            if (!floodCheck.allowed) {
+              console.warn(
+                `[visual-engine] Anti-flood protection suppressed message to contact ${contactId}: ${floodCheck.reason}`
+              );
+              await supabase.from('automation_run_steps').insert({
+                run_id: runId,
+                node_id: nextNode.id,
+                node_type: nodeType,
+                node_title: nodeTitle,
+                status: 'skipped',
+                error_message: `Anti-Ban Protection: ${floodCheck.reason}. Suppressed duplicate/rapid burst message.`,
+              });
+              currentNodeId = nextNode.id;
+              continue;
+            }
+
+            await ensureNaturalSpacing(accountId, contactId);
+
             await engineSendText({
               accountId,
               userId: automation.user_id,
@@ -573,6 +613,32 @@ export async function executeVisualWorkflow({
             node_title: nodeTitle,
             status: 'completed',
             input_data: { url },
+          });
+        } else if (
+          nodeType === 'action_delay' ||
+          nodeType === 'delay' ||
+          nodeType === 'delay_wait' ||
+          nodeType === 'wait'
+        ) {
+          const delaySec =
+            Number(
+              config.seconds ||
+                config.delay ||
+                config.delaySeconds ||
+                (config.durationMinutes ? Number(config.durationMinutes) * 60 : 0) ||
+                (config.minutes ? Number(config.minutes) * 60 : 0)
+            ) || 2;
+          // Synchronous safe serverless pause: clamp between 1s and 15s
+          const waitMs = Math.min(Math.max(delaySec * 1000, 1000), 15000);
+          await new Promise((resolve) => setTimeout(resolve, waitMs));
+
+          await supabase.from('automation_run_steps').insert({
+            run_id: runId,
+            node_id: nextNode.id,
+            node_type: nodeType,
+            node_title: nodeTitle,
+            status: 'completed',
+            input_data: { delaySeconds: delaySec, waitedMs: waitMs },
           });
         } else {
           // General completed step record for other logic/action nodes

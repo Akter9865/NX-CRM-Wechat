@@ -4,19 +4,19 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import {
-  ShieldCheck,
   Database,
   LogOut,
-  Bell,
-  Search,
-  Activity,
   Menu,
-  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ModeToggle } from '@/components/layout/mode-toggle';
 import { toast } from 'sonner';
 
-export function AdminHeader() {
+interface AdminHeaderProps {
+  onOpenSidebar?: () => void;
+}
+
+export function AdminHeader({ onOpenSidebar }: AdminHeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [adminUser, setAdminUser] = useState<{ fullName: string; role: string; email: string } | null>(null);
@@ -71,12 +71,25 @@ export function AdminHeader() {
   return (
     <header className="h-16 border-b border-border/80 bg-card/70 backdrop-blur-xl px-4 sm:px-8 flex items-center justify-between sticky top-0 z-30">
       <div className="flex items-center gap-3">
-        <h1 className="text-base sm:text-lg font-extrabold text-foreground tracking-tight">
-          {getPageTitle()}
-        </h1>
+        {onOpenSidebar && (
+          <button
+            type="button"
+            onClick={onOpenSidebar}
+            aria-label="Open navigation"
+            className="flex size-9 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground md:hidden transition-colors"
+          >
+            <Menu className="size-4.5" />
+          </button>
+        )}
+        <div className="flex items-center gap-2">
+          <span className="size-2 rounded-full bg-emerald-400 animate-pulse hidden sm:inline-block" />
+          <h1 className="text-sm sm:text-base md:text-lg font-extrabold text-foreground tracking-tight line-clamp-1">
+            {getPageTitle()}
+          </h1>
+        </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3">
         <Link
           href="/dashboard"
           className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-border bg-muted/40 px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors"
@@ -84,6 +97,9 @@ export function AdminHeader() {
           <Database className="size-3.5" />
           <span>Switch to CRM App</span>
         </Link>
+
+        {/* Theme mode toggle */}
+        <ModeToggle />
 
         {adminUser && (
           <div className="hidden md:flex items-center gap-2 pl-3 border-l border-border/80 text-xs">
@@ -104,7 +120,7 @@ export function AdminHeader() {
           size="sm"
           disabled={loggingOut}
           onClick={handleLogout}
-          className="h-8 rounded-xl border-border bg-card text-muted-foreground hover:text-rose-400 hover:border-rose-500/30 text-xs flex items-center gap-1.5"
+          className="h-8.5 rounded-xl border-border bg-card text-muted-foreground hover:text-rose-400 hover:border-rose-500/30 text-xs flex items-center gap-1.5"
         >
           <LogOut className="size-3.5" />
           <span className="hidden sm:inline">Logout</span>

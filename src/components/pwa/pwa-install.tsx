@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Download, Smartphone, Laptop, Check, Share, PlusSquare, X } from 'lucide-react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { Download, Smartphone, Check, Share, PlusSquare, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -22,30 +22,37 @@ interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
 }
 
+const emptySubscribe = () => () => {};
+
+function subscribeStandalone(callback: () => void) {
+  if (typeof window === 'undefined') return () => {};
+  const mql = window.matchMedia('(display-mode: standalone)');
+  mql.addEventListener('change', callback);
+  return () => mql.removeEventListener('change', callback);
+}
+
+function getStandaloneSnapshot(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    Boolean((window.navigator as unknown as { standalone?: boolean })?.standalone)
+  );
+}
+
+function getIosSnapshot(): boolean {
+  if (typeof window === 'undefined') return false;
+  const ua = window.navigator.userAgent;
+  return /iPad|iPhone|iPod/.test(ua) && !/CriOS|FxiOS|OPiOS/.test(ua);
+}
+
 export function usePwaInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstallable, setIsInstallable] = useState(false);
-  const [isStandalone, setIsStandalone] = useState(false);
-  const [isIos, setIsIos] = useState(false);
+  const isStandalone = useSyncExternalStore(subscribeStandalone, getStandaloneSnapshot, () => false);
+  const isIos = useSyncExternalStore(emptySubscribe, getIosSnapshot, () => false);
   const [showIosGuide, setShowIosGuide] = useState(false);
 
   useEffect(() => {
-    // Check if already running in standalone mode (installed PWA)
-    const checkStandalone = () => {
-      const isStandaloneMode =
-        window.matchMedia('(display-mode: standalone)').matches ||
-        // @ts-expect-error iOS Safari standalone check
-        Boolean(window.navigator?.standalone);
-      setIsStandalone(isStandaloneMode);
-    };
-
-    checkStandalone();
-
-    // Detect iOS Safari
-    const ua = window.navigator.userAgent;
-    const isIosDevice = /iPad|iPhone|iPod/.test(ua) && !/CriOS|FxiOS|OPiOS/.test(ua);
-    setIsIos(isIosDevice);
-
     const handleBeforeInstall = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
@@ -53,7 +60,6 @@ export function usePwaInstall() {
     };
 
     const handleAppInstalled = () => {
-      setIsStandalone(true);
       setIsInstallable(false);
       setDeferredPrompt(null);
       toast.success('NX CRM installed successfully on your device!');
@@ -79,7 +85,6 @@ export function usePwaInstall() {
         await deferredPrompt.prompt();
         const choice = await deferredPrompt.userChoice;
         if (choice.outcome === 'accepted') {
-          setIsStandalone(true);
           setIsInstallable(false);
           setDeferredPrompt(null);
           toast.success('Installing NX CRM App...');

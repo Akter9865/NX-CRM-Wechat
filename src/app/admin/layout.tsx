@@ -5,6 +5,8 @@ import { getAdminSession } from '@/lib/admin/auth';
 import { AdminSidebar } from '@/components/admin/admin-sidebar';
 import { AdminHeader } from '@/components/admin/admin-header';
 
+import { AdminShell } from './admin-shell';
+
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
@@ -36,18 +38,5 @@ export default async function AdminLayout({
     redirect('/admin/login');
   }
 
-  return (
-    <div className="min-h-screen bg-background text-foreground flex">
-      {/* Executive Sidebar */}
-      <AdminSidebar />
-
-      {/* Main Administrative Workplace */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <AdminHeader />
-        <main className="flex-1 p-4 sm:p-8 overflow-y-auto">
-          {children}
-        </main>
-      </div>
-    </div>
-  );
+  return <AdminShell>{children}</AdminShell>;
 }

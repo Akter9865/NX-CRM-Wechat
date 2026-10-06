@@ -43,6 +43,10 @@ import { decideFallback, resolveFallbackPolicy } from "./fallback";
 import { addContactTagAndDispatch } from "@/lib/contacts/tag-events";
 import { removeContactTag } from "@/lib/contacts/tag-write";
 import {
+  checkAndRecordAutomatedSend,
+  ensureNaturalSpacing,
+} from "@/lib/whatsapp/anti-flood";
+import {
   type CollectInputNodeConfig,
   type ConditionNodeConfig,
   type DispatchInboundInput,
@@ -651,9 +655,9 @@ async function advanceFromNodeKey(
     contactRecord = (c as Record<string, unknown> | null) ?? null;
   }
 
-  // Defensive cap — if a flow has a cycle (which the validator
-  // SHOULD catch but doesn't yet in v1), we bail rather than loop.
-  for (let safety = 0; safety < 64; safety += 1) {
+  // Defensive cap with Anti-Ban Cycle Detection
+  const visitedNodeKeys = new Set<string>();
+  for (let safety = 0; safety < 16; safety += 1) {
     if (!currentKey) {
       await logEvent(db, run.id, "completed", null, {
         reason: "end_of_flow",
@@ -661,6 +665,18 @@ async function advanceFromNodeKey(
       await endRun(db, run.id, "completed", "end_of_flow");
       return { outcome: "completed" };
     }
+
+    if (visitedNodeKeys.has(currentKey)) {
+      console.warn(`[flows] Anti-Ban Guard: cycle loop detected on node ${currentKey} in run ${run.id}. Halting.`);
+      await logEvent(db, run.id, "error", currentKey, {
+        reason: "cycle_detected_anti_ban",
+        detail: `Cycle loop detected on node ${currentKey}. Halting execution to protect WhatsApp account from ban.`,
+      });
+      await endRun(db, run.id, "failed", "cycle_detected_anti_ban");
+      return { outcome: "completed" };
+    }
+    visitedNodeKeys.add(currentKey);
+
     const node: FlowNodeRow | null = nodes.get(currentKey) ?? null;
     if (!node) {
       await logEvent(db, run.id, "error", currentKey, {
@@ -680,13 +696,29 @@ async function advanceFromNodeKey(
     if (node.node_type === "send_message") {
       const cfg = node.config as unknown as SendMessageNodeConfig;
       await applyDeliveryDelay(cfg);
+      const textToSend = interpolateVars(cfg.text, run.vars, contactRecord);
+
+      if (run.contact_id) {
+        const floodCheck = checkAndRecordAutomatedSend(run.account_id, run.contact_id, textToSend);
+        if (!floodCheck.allowed) {
+          console.warn(`[flows] Anti-Flood Guard suppressed send to contact ${run.contact_id}: ${floodCheck.reason}`);
+          await logEvent(db, run.id, "error", node.node_key, {
+            reason: floodCheck.reason || "anti_flood_suppressed",
+            detail: "Automated send suppressed by anti-flood guard to protect WhatsApp API account from ban.",
+          });
+          currentKey = cfg.next_node_key || null;
+          continue;
+        }
+        await ensureNaturalSpacing(run.account_id, run.contact_id);
+      }
+
       try {
         const { whatsapp_message_id } = await engineSendText({
           accountId: run.account_id,
           userId: run.user_id,
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
-          text: interpolateVars(cfg.text, run.vars, contactRecord),
+          text: textToSend,
         });
         await logEvent(db, run.id, "message_sent", node.node_key, {
           node_type: "send_message",
@@ -706,6 +738,20 @@ async function advanceFromNodeKey(
     if (node.node_type === "send_media") {
       const cfg = node.config as unknown as SendMediaNodeConfig;
       await applyDeliveryDelay(cfg);
+
+      if (run.contact_id) {
+        const floodCheck = checkAndRecordAutomatedSend(run.account_id, run.contact_id, cfg.media_url);
+        if (!floodCheck.allowed) {
+          console.warn(`[flows] Anti-Flood Guard suppressed media send to contact ${run.contact_id}: ${floodCheck.reason}`);
+          await logEvent(db, run.id, "error", node.node_key, {
+            reason: floodCheck.reason || "anti_flood_suppressed",
+            detail: "Automated media send suppressed by anti-flood guard to protect WhatsApp API account from ban.",
+          });
+          currentKey = cfg.next_node_key || null;
+          continue;
+        }
+        await ensureNaturalSpacing(run.account_id, run.contact_id);
+      }
       try {
         const { whatsapp_message_id } = await engineSendMedia({
           accountId: run.account_id,

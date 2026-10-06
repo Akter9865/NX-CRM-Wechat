@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { formatCurrency } from '@/lib/currency'
@@ -43,6 +43,16 @@ import { useTranslations } from 'next-intl'
 
 type RangeDays = 7 | 30 | 90
 
+const emptySubscribe = () => () => {}
+
+function getGreeting(): string {
+  if (typeof window === 'undefined') return 'Welcome back'
+  const hour = new Date().getHours()
+  if (hour < 12) return 'Good morning'
+  if (hour < 18) return 'Good afternoon'
+  return 'Good evening'
+}
+
 export default function DashboardPage() {
   const t = useTranslations('Dashboard.page')
   const { profile, account, defaultCurrency } = useAuth()
@@ -69,14 +79,8 @@ export default function DashboardPage() {
   const [activity, setActivity] = useState<ActivityItem[] | null>(null)
   const [activityLoading, setActivityLoading] = useState(true)
 
-  // Time of day greeting
-  const [greeting, setGreeting] = useState('Welcome back')
-  useEffect(() => {
-    const hour = new Date().getHours()
-    if (hour < 12) setGreeting('Good morning')
-    else if (hour < 18) setGreeting('Good afternoon')
-    else setGreeting('Good evening')
-  }, [])
+  // Time of day greeting (SSR safe without cascading renders)
+  const greeting = useSyncExternalStore(emptySubscribe, getGreeting, () => 'Welcome back')
 
   const loadAll = useCallback(() => {
     const db = createClient()

@@ -51,6 +51,7 @@ import {
   Calendar,
   CheckCheck,
   HelpCircle,
+  ShieldCheck,
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
@@ -1171,6 +1172,14 @@ export function VisualFlowBuilder({
           >
             {status === 'published' ? '🟢 Published (Live)' : status === 'paused' ? '⏸ Paused' : '📝 Draft'}
           </Badge>
+
+          <div
+            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-[10px] font-medium text-emerald-400 shadow-xs"
+            title="Loop cycle prevention, flood burst rate limiter (max 3/15s) and human-like inter-message pacing (1.2s - 2s) active"
+          >
+            <ShieldCheck className="size-3 text-emerald-400" />
+            <span>Anti-Ban Loop Guard Active</span>
+          </div>
         </div>
 
         {/* Right: Actions Toolbar */}
@@ -1590,6 +1599,158 @@ export function VisualFlowBuilder({
                   placeholder="e.g. VIP Customer, Hot Lead"
                   className="h-8 text-xs rounded-lg"
                 />
+              </div>
+            )}
+
+            {/* Delay / Wait Timer Config */}
+            {(activeNode.data.type === 'delay_wait' ||
+              activeNode.data.nodeType === 'delay_wait' ||
+              activeNode.data.type === 'action_delay' ||
+              activeNode.data.nodeType === 'action_delay' ||
+              activeNode.data.type === 'delay' ||
+              activeNode.data.nodeType === 'delay') && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold text-foreground">Wait / Pacing Duration</Label>
+                  <span className="text-[10px] text-emerald-400 font-medium">🛡️ Anti-Flood Protection</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-[11px] text-muted-foreground mb-1 block">Duration</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={
+                        (activeNode.data.config as any)?.unit === 'seconds'
+                          ? (activeNode.data.config as any)?.seconds ?? 3
+                          : (activeNode.data.config as any)?.durationMinutes ?? (activeNode.data.config as any)?.minutes ?? 5
+                      }
+                      onChange={(e) => {
+                        const val = Math.max(1, parseInt(e.target.value) || 1);
+                        const isSeconds = (activeNode.data.config as any)?.unit === 'seconds';
+                        if (isSeconds) {
+                          updateActiveNodeConfig({ unit: 'seconds', seconds: val, delaySeconds: val, durationMinutes: Math.ceil(val / 60) });
+                        } else {
+                          updateActiveNodeConfig({ unit: 'minutes', durationMinutes: val, minutes: val, seconds: val * 60, delaySeconds: val * 60 });
+                        }
+                      }}
+                      className="h-8 text-xs rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[11px] text-muted-foreground mb-1 block">Unit</Label>
+                    <Select
+                      value={(activeNode.data.config as any)?.unit || ((activeNode.data.config as any)?.seconds ? 'seconds' : 'minutes')}
+                      onValueChange={(unit) => {
+                        const currentVal =
+                          (activeNode.data.config as any)?.seconds !== undefined
+                            ? (activeNode.data.config as any)?.seconds
+                            : (activeNode.data.config as any)?.durationMinutes || 5;
+                        if (unit === 'seconds') {
+                          updateActiveNodeConfig({ unit: 'seconds', seconds: currentVal, delaySeconds: currentVal });
+                        } else {
+                          updateActiveNodeConfig({ unit: 'minutes', durationMinutes: currentVal, minutes: currentVal, seconds: currentVal * 60, delaySeconds: currentVal * 60 });
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="h-8 text-xs rounded-lg">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="seconds">Seconds (Pacing)</SelectItem>
+                        <SelectItem value="minutes">Minutes (Wait)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-[11px] text-muted-foreground mb-1.5 block">Quick Presets</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { label: '3s (Natural)', seconds: 3, unit: 'seconds' },
+                      { label: '5s (Safe)', seconds: 5, unit: 'seconds' },
+                      { label: '15s', seconds: 15, unit: 'seconds' },
+                      { label: '1 min', minutes: 1, unit: 'minutes' },
+                      { label: '5 min', minutes: 5, unit: 'minutes' },
+                      { label: '15 min', minutes: 15, unit: 'minutes' },
+                    ].map((p, i) => (
+                      <Button
+                        key={i}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (p.unit === 'seconds') {
+                            updateActiveNodeConfig({ unit: 'seconds', seconds: p.seconds, delaySeconds: p.seconds, durationMinutes: Math.ceil((p.seconds || 3) / 60) });
+                          } else {
+                            updateActiveNodeConfig({ unit: 'minutes', durationMinutes: p.minutes, minutes: p.minutes, seconds: (p.minutes || 1) * 60, delaySeconds: (p.minutes || 1) * 60 });
+                          }
+                        }}
+                        className="h-6 text-[10px] px-2 rounded-md hover:bg-primary/10 hover:text-primary hover:border-primary/40"
+                      >
+                        {p.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2.5 text-[11px] text-emerald-300 leading-relaxed">
+                  💡 <strong>Anti-Ban Pacing:</strong> Adding a 2s-5s delay between consecutive messages simulates human typing and protects your Meta WhatsApp Business API rating.
+                </div>
+              </div>
+            )}
+
+            {/* Condition Match Config */}
+            {(activeNode.data.type === 'condition_match' || activeNode.data.nodeType === 'condition_match') && (
+              <div className="space-y-3">
+                <Label className="text-xs font-semibold text-foreground">Condition Branching Rule</Label>
+                <div>
+                  <Label className="text-[11px] text-muted-foreground mb-1 block">Check Field</Label>
+                  <Select
+                    value={(activeNode.data.config as any)?.field || 'message.text'}
+                    onValueChange={(field) => updateActiveNodeConfig({ field })}
+                  >
+                    <SelectTrigger className="h-8 text-xs rounded-lg">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="message.text">Inbound Message Text</SelectItem>
+                      <SelectItem value="contact.name">Contact Name</SelectItem>
+                      <SelectItem value="contact.phone">Contact Phone</SelectItem>
+                      <SelectItem value="contact.tag">Contact Tag</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-[11px] text-muted-foreground mb-1 block">Operator</Label>
+                  <Select
+                    value={(activeNode.data.config as any)?.operator || 'contains'}
+                    onValueChange={(operator) => updateActiveNodeConfig({ operator })}
+                  >
+                    <SelectTrigger className="h-8 text-xs rounded-lg">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="contains">Contains (Case-insensitive)</SelectItem>
+                      <SelectItem value="equals">Equals Exactly</SelectItem>
+                      <SelectItem value="starts_with">Starts With</SelectItem>
+                      <SelectItem value="not_equals">Does Not Equal</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-[11px] text-muted-foreground mb-1 block">Expected Value</Label>
+                  <Input
+                    value={(activeNode.data.config as any)?.value || ''}
+                    onChange={(e) => updateActiveNodeConfig({ value: e.target.value })}
+                    placeholder="e.g. pricing, hello, help"
+                    className="h-8 text-xs rounded-lg"
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  If satisfied, execution flows out of the green <strong>True</strong> branch; otherwise the red <strong>False</strong> branch.
+                </p>
               </div>
             )}
           </div>
