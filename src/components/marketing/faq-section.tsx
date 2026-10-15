@@ -64,7 +64,7 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     question: 'What integrations are currently supported?',
     answer:
-      'NX CRM natively integrates with Google Sheets (real-time lead sync), Razorpay & PhonePe (in-chat payment links), Zoho Mail & SMTP servers (lead email alerts), Calendly & Google Calendar (appointment booking), Telegram Bot, and custom JSON Webhooks.',
+      'NX CRM natively integrates with Google Sheets (real-time lead sync), Razorpay & PhonePe (in-chat payment links), Zoho Mail & SMTP servers (lead email alerts), Calendly & Google Calendar (appointment booking), and custom JSON Webhooks.',
   },
   {
     question: 'How do I contact support?',
