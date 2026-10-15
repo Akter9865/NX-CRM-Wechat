@@ -2,8 +2,23 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 export async function proxy(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+
+  // Immediately bypass static assets, manifest, sitemap, robots, icons to prevent infinite loops
+  if (
+    pathname === '/manifest.webmanifest' ||
+    pathname === '/sw.js' ||
+    pathname === '/robots.txt' ||
+    pathname === '/sitemap.xml' ||
+    pathname.startsWith('/icon') ||
+    pathname.startsWith('/_next') ||
+    /\.(?:svg|png|jpg|jpeg|gif|webp|ico|webmanifest|txt|xml|js)$/i.test(pathname)
+  ) {
+    return NextResponse.next();
+  }
+
   const requestHeaders = new Headers(request.headers);
-  requestHeaders.set('x-pathname', request.nextUrl.pathname);
+  requestHeaders.set('x-pathname', pathname);
 
   let supabaseResponse = NextResponse.next({
     request: {
@@ -47,8 +62,6 @@ export async function proxy(request: NextRequest) {
     });
     return response;
   };
-
-  const pathname = request.nextUrl.pathname;
 
   // 1. Strict SuperAdmin Route Protection
   const isAdminRoute = pathname.startsWith('/admin') || pathname.startsWith('/superadmin');
@@ -127,6 +140,6 @@ export default proxy;
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|manifest\\.webmanifest|robots\\.txt|sitemap\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|webmanifest)$).*)',
   ],
 };

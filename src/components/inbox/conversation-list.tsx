@@ -9,7 +9,7 @@ import {
 } from "@/lib/inbox/conversations";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
-import { Search, ChevronDown, X, MessageSquare, Send, Smartphone, Globe } from "lucide-react";
+import { Search, ChevronDown, X, MessageSquare, Send, Smartphone, Globe, Volume2, VolumeX } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useTranslations } from "next-intl";
 import { Input } from "@/components/ui/input";
@@ -34,6 +34,9 @@ interface ConversationListProps {
    * or the tab was throttled. Optional so existing callers keep working.
    */
   resyncToken?: number;
+  isLiveConnected?: boolean;
+  soundEnabled?: boolean;
+  onToggleSound?: () => void;
 }
 
 const STATUS_COLORS: Record<ConversationStatus, string> = {
@@ -52,6 +55,9 @@ export function ConversationList({
   conversations,
   onConversationsLoaded,
   resyncToken = 0,
+  isLiveConnected = true,
+  soundEnabled = true,
+  onToggleSound,
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
   
@@ -268,30 +274,71 @@ export function ConversationList({
     // the single pane showing; fixed 320px on desktop where it shares the
     // row with the thread + contact sidebar.
     <div className="flex h-full w-full flex-col border-r border-border bg-card lg:w-80">
-      {/* Multi-Channel Switcher Tabs */}
-      <div className="flex items-center gap-1 border-b border-border bg-muted/40 p-1.5 overflow-x-auto scrollbar-none">
-        {[
-          { id: 'all', label: 'All Inboxes', icon: Globe },
-          { id: 'whatsapp_cloud', label: 'WhatsApp API', icon: MessageSquare },
-        ].map((ch) => {
-          const Icon = ch.icon;
-          const isSelected = selectedChannel === ch.id;
-          return (
-            <button
-              key={ch.id}
-              onClick={() => setSelectedChannel(ch.id as any)}
+      {/* Multi-Channel Switcher Tabs + Realtime Live Indicator & Audio Toggle */}
+      <div className="flex items-center justify-between gap-1 border-b border-border bg-muted/40 p-1.5">
+        <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
+          {[
+            { id: 'all', label: 'All Inboxes', icon: Globe },
+            { id: 'whatsapp_cloud', label: 'WhatsApp API', icon: MessageSquare },
+          ].map((ch) => {
+            const Icon = ch.icon;
+            const isSelected = selectedChannel === ch.id;
+            return (
+              <button
+                key={ch.id}
+                onClick={() => setSelectedChannel(ch.id as any)}
+                className={cn(
+                  'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all',
+                  isSelected
+                    ? 'bg-card text-foreground shadow-xs border border-border/80'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                )}
+              >
+                <Icon className={cn('size-3', isSelected ? 'text-primary' : 'text-muted-foreground')} />
+                <span>{ch.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Live WebSocket Indicator & Sound Toggle */}
+        <div className="flex items-center gap-1 shrink-0 pl-1">
+          <div
+            title={isLiveConnected ? "Real-time Live WebSocket Active" : "Connecting to Real-time Live Stream..."}
+            className={cn(
+              "flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide border transition-all",
+              isLiveConnected
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 animate-pulse"
+            )}
+          >
+            <span
               className={cn(
-                'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all',
-                isSelected
-                  ? 'bg-card text-foreground shadow-xs border border-border/80'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                "size-1.5 rounded-full shrink-0",
+                isLiveConnected ? "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]" : "bg-amber-500"
+              )}
+            />
+            <span className="hidden sm:inline">{isLiveConnected ? "Live" : "Sync"}</span>
+          </div>
+
+          {onToggleSound && (
+            <button
+              type="button"
+              onClick={onToggleSound}
+              title={soundEnabled ? "Mute incoming message chimes" : "Enable incoming message chimes"}
+              className={cn(
+                "flex h-6 w-6 items-center justify-center rounded-md transition-colors hover:bg-muted cursor-pointer",
+                soundEnabled ? "text-primary" : "text-muted-foreground opacity-60"
               )}
             >
-              <Icon className={cn('size-3', isSelected ? 'text-primary' : 'text-muted-foreground')} />
-              <span>{ch.label}</span>
+              {soundEnabled ? (
+                <Volume2 className="size-3.5" />
+              ) : (
+                <VolumeX className="size-3.5" />
+              )}
             </button>
-          );
-        })}
+          )}
+        </div>
       </div>
 
       {/* Search + Filter */}

@@ -15,10 +15,12 @@ import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { playIncomingChime } from "@/lib/inbox/chime";
 
 // Remembers the agent's show/hide choice for the desktop contact panel
 // across reloads and sessions (device-scoped, like the theme prefs).
 const CONTACT_PANEL_STORAGE_KEY = "wacrm:inbox:contact-panel-open";
+const SOUND_STORAGE_KEY = "wacrm:inbox:sound-enabled";
 
 // `useSearchParams` (the `?c=<id>` deep link below) requires a Suspense
 // boundary or the production build bails to CSR and errors out. Thin
@@ -50,6 +52,34 @@ function InboxPageInner() {
   const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(
     null
   );
+  const [currentAccountId, setCurrentAccountId] = useState<string | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+
+  // Restore sound notification preference after mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(SOUND_STORAGE_KEY);
+      if (stored !== null) setSoundEnabled(stored === "true");
+    } catch {
+      // localStorage can throw in sandboxed environments
+    }
+  }, []);
+
+  const handleToggleSound = useCallback(() => {
+    setSoundEnabled((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SOUND_STORAGE_KEY, String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  const soundEnabledRef = useRef(soundEnabled);
+  useEffect(() => {
+    soundEnabledRef.current = soundEnabled;
+  }, [soundEnabled]);
+
   /**
    * Bumped whenever we want children (ConversationList, MessageThread)
    * to refetch from the DB — used as a safety net against missed
@@ -198,6 +228,7 @@ function InboxPageInner() {
         setWhatsappConnected(false);
         return;
       }
+      setCurrentAccountId(accountId);
 
       const { data: configs } = await supabase
         .from("whatsapp_config")
@@ -220,6 +251,11 @@ function InboxPageInner() {
       const newMsg = event.new;
 
       if (event.eventType === "INSERT") {
+        // Play notification chime for incoming customer messages if sound is enabled
+        if (newMsg.sender_type === "customer" && soundEnabledRef.current) {
+          playIncomingChime();
+        }
+
         // Add to messages if it belongs to active conversation
         if (
           activeConversation &&
@@ -376,6 +412,7 @@ function InboxPageInner() {
   // throttle) are simply lost. We need a way to catch up.
   const { isConnected } = useRealtime({
     channelName: "inbox-realtime",
+    accountId: currentAccountId,
     onMessageEvent: handleMessageEvent,
     onConversationEvent: handleConversationEvent,
     enabled: true,
@@ -640,6 +677,9 @@ function InboxPageInner() {
             conversations={conversations}
             onConversationsLoaded={handleConversationsLoaded}
             resyncToken={resyncToken}
+            isLiveConnected={isConnected}
+            soundEnabled={soundEnabled}
+            onToggleSound={handleToggleSound}
           />
         </div>
 
@@ -673,6 +713,7 @@ function InboxPageInner() {
             onRefresh={handleManualRefresh}
             contactPanelOpen={contactPanelOpen}
             onToggleContactPanel={handleToggleContactPanel}
+            isLiveConnected={isConnected}
           />
         </div>
 

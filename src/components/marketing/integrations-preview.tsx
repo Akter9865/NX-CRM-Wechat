@@ -1,93 +1,67 @@
 import Link from 'next/link';
-import {
-  FileSpreadsheet,
-  Mail,
-  CreditCard,
-  Smartphone,
-  DollarSign,
-  Calendar,
-  Webhook,
-  Send,
-  ArrowRight,
-  Sparkles,
-} from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { BrandLogo } from '@/components/integrations/brand-logos';
 
 const PREVIEW_INTEGRATIONS = [
   {
+    id: 'google_sheets',
     name: 'Google Sheets',
     category: 'Lead Sync & Export',
     desc: 'Auto-sync WhatsApp leads and contacts into Google Sheets in real-time.',
     status: 'Available',
-    icon: FileSpreadsheet,
     badge: 'Popular',
-    color: 'text-emerald-600',
-    iconBg: 'bg-emerald-50 border-emerald-200',
   },
   {
+    id: 'razorpay',
     name: 'Razorpay Payments',
     category: 'Payment Gateways',
     desc: 'Generate dynamic payment links and UPI QR codes inside chat.',
     status: 'Available',
-    icon: CreditCard,
     badge: 'Instant UPI',
-    color: 'text-blue-600',
-    iconBg: 'bg-blue-50 border-blue-200',
   },
   {
+    id: 'phonepe',
     name: 'PhonePe PG',
     category: 'Payment Gateways',
     desc: 'Collect UPI payments directly through PhonePe merchant links.',
     status: 'Available',
-    icon: Smartphone,
-    color: 'text-purple-600',
-    iconBg: 'bg-purple-50 border-purple-200',
   },
   {
+    id: 'zoho_mail',
     name: 'Zoho Mail & CRM',
     category: 'Email & CRM',
     desc: 'Instant lead alert emails via Zoho Mail SMTP and CRM webhooks.',
     status: 'Available',
-    icon: Mail,
-    color: 'text-amber-600',
-    iconBg: 'bg-amber-50 border-amber-200',
   },
   {
+    id: 'calendly',
     name: 'Calendly & Calendar',
     category: 'Booking & Scheduling',
     desc: 'Automated consultation scheduling links sent to WhatsApp contacts.',
     status: 'Available',
-    icon: Calendar,
-    color: 'text-teal-600',
-    iconBg: 'bg-teal-50 border-teal-200',
   },
   {
+    id: 'zapier_webhook',
     name: 'Zapier / Webhooks',
     category: 'Custom Webhooks',
     desc: 'Connect 5,000+ apps via outbound JSON webhooks on CRM events.',
     status: 'Available',
-    icon: Webhook,
     badge: 'Universal',
-    color: 'text-rose-600',
-    iconBg: 'bg-rose-50 border-rose-200',
   },
   {
+    id: 'stripe',
     name: 'Stripe Payments',
     category: 'Payment Gateways',
     desc: 'Accept international credit cards and multi-currency checkout links.',
     status: 'Available',
-    icon: DollarSign,
-    color: 'text-indigo-600',
-    iconBg: 'bg-indigo-50 border-indigo-200',
   },
   {
-    name: 'Telegram Bot',
-    category: 'Messaging',
-    desc: 'Two-way Telegram messaging bridge for multichannel support.',
+    id: 'smtp_mail',
+    name: 'Custom SMTP Server',
+    category: 'Email Alerts',
+    desc: 'Send outbound alerts using your own SMTP (Gmail, Hostinger, SES).',
     status: 'Available',
-    icon: Send,
-    color: 'text-blue-600',
-    iconBg: 'bg-blue-50 border-blue-200',
   },
 ];
 
@@ -113,32 +87,29 @@ export function IntegrationsPreview() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-12">
-          {PREVIEW_INTEGRATIONS.map((item, idx) => {
-            const Icon = item.icon;
-            return (
-              <div
-                key={idx}
-                className="relative rounded-3xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-200"
-              >
-                <div className="flex items-center justify-between mb-3.5">
-                  <div className={`flex size-10 items-center justify-center rounded-xl border ${item.iconBg}`}>
-                    <Icon className={`size-5 ${item.color}`} />
-                  </div>
-                  {item.badge && (
-                    <span className="text-[10px] font-bold text-blue-800 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
-                      {item.badge}
-                    </span>
-                  )}
+          {PREVIEW_INTEGRATIONS.map((item, idx) => (
+            <div
+              key={idx}
+              className="relative rounded-3xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-200"
+            >
+              <div className="flex items-center justify-between mb-3.5">
+                <div className="flex size-11 items-center justify-center rounded-2xl border border-slate-100 bg-slate-50 shadow-xs">
+                  <BrandLogo id={item.id} size={28} />
                 </div>
-
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                  {item.category}
-                </div>
-                <h3 className="text-sm font-bold text-slate-900 mb-1">{item.name}</h3>
-                <p className="text-xs text-slate-500 leading-relaxed">{item.desc}</p>
+                {item.badge && (
+                  <span className="text-[10px] font-bold text-blue-800 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                    {item.badge}
+                  </span>
+                )}
               </div>
-            );
-          })}
+
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                {item.category}
+              </div>
+              <h3 className="text-sm font-bold text-slate-900 mb-1">{item.name}</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">{item.desc}</p>
+            </div>
+          ))}
         </div>
 
         <div className="text-center">

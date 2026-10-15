@@ -40,8 +40,14 @@ function supabaseAdmin() {
 // Fast in-memory deduplication cache for Meta message IDs (wamid)
 const recentlyProcessedMessages = new Map<string, number>()
 
+// Fast in-memory TTL cache for verified tokens and app secrets (5-min TTL)
+const verifiedTokensCache = new Map<string, { value: string; configId: string; expiresAt: number }>()
+const cachedAppSecrets = new Map<string, { secret: string; expiresAt: number }>()
+
 export function _resetRecentlyProcessedMessagesForTest() {
   recentlyProcessedMessages.clear()
+  verifiedTokensCache.clear()
+  cachedAppSecrets.clear()
 }
 
 interface WhatsAppMessage {
@@ -113,6 +119,9 @@ export async function GET(request: Request) {
     const mode = searchParams.get('hub.mode')
     const challenge = searchParams.get('hub.challenge')
     const verifyToken = searchParams.get('hub.verify_token')
+    const phoneParam = searchParams.get('phone_number_id')
+    const accountParam = searchParams.get('account_id')
+    const connectionParam = searchParams.get('connection_id')
 
     if (mode !== 'subscribe' || !challenge || !verifyToken) {
       return NextResponse.json(
@@ -130,10 +139,42 @@ export async function GET(request: Request) {
       })
     }
 
-    // Fetch all whatsapp configs to check verify tokens
-    const { data: configs, error: configError } = await supabaseAdmin()
+    // Check in-memory fast cache (avoid DB query for repeated heartbeat/subscribe pings)
+    const now = Date.now()
+    const cachedToken = verifiedTokensCache.get(verifyToken)
+    if (cachedToken && cachedToken.expiresAt > now) {
+      return new Response(challenge, {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain' },
+      })
+    }
+
+    // Targeted query if phone_number_id or account_id or connection_id is in query params
+    let configQuery = supabaseAdmin()
       .from('whatsapp_config')
       .select('id, verify_token')
+      .eq('is_archived', false)
+
+    if (connectionParam) {
+      configQuery = configQuery.eq('id', connectionParam)
+    } else if (phoneParam) {
+      configQuery = configQuery.eq('phone_number_id', phoneParam)
+    } else if (accountParam) {
+      configQuery = configQuery.eq('account_id', accountParam)
+    }
+
+    let { data: configs, error: configError } = await configQuery
+
+    if (configError || !configs || configs.length === 0) {
+      // Fallback: search all active configs if targeted query was empty
+      const fallbackRes = await supabaseAdmin()
+        .from('whatsapp_config')
+        .select('id, verify_token')
+        .eq('is_archived', false)
+
+      configs = fallbackRes.data
+      configError = fallbackRes.error
+    }
 
     if (configError || !configs) {
       console.error('Error fetching configs for verification:', configError)
@@ -159,6 +200,13 @@ export async function GET(request: Request) {
     }
 
     if (matchedConfig) {
+      // Cache verified token in memory for 5 minutes
+      verifiedTokensCache.set(verifyToken, {
+        value: verifyToken,
+        configId: matchedConfig.id,
+        expiresAt: now + 300000,
+      })
+
       // Fire-and-forget GCM upgrade if needed
       if (isLegacyFormat(matchedConfig.verify_token)) {
         void supabaseAdmin()
@@ -200,30 +248,72 @@ export async function POST(request: Request) {
   const rawBody = await request.text()
   const signature = request.headers.get('x-hub-signature-256')
 
-  // Multi-tenant: collect custom app_secrets from all whatsapp_config connections
-  const candidateSecrets: string[] = []
-  try {
-    const { data: configs } = await supabaseAdmin()
-      .from('whatsapp_config')
-      .select('app_secret')
-
-    if (configs && configs.length > 0) {
-      for (const c of configs) {
-        if (c.app_secret) {
-          try {
-            const dec = decrypt(c.app_secret)
-            if (dec && !candidateSecrets.includes(dec)) candidateSecrets.push(dec)
-          } catch { }
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('[webhook] error fetching multi-tenant app secrets:', err)
+  // 1. Fast Path: Verify against global environment META_APP_SECRET (0 DB calls)
+  let signatureVerified = false
+  if (process.env.META_APP_SECRET) {
+    signatureVerified = verifyMetaWebhookSignature(rawBody, signature, [])
   }
 
-  if (!verifyMetaWebhookSignature(rawBody, signature, candidateSecrets)) {
-    console.warn('[webhook] rejected request with invalid signature')
-    return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+  // 2. Multi-tenant: If not verified by env secret, check per-tenant app secrets with caching
+  if (!signatureVerified) {
+    const candidateSecrets: string[] = []
+    const now = Date.now()
+
+    // Collect cached unexpired secrets first
+    for (const [key, item] of cachedAppSecrets.entries()) {
+      if (item.expiresAt > now) {
+        if (!candidateSecrets.includes(item.secret)) candidateSecrets.push(item.secret)
+      } else {
+        cachedAppSecrets.delete(key)
+      }
+    }
+
+    if (candidateSecrets.length > 0 && verifyMetaWebhookSignature(rawBody, signature, candidateSecrets)) {
+      signatureVerified = true
+    } else {
+      // Peek into JSON to extract phone_number_id for targeted secret lookup
+      try {
+        let peekPhone: string | undefined
+        try {
+          const parsed = JSON.parse(rawBody)
+          const firstEntry = parsed?.entry?.[0]
+          const firstChange = firstEntry?.changes?.[0]
+          peekPhone = firstChange?.value?.metadata?.phone_number_id
+        } catch {}
+
+        let secretQuery = supabaseAdmin()
+          .from('whatsapp_config')
+          .select('id, phone_number_id, app_secret')
+          .eq('is_archived', false)
+
+        if (peekPhone) {
+          secretQuery = secretQuery.eq('phone_number_id', peekPhone)
+        }
+
+        const { data: configs } = await secretQuery
+
+        if (configs && configs.length > 0) {
+          for (const c of configs) {
+            if (c.app_secret) {
+              try {
+                const dec = decrypt(c.app_secret)
+                if (dec && !candidateSecrets.includes(dec)) {
+                  candidateSecrets.push(dec)
+                  cachedAppSecrets.set(c.phone_number_id || c.id, { secret: dec, expiresAt: now + 300000 })
+                }
+              } catch {}
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[webhook] error resolving multi-tenant app secrets:', err)
+      }
+
+      if (!verifyMetaWebhookSignature(rawBody, signature, candidateSecrets)) {
+        console.warn('[webhook] rejected request with invalid signature')
+        return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+      }
+    }
   }
 
 
@@ -419,15 +509,29 @@ async function handleStatusUpdate(status: {
   status: string
   timestamp: string
   recipient_id: string
+  errors?: Array<{
+    code: number
+    title: string
+    message?: string
+    error_data?: { details?: string }
+  }>
 }) {
-  // 1) Mirror onto messages (legacy behavior) — Meta's status values
-  //    already match the CHECK constraint on messages.status. No
-  //    `.select()`: message_id is NOT unique (migration 009 — Meta ids
-  //    repeat across numbers), so this updates 0..N rows and must not
-  //    assume a single row.
+  // Extract error explanation if Meta reported a failure
+  let errorMessage: string | null = null
+  if (status.status === 'failed' && status.errors && status.errors.length > 0) {
+    const err = status.errors[0]
+    errorMessage = `[${err.code}] ${err.title || 'Error'}: ${err.message || err.error_data?.details || 'Undeliverable'}`
+  }
+
+  // 1) Mirror onto messages — update status and error_message
+  const messageUpdate: Record<string, unknown> = { status: status.status }
+  if (errorMessage) {
+    messageUpdate.error_message = errorMessage
+  }
+
   const { error: msgErr } = await supabaseAdmin()
     .from('messages')
-    .update({ status: status.status })
+    .update(messageUpdate)
     .eq('message_id', status.id)
 
   if (msgErr) {
@@ -459,6 +563,7 @@ async function handleStatusUpdate(status: {
     isValidStatusTransition(recipient.status, status.status)
   ) {
     const update: Record<string, unknown> = { status: status.status }
+    if (errorMessage) update.error_message = errorMessage
     if (status.status === 'sent' && !('sent_at' in update)) update.sent_at = tsIso
     if (status.status === 'delivered') update.delivered_at = tsIso
     if (status.status === 'read') update.read_at = tsIso
@@ -496,6 +601,7 @@ async function handleStatusUpdate(status: {
           whatsapp_message_id: status.id,
           conversation_id: msgRow.conversation_id,
           status: status.status,
+          error: errorMessage || undefined,
         }
       )
     }
@@ -811,38 +917,50 @@ async function processMessage(
   // (issue #369). The RPC increments in a single UPDATE and refreshes the
   // last-message summary in the same statement.
   const messageTimeIso = new Date(parseInt(message.timestamp) * 1000).toISOString()
-  const { error: convError } = await supabaseAdmin().rpc(
-    'bump_conversation_on_inbound',
+  const lastMsgSummary = contentText || `[${message.type}]`
+
+  // 1. Atomic conversation update (migration 052)
+  const { error: atomicConvErr } = await supabaseAdmin().rpc(
+    'update_conversation_on_inbound',
     {
       p_conversation_id: conversation.id,
-      p_last_message_text: contentText || `[${message.type}]`,
+      p_connection_id: connectionId || conversation.whatsapp_connection_id || null,
+      p_last_message_text: lastMsgSummary,
+      p_message_timestamp: messageTimeIso,
     }
   )
 
-  if (convError) {
-    console.error('Error updating conversation:', convError)
+  if (atomicConvErr) {
+    // Graceful fallback for environments where RPC update_conversation_on_inbound is not yet present
+    const { error: convError } = await supabaseAdmin().rpc(
+      'bump_conversation_on_inbound',
+      {
+        p_conversation_id: conversation.id,
+        p_last_message_text: lastMsgSummary,
+      }
+    )
+    if (convError) {
+      console.error('Error updating conversation with bump RPC:', convError)
+    }
+
+    await supabaseAdmin()
+      .from('conversations')
+      .update({
+        last_customer_message_at: messageTimeIso,
+        whatsapp_connection_id: connectionId || conversation.whatsapp_connection_id,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', conversation.id)
   }
 
-  // Ensure last_customer_message_at and whatsapp_connection_id are refreshed
-  await supabaseAdmin()
-    .from('conversations')
-    .update({
-      last_customer_message_at: messageTimeIso,
-      whatsapp_connection_id: connectionId || conversation.whatsapp_connection_id,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', conversation.id)
-
-  // A customer writing again re-opens the thread (issue #409). Kept as a
-  // separate conditional statement rather than a `status` field on the
-  // update above so the write can be gated on the row's CURRENT status in
-  // SQL — see the helper for why that matters.
+  // A customer writing again re-opens the thread (issue #409)
   await reopenClosedConversation(supabaseAdmin(), conversation)
 
-  // If this contact was a recent broadcast recipient, flag the reply
-  // so the broadcast's `replied_count` advances (via the aggregate
-  // trigger installed in migration 003).
-  // Auto-detect Opt-Out keywords (Compliance & Anti-Ban requirement)
+  // 2. If this contact was a recent broadcast recipient, flag the reply
+  // so the broadcast's `replied_count` advances (installed in migration 003).
+  await flagBroadcastReplyIfAny(accountId, contactRecord.id)
+
+  // 3. Auto-detect Opt-Out and Opt-In keywords (Compliance & Anti-Ban requirement)
   const inboundTextRaw = (contentText ?? message.text?.body ?? '').trim().toLowerCase()
   const isOptOutKeyword =
     inboundTextRaw === 'stop' ||
@@ -851,7 +969,16 @@ async function processMessage(
     inboundTextRaw === 'optout' ||
     inboundTextRaw === 'opt-out' ||
     inboundTextRaw === 'ar message dio na' ||
+    inboundTextRaw === 'bondho koro' ||
+    inboundTextRaw === 'thamo' ||
     inboundTextRaw === 'stop message'
+
+  const isOptInKeyword =
+    inboundTextRaw === 'start' ||
+    inboundTextRaw === 'unstop' ||
+    inboundTextRaw === 'subscribe' ||
+    inboundTextRaw === 'restart' ||
+    inboundTextRaw === 'shuru koro'
 
   if (isOptOutKeyword && contactRecord?.id) {
     await supabaseAdmin()
@@ -860,6 +987,13 @@ async function processMessage(
       .eq('id', contactRecord.id)
     contactRecord.is_opted_out = true
     console.info(`[webhook] Opt-out keyword "${inboundTextRaw}" detected from contact ${contactRecord.id}. Set is_opted_out=true.`)
+  } else if (isOptInKeyword && contactRecord?.id && contactRecord.is_opted_out) {
+    await supabaseAdmin()
+      .from('contacts')
+      .update({ is_opted_out: false, updated_at: new Date().toISOString() })
+      .eq('id', contactRecord.id)
+    contactRecord.is_opted_out = false
+    console.info(`[webhook] Opt-in keyword "${inboundTextRaw}" detected from contact ${contactRecord.id}. Cleared is_opted_out.`)
   }
 
   // Check if Bot / Flow Automations are paused:

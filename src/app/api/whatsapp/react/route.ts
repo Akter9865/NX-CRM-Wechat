@@ -66,7 +66,7 @@ export async function POST(request: Request) {
 
     const { data: conversation, error: convError } = await supabase
       .from('conversations')
-      .select('id, account_id, contact:contacts(phone)')
+      .select('id, account_id, whatsapp_connection_id, contact:contacts(phone)')
       .eq('id', targetMessage.conversation_id)
       .eq('account_id', accountId)
       .maybeSingle();
@@ -88,12 +88,36 @@ export async function POST(request: Request) {
       );
     }
 
-    // WhatsApp config + access token. Account-scoped post-multi-user.
-    const { data: config, error: configError } = await supabase
+    // WhatsApp config + access token. Load conversation's connection or default active connection.
+    let configQuery = supabase
       .from('whatsapp_config')
       .select('phone_number_id, access_token')
       .eq('account_id', accountId)
-      .single();
+      .eq('is_archived', false);
+
+    if (conversation.whatsapp_connection_id) {
+      configQuery = configQuery.eq('id', conversation.whatsapp_connection_id);
+    }
+
+    let { data: configs, error: configError } = await configQuery
+      .order('is_default', { ascending: false })
+      .order('created_at', { ascending: true })
+      .limit(1);
+
+    if ((!configs || configs.length === 0) && conversation.whatsapp_connection_id) {
+      const fallback = await supabase
+        .from('whatsapp_config')
+        .select('phone_number_id, access_token')
+        .eq('account_id', accountId)
+        .eq('is_archived', false)
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: true })
+        .limit(1);
+      configs = fallback.data;
+      configError = fallback.error;
+    }
+
+    const config = configs?.[0];
 
     if (configError || !config) {
       return NextResponse.json(

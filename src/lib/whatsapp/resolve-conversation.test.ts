@@ -48,6 +48,9 @@ function makeDb(script: Script): SupabaseClient {
     eq: () => builder,
     order: () => builder,
     limit: () => {
+      if (table === 'whatsapp_config') {
+        return Promise.resolve({ data: script.config ? [script.config] : [], error: null });
+      }
       // Only the conversation lookup terminates on `.limit(1)`.
       if (table === 'conversations' && mode === 'select') {
         const row = script.existingConversationByCall

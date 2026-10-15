@@ -45,6 +45,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { SettingsPanelHead } from './settings-panel-head';
+import { BrandLogo } from '@/components/integrations/brand-logos';
 import {
   INTEGRATION_DEFINITIONS,
   type IntegrationCategory,
@@ -275,8 +276,8 @@ export function IntegrationsPanel() {
                 <div>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 border border-primary/20 text-primary transition-transform duration-200 group-hover:scale-105">
-                        <Icon className="size-5.5" />
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl overflow-hidden shadow-xs transition-transform duration-200 group-hover:scale-105">
+                        <BrandLogo id={item.id} size={44} />
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
@@ -343,11 +344,8 @@ export function IntegrationsPanel() {
           <DialogContent className="sm:max-w-lg bg-card border-border">
             <DialogHeader>
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 border border-primary/20 text-primary">
-                  {(() => {
-                    const ModalIcon = ICON_MAP[activeModalItem.iconName] || Webhook;
-                    return <ModalIcon className="size-5" />;
-                  })()}
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl overflow-hidden shadow-xs">
+                  <BrandLogo id={activeModalItem.id} size={40} />
                 </div>
                 <div>
                   <DialogTitle className="text-lg font-bold text-foreground flex items-center gap-2">

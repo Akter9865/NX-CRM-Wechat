@@ -110,15 +110,16 @@ export async function POST(request: Request) {
     }
 
     const { accountId, role } = auth;
-    if (role !== 'owner' && role !== 'admin') {
+    const body = await request.json();
+    const { integration_id, is_enabled, config, action } = body;
+
+    // Allow agents to trigger contact sync from the live inbox, but restrict config updates to admins/owners
+    if (action !== 'sync_contact' && role !== 'owner' && role !== 'admin') {
       return NextResponse.json(
         { error: 'Only admins or owners can configure integrations.' },
         { status: 403 }
       );
     }
-
-    const body = await request.json();
-    const { integration_id, is_enabled, config, action } = body;
 
     if (!integration_id || !INTEGRATION_DEFINITIONS[integration_id as IntegrationId]) {
       return NextResponse.json(
@@ -206,6 +207,84 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         message: 'Configuration validated successfully!',
+      });
+    }
+
+    // Action: 'sync_contact' (Real-time sync from Live Inbox or Flow)
+    if (action === 'sync_contact') {
+      const { contact_id } = body;
+      if (!contact_id) {
+        return NextResponse.json({ error: 'contact_id is required' }, { status: 400 });
+      }
+
+      // Fetch contact details
+      const { data: contact } = await supabaseAdmin()
+        .from('contacts')
+        .select('*, contact_tags(tags(name))')
+        .eq('id', contact_id)
+        .eq('account_id', accountId)
+        .maybeSingle();
+
+      if (!contact) {
+        return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
+      }
+
+      if (integration_id === 'google_sheets') {
+        let webhookUrl = config?.webhook_url;
+        if (!webhookUrl) {
+          const { data: integ } = await supabaseAdmin()
+            .from('account_integrations')
+            .select('config, is_enabled')
+            .eq('account_id', accountId)
+            .eq('integration_id', 'google_sheets')
+            .maybeSingle();
+          if (!integ?.is_enabled || !integ.config?.webhook_url) {
+            return NextResponse.json(
+              { error: 'Google Sheets is not configured or enabled in Integrations Hub.' },
+              { status: 400 }
+            );
+          }
+          webhookUrl = integ.config.webhook_url;
+        }
+
+        const tagNames = Array.isArray(contact.contact_tags)
+          ? contact.contact_tags.map((ct: any) => ct.tags?.name).filter(Boolean).join(', ')
+          : '';
+
+        const payload = {
+          event: 'LEAD_SYNC',
+          timestamp: new Date().toISOString(),
+          account_id: accountId,
+          contact_id: contact.id,
+          name: contact.name || '',
+          phone: contact.phone || '',
+          email: contact.email || '',
+          tags: tagNames,
+          source: 'NX CRM Live Inbox',
+        };
+
+        const sheetRes = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (!sheetRes.ok) {
+          return NextResponse.json(
+            { error: `Google Sheets returned HTTP status ${sheetRes.status}` },
+            { status: 502 }
+          );
+        }
+
+        return NextResponse.json({
+          success: true,
+          message: `Contact "${contact.name || contact.phone}" successfully synced to Google Sheets!`,
+        });
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'Sync processed successfully.',
       });
     }
 

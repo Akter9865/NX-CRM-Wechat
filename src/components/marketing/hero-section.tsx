@@ -58,23 +58,24 @@ export function HeroSection() {
 
   return (
     <section className="relative overflow-hidden pt-10 pb-16 sm:pt-16 sm:pb-24 md:pt-20 md:pb-28 bg-gradient-to-b from-slate-50 via-white to-slate-50/60">
-      {/* Background Soft Glows with Animation */}
-      <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] sm:w-[900px] h-[450px] sm:h-[550px] bg-emerald-100/60 blur-[140px] rounded-full animate-float-slow -z-10" />
-      <div className="pointer-events-none absolute top-1/3 left-1/4 w-[350px] h-[350px] bg-blue-100/40 blur-[120px] rounded-full -z-10" />
-      <div className="pointer-events-none absolute top-1/2 right-1/4 w-[350px] h-[350px] bg-teal-100/40 blur-[120px] rounded-full -z-10" />
+      {/* Background Soft Glows (Static, High Performance) */}
+      <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] sm:w-[900px] h-[450px] sm:h-[550px] bg-emerald-100/40 blur-[100px] rounded-full -z-10" />
+      <div className="pointer-events-none absolute top-1/3 left-1/4 w-[350px] h-[350px] bg-blue-100/30 blur-[90px] rounded-full -z-10" />
+      <div className="pointer-events-none absolute top-1/2 right-1/4 w-[350px] h-[350px] bg-teal-100/30 blur-[90px] rounded-full -z-10" />
 
-      {/* Grid Pattern Overlay */}
+      {/* Modern Clean Radial Dot Matrix Pattern Overlay (Zero-lag, subtle) */}
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.03]"
+        className="pointer-events-none absolute inset-0 -z-10"
         style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23000000' fill-opacity='1' fill-rule='evenodd'%3E%3Cpath d='M0 40L40 0H20L0 20M40 40V20L20 40'/%3E%3C/g%3E%3C/svg%3E")`,
+          backgroundImage: `radial-gradient(circle at 1px 1px, rgba(148, 163, 184, 0.18) 1px, transparent 0)`,
+          backgroundSize: '28px 28px',
         }}
       />
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Top Badges */}
-        <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3 mb-6 sm:mb-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
-          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50/90 px-3.5 py-1 text-xs font-semibold text-emerald-800 shadow-2xs backdrop-blur-md">
+        <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3 mb-6 sm:mb-8 animate-in fade-in duration-500">
+          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50/95 px-3.5 py-1 text-xs font-semibold text-emerald-800 shadow-2xs">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
@@ -83,7 +84,7 @@ export function HeroSection() {
             <span className="truncate">Official WhatsApp Cloud API v22.0</span>
           </div>
 
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50/90 px-3.5 py-1 text-xs font-semibold text-indigo-800 shadow-2xs backdrop-blur-md">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50/95 px-3.5 py-1 text-xs font-semibold text-indigo-800 shadow-2xs">
             <Sparkles className="size-3.5 text-indigo-600 shrink-0" />
             <span>Powered by Nexora Spark Agency</span>
           </div>
@@ -94,10 +95,8 @@ export function HeroSection() {
           <h1 className="text-3xl sm:text-5xl lg:text-7xl font-extrabold tracking-tight text-slate-900 leading-[1.15] sm:leading-[1.1] min-h-[75px] sm:min-h-[110px] lg:min-h-[160px]">
             Turn WhatsApp Conversations Into{' '}
             <span
-              className={`inline-block transition-all duration-300 transform bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 bg-clip-text text-transparent ${
-                fadeState === 'in'
-                  ? 'opacity-100 translate-y-0 scale-100'
-                  : 'opacity-0 -translate-y-2 scale-95'
+              className={`inline-block transition-opacity duration-300 bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 bg-clip-text text-transparent will-change-[opacity] ${
+                fadeState === 'in' ? 'opacity-100' : 'opacity-0'
               }`}
             >
               {ROTATING_WORDS[wordIndex]}
@@ -174,7 +173,7 @@ export function HeroSection() {
         {/* Hero Visual Showcase Frame with Floating Badges */}
         <div className="relative mt-8 sm:mt-14 md:mt-16 max-w-5xl mx-auto">
           {/* Floating Live Badge top-left */}
-          <div className="hidden sm:flex absolute -top-4 -left-4 z-20 items-center gap-2 rounded-2xl bg-white/95 border border-slate-200/90 px-3.5 py-2 shadow-xl backdrop-blur-md animate-float">
+          <div className="hidden sm:flex absolute -top-4 -left-4 z-20 items-center gap-2 rounded-2xl bg-white border border-slate-200/90 px-3.5 py-2 shadow-lg shadow-slate-900/5 animate-float transform-gpu will-change-transform">
             <div className="flex size-7 items-center justify-center rounded-xl bg-emerald-500 text-white font-bold text-xs shadow-xs">
               <MessageSquare className="size-4" />
             </div>
@@ -185,7 +184,7 @@ export function HeroSection() {
           </div>
 
           {/* Floating SLA Badge top-right */}
-          <div className="hidden sm:flex absolute -bottom-4 -right-4 z-20 items-center gap-2 rounded-2xl bg-white/95 border border-slate-200/90 px-3.5 py-2 shadow-xl backdrop-blur-md animate-float-slow">
+          <div className="hidden sm:flex absolute -bottom-4 -right-4 z-20 items-center gap-2 rounded-2xl bg-white border border-slate-200/90 px-3.5 py-2 shadow-lg shadow-slate-900/5 animate-float-slow transform-gpu will-change-transform">
             <div className="flex size-7 items-center justify-center rounded-xl bg-indigo-500 text-white font-bold text-xs shadow-xs">
               <Zap className="size-4" />
             </div>
@@ -195,10 +194,10 @@ export function HeroSection() {
             </div>
           </div>
 
-          <div className="relative rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white p-2 sm:p-3 shadow-2xl shadow-slate-300/40 backdrop-blur-xl group hover-lift">
+          <div className="relative rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white p-2 sm:p-3 shadow-2xl shadow-slate-300/30 group hover-lift">
             {/* Dynamic Live Activity Toast Overlay (Desktop & Tablet) */}
-            <div className="hidden md:block absolute top-4 left-4 sm:top-6 sm:left-6 z-20 max-w-[280px] sm:max-w-xs transition-all duration-500 transform">
-              <div className="rounded-2xl border border-slate-200/80 bg-white/95 backdrop-blur-xl p-3 shadow-xl shadow-slate-900/10 flex items-start gap-2.5">
+            <div className="hidden md:block absolute top-4 left-4 sm:top-6 sm:left-6 z-20 max-w-[280px] sm:max-w-xs transition-opacity duration-300">
+              <div className="rounded-2xl border border-slate-200/90 bg-white p-3 shadow-xl shadow-slate-900/10 flex items-start gap-2.5">
                 <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 font-bold text-xs">
                   {activeMessageIndex === 0 ? 'RS' : activeMessageIndex === 1 ? <Bot className="size-4 text-purple-600" /> : <Zap className="size-4 text-amber-600" />}
                 </div>
@@ -223,7 +222,7 @@ export function HeroSection() {
             </div>
 
             {/* Glowing Accent Border */}
-            <div className="absolute -inset-0.5 rounded-2xl sm:rounded-3xl bg-gradient-to-r from-emerald-500 via-teal-400 to-indigo-400 opacity-20 blur-lg group-hover:opacity-35 transition-opacity" />
+            <div className="absolute -inset-0.5 rounded-2xl sm:rounded-3xl bg-gradient-to-r from-emerald-500 via-teal-400 to-indigo-400 opacity-20 blur-md group-hover:opacity-35 transition-opacity pointer-events-none -z-10" />
 
             <div className="relative overflow-hidden rounded-xl sm:rounded-2xl bg-slate-50 border border-slate-200">
               <Image

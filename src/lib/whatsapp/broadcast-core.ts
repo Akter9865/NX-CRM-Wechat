@@ -54,6 +54,8 @@ export interface CreateBroadcastParams {
   templateName: string;
   templateLanguage?: string | null;
   recipients: BroadcastRecipientInput[];
+  connectionId?: string | null;
+  whatsappConnectionId?: string | null;
 }
 
 interface PlannedRecipient {
@@ -110,11 +112,23 @@ export async function createBroadcast(
 
   // Config (fail fast + provides the audit trail owner already resolved
   // by the caller). Meta send needs phone_number_id + decrypted token.
-  const { data: config, error: configError } = await db
+  const targetConnId = params.connectionId || params.whatsappConnectionId;
+  let configQuery = db
     .from('whatsapp_config')
     .select('*')
     .eq('account_id', accountId)
-    .single();
+    .eq('is_archived', false);
+
+  if (targetConnId) {
+    configQuery = configQuery.eq('id', targetConnId);
+  }
+
+  const { data: configs, error: configError } = await configQuery
+    .order('is_default', { ascending: false })
+    .order('created_at', { ascending: true })
+    .limit(1);
+
+  const config = configs?.[0];
   if (configError || !config) {
     throw new BroadcastError(
       'whatsapp_not_configured',

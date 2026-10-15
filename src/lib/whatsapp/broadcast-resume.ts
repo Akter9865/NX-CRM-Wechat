@@ -205,11 +205,15 @@ export async function planBroadcastResume(
     );
   }
 
-  const { data: config, error: configError } = await db
+  const { data: configs, error: configError } = await db
     .from('whatsapp_config')
     .select('*')
     .eq('account_id', accountId)
-    .single();
+    .eq('is_archived', false)
+    .order('is_default', { ascending: false })
+    .order('created_at', { ascending: true })
+    .limit(1);
+  const config = configs?.[0];
   if (configError || !config) {
     throw new BroadcastError(
       'whatsapp_not_configured',

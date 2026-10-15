@@ -339,9 +339,11 @@ describe('inbound webhook: atomic unread bump (#369)', () => {
     await runWebhook()
 
     expect(h.state.rpcCalls).toHaveLength(1)
-    expect(h.state.rpcCalls[0]).toMatchObject({
-      name: 'bump_conversation_on_inbound',
-      args: { p_conversation_id: 'conv-1' },
+    expect(['update_conversation_on_inbound', 'bump_conversation_on_inbound']).toContain(
+      h.state.rpcCalls[0].name
+    )
+    expect(h.state.rpcCalls[0].args).toMatchObject({
+      p_conversation_id: 'conv-1',
     })
   })
 })

@@ -106,6 +106,7 @@ interface MessageThreadProps {
    */
   contactPanelOpen?: boolean;
   onToggleContactPanel?: () => void;
+  isLiveConnected?: boolean;
 }
 
 function formatDateSeparator(dateStr: string, t: ReturnType<typeof useTranslations>): string {
@@ -164,6 +165,7 @@ export function MessageThread({
   onRefresh,
   contactPanelOpen,
   onToggleContactPanel,
+  isLiveConnected = true,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
   const tTimer = useTranslations("Inbox.sessionTimer");
@@ -1015,6 +1017,25 @@ export function MessageThread({
             <Clock className="h-3 w-3" />
             {sessionInfo.remaining}
           </Badge>
+
+          {/* Real-time Live Stream Indicator */}
+          <div
+            title={isLiveConnected ? "Real-time Live WebSocket Active" : "Reconnecting to live stream..."}
+            className={cn(
+              "ml-1 hidden items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide border sm:inline-flex",
+              isLiveConnected
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                : "border-amber-500/30 bg-amber-500/10 text-amber-500 animate-pulse"
+            )}
+          >
+            <span
+              className={cn(
+                "size-1.5 rounded-full shrink-0",
+                isLiveConnected ? "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]" : "bg-amber-500"
+              )}
+            />
+            <span>{isLiveConnected ? "Live" : "Syncing"}</span>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">

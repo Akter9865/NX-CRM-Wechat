@@ -55,11 +55,15 @@ export async function resolveConversationByPhone(
 
   // Fail fast (and create nothing) when the account has no WhatsApp
   // connected — the same error the send would raise anyway.
-  const { data: config } = await db
+  const { data: configs } = await db
     .from('whatsapp_config')
     .select('id')
     .eq('account_id', accountId)
-    .maybeSingle();
+    .eq('is_archived', false)
+    .order('is_default', { ascending: false })
+    .order('created_at', { ascending: true })
+    .limit(1);
+  const config = configs?.[0];
   if (!config) {
     throw new SendMessageError(
       'whatsapp_not_configured',

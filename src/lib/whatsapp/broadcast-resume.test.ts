@@ -132,6 +132,15 @@ function planDb(fx: PlanFixture, writes: PlanWrites = {}): SupabaseClient {
         select: () => b,
         eq: () => b,
         order: () => b,
+        limit: (_n: number) => {
+          if (table === 'whatsapp_config') {
+            return Promise.resolve({
+              data: fx.config === undefined ? [] : [fx.config],
+              error: null,
+            });
+          }
+          return b;
+        },
         in: (col: string, vals: unknown) => {
           if (col === 'status') writes.statusFilter = vals;
           if (col === 'id') writes.failedIds = vals;
@@ -150,6 +159,12 @@ function planDb(fx: PlanFixture, writes: PlanWrites = {}): SupabaseClient {
           error: null,
         }),
         then: (resolve: (r: { data: unknown[]; error: null }) => unknown) => {
+          if (table === 'whatsapp_config') {
+            return resolve({
+              data: fx.config === undefined ? [] : [fx.config],
+              error: null,
+            });
+          }
           if (table === 'broadcast_recipients') {
             return resolve({ data: fx.recipients ?? [], error: null });
           }

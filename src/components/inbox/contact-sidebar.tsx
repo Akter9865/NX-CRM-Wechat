@@ -16,7 +16,9 @@ import {
   Plus,
   X,
   Search,
+  Loader2,
 } from "lucide-react";
+import { BrandLogo } from "@/components/integrations/brand-logos";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -60,6 +62,7 @@ export function ContactSidebar({ contact, onTagsUpdated }: ContactSidebarProps) 
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
   const [tagSearchQuery, setTagSearchQuery] = useState("");
   const [tagActionLoading, setTagActionLoading] = useState(false);
+  const [syncingSheet, setSyncingSheet] = useState(false);
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
@@ -244,6 +247,33 @@ export function ContactSidebar({ contact, onTagsUpdated }: ContactSidebarProps) 
     setAddingNote(false);
   }, [contact, newNote, accountId]);
 
+  const handleSyncToGoogleSheets = useCallback(async () => {
+    if (!contact) return;
+    setSyncingSheet(true);
+    try {
+      const res = await fetch("/api/account/integrations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "sync_contact",
+          integration_id: "google_sheets",
+          contact_id: contact.id,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to sync to Google Sheets");
+      }
+      toast.success(
+        data.message || `Contact "${contact.name || contact.phone}" synced to Google Sheets!`
+      );
+    } catch (err: any) {
+      toast.error(err?.message || "Could not sync contact. Check Integrations settings.");
+    } finally {
+      setSyncingSheet(false);
+    }
+  }, [contact]);
+
   if (!contact) {
     return (
       <div className="flex h-full w-72 items-center justify-center border-l border-border bg-card">
@@ -302,6 +332,27 @@ export function ContactSidebar({ contact, onTagsUpdated }: ContactSidebarProps) 
                 <span className="truncate">{contact.email}</span>
               </div>
             )}
+
+            {/* Quick Live Integration Sync */}
+            <button
+              type="button"
+              onClick={handleSyncToGoogleSheets}
+              disabled={syncingSheet}
+              title="Instantly push this lead to your connected Google Sheet or CRM"
+              className="mt-2 flex w-full items-center justify-between rounded-xl border border-emerald-500/20 bg-emerald-50/70 dark:bg-emerald-950/20 px-3 py-2 text-xs font-semibold text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100/80 dark:hover:bg-emerald-950/40 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <BrandLogo id="google_sheets" size={18} className="shrink-0" />
+                <span className="truncate">Export to Google Sheets</span>
+              </div>
+              {syncingSheet ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-600 shrink-0" />
+              ) : (
+                <span className="text-[10px] uppercase font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-200/60 dark:bg-emerald-900/60 px-1.5 py-0.5 rounded shrink-0">
+                  Sync
+                </span>
+              )}
+            </button>
           </div>
 
           {/* Divider */}

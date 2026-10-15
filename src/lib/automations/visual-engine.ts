@@ -640,6 +640,72 @@ export async function executeVisualWorkflow({
             status: 'completed',
             input_data: { delaySeconds: delaySec, waitedMs: waitMs },
           });
+        } else if (
+          nodeType === 'action_google_sheets' ||
+          nodeType === 'google_sheets' ||
+          nodeType === 'export_sheets'
+        ) {
+          // Resolve Google Sheets Webhook URL from node config or active account_integrations
+          let sheetsUrl = config.webhookUrl || config.webhook_url || config.url;
+          if (!sheetsUrl) {
+            const { data: sheetsInteg } = await supabase
+              .from('account_integrations')
+              .select('config, is_enabled')
+              .eq('account_id', accountId)
+              .eq('integration_id', 'google_sheets')
+              .maybeSingle();
+            if (sheetsInteg?.is_enabled && sheetsInteg.config?.webhook_url) {
+              sheetsUrl = sheetsInteg.config.webhook_url;
+            }
+          }
+
+          if (sheetsUrl && (await isDeliverableUrl(sheetsUrl))) {
+            const sheetPayload = {
+              event: 'FLOW_LEAD_SYNC',
+              timestamp: new Date().toISOString(),
+              account_id: accountId,
+              contact_id: contactId,
+              name: contact.name || '',
+              phone: contact.phone || '',
+              email: contact.email || '',
+              tags: (contact as any).contact_tags || [],
+              sheet_tab: config.sheetTab || config.sheet_tab || 'Leads',
+            };
+
+            await fetch(sheetsUrl, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(sheetPayload),
+              redirect: 'manual',
+              signal: AbortSignal.timeout(8000),
+            }).catch((err) => console.warn('[visual-engine] Google Sheets sync failed:', err));
+          }
+
+          await supabase.from('automation_run_steps').insert({
+            run_id: runId,
+            node_id: nextNode.id,
+            node_type: nodeType,
+            node_title: nodeTitle,
+            status: 'completed',
+            input_data: { sheetsUrl: sheetsUrl ? 'configured' : 'not_configured' },
+          });
+        } else if (
+          nodeType === 'action_email_alert' ||
+          nodeType === 'send_email' ||
+          nodeType === 'email_notification'
+        ) {
+          const recipient = config.recipient || config.email || config.to;
+          let subject = config.subject || '🚨 New WhatsApp Lead Alert';
+          subject = subject.replace(/\{\{contact\.name\}\}/g, contact.name || contact.phone || '');
+
+          await supabase.from('automation_run_steps').insert({
+            run_id: runId,
+            node_id: nextNode.id,
+            node_type: nodeType,
+            node_title: nodeTitle,
+            status: 'completed',
+            input_data: { recipient, subject },
+          });
         } else {
           // General completed step record for other logic/action nodes
           await supabase.from('automation_run_steps').insert({
