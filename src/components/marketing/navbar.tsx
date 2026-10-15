@@ -218,6 +218,13 @@ export function Navbar() {
             Contact
           </Link>
 
+          <Link
+            href="/about"
+            className="rounded-xl px-3.5 py-2 text-sm font-semibold text-slate-600 transition-colors hover:text-slate-900 hover:bg-slate-100/80"
+          >
+            About
+          </Link>
+
           {/* Resources Dropdown */}
           <div className="group relative">
             <button

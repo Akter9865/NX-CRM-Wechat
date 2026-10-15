@@ -158,6 +158,11 @@ export function Footer() {
             </h4>
             <ul className="space-y-2 text-xs">
               <li>
+                <Link href="/about" className="hover:text-emerald-700 transition-colors">
+                  About Us
+                </Link>
+              </li>
+              <li>
                 <Link href="/pricing" className="hover:text-emerald-700 transition-colors">
                   Pricing Plans
                 </Link>

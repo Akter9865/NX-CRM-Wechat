@@ -279,12 +279,21 @@ export async function deliverBroadcast(
   db: SupabaseClient,
   plan: BroadcastPlan
 ): Promise<void> {
+  let consecutiveFailures = 0;
+  const MAX_CONSECUTIVE_FAILURES = 15;
+
   for (let i = 0; i < plan.planned.length; i++) {
     const recipient = plan.planned[i];
 
-    // Pacing delay (50ms) to respect Meta rate limits and protect WABA quality rating
+    // Anti-Ban Pacing: Natural jitter delay (75ms - 175ms) + micro-pause every 25 sends
     if (i > 0) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      const jitterMs = Math.floor(Math.random() * 100) + 75;
+      await new Promise((resolve) => setTimeout(resolve, jitterMs));
+
+      // Micro-cooldown every 25 recipients to avoid triggering Meta Cloud API velocity spikes
+      if (i % 25 === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+      }
     }
 
     const variants = phoneVariants(recipient.phone);
@@ -314,6 +323,7 @@ export async function deliverBroadcast(
     }
 
     if (sentMessageId) {
+      consecutiveFailures = 0;
       await db
         .from('broadcast_recipients')
         .update({
@@ -324,6 +334,7 @@ export async function deliverBroadcast(
         })
         .eq('id', recipient.recipientRowId);
     } else {
+      consecutiveFailures++;
       await db
         .from('broadcast_recipients')
         .update({
@@ -331,6 +342,15 @@ export async function deliverBroadcast(
           error_message: lastError || 'Unknown error',
         })
         .eq('id', recipient.recipientRowId);
+
+      // Circuit Breaker: If 15 consecutive messages fail (e.g. Meta policy rate limits or quality flag),
+      // pause immediately to protect the WhatsApp Business Account from automated banning.
+      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+        console.warn(
+          `[anti-ban guard] Broadcast ${plan.broadcastId} halted after ${MAX_CONSECUTIVE_FAILURES} consecutive delivery failures to protect WABA quality rating. Remaining recipients kept pending.`
+        );
+        break;
+      }
     }
   }
 

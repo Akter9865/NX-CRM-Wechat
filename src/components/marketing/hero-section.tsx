@@ -13,6 +13,7 @@ import {
   Zap,
   Bot,
   CheckCheck,
+  Shield,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PwaInstallButton } from '@/components/pwa/pwa-install';
@@ -88,6 +89,11 @@ export function HeroSection() {
             <Sparkles className="size-3.5 text-indigo-600 shrink-0" />
             <span>Powered by Nexora Spark Agency</span>
           </div>
+
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50/95 px-3.5 py-1 text-xs font-semibold text-blue-800 shadow-2xs">
+            <Shield className="size-3.5 text-blue-600 shrink-0" />
+            <span>Anti-Ban Rate Pacing & Safeguards</span>
+          </div>
         </div>
 
         {/* Hero Copy with Dynamic Rotating Headline */}
@@ -160,8 +166,12 @@ export function HeroSection() {
               <span className="font-medium">₹0 Free Tier to Start</span>
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2">
+              <Shield className="size-3.5 sm:size-4 text-emerald-600 shrink-0" />
+              <span className="font-medium">Anti-Ban Pacing & Opt-Out Guard</span>
+            </div>
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <CheckCircle2 className="size-3.5 sm:size-4 text-emerald-600 shrink-0" />
-              <span className="font-medium">No Credit Card Required</span>
+              <span className="font-medium">Zero Per-Message Markups</span>
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2">
               <CheckCircle2 className="size-3.5 sm:size-4 text-emerald-600 shrink-0" />
