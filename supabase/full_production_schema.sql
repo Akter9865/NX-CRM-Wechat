@@ -987,5 +987,56 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION handle_new_user();
 
 -- ==============================================================================
+-- Account Integrations Hub (Google Sheets, Zoho, Payment Gateways, Webhooks)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.account_integrations (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id      UUID NOT NULL REFERENCES public.accounts(id) ON DELETE CASCADE,
+  integration_id  TEXT NOT NULL,
+  is_enabled      BOOLEAN NOT NULL DEFAULT false,
+  config          JSONB NOT NULL DEFAULT '{}'::jsonb,
+  last_synced_at  TIMESTAMPTZ,
+  last_error      TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT account_integrations_unique_per_account UNIQUE (account_id, integration_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_account_integrations_lookup 
+  ON public.account_integrations(account_id, integration_id);
+
+ALTER TABLE public.account_integrations ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS account_integrations_select ON public.account_integrations;
+CREATE POLICY account_integrations_select ON public.account_integrations
+  FOR SELECT USING (is_account_member(account_id));
+
+DROP POLICY IF EXISTS account_integrations_insert ON public.account_integrations;
+CREATE POLICY account_integrations_insert ON public.account_integrations
+  FOR INSERT WITH CHECK (is_account_member(account_id, 'admin'));
+
+DROP POLICY IF EXISTS account_integrations_update ON public.account_integrations;
+CREATE POLICY account_integrations_update ON public.account_integrations
+  FOR UPDATE USING (is_account_member(account_id, 'admin'));
+
+DROP POLICY IF EXISTS account_integrations_delete ON public.account_integrations;
+CREATE POLICY account_integrations_delete ON public.account_integrations
+  FOR DELETE USING (is_account_member(account_id, 'admin'));
+
+CREATE OR REPLACE FUNCTION public.update_account_integrations_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS account_integrations_updated_at ON public.account_integrations;
+CREATE TRIGGER account_integrations_updated_at
+  BEFORE UPDATE ON public.account_integrations
+  FOR EACH ROW EXECUTE FUNCTION public.update_account_integrations_updated_at();
+
+-- ==============================================================================
 -- Schema consolidation complete.
 -- ==============================================================================
+
