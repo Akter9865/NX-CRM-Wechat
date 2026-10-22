@@ -7,12 +7,13 @@ export async function proxy(request: NextRequest) {
   // Immediately bypass static assets, manifest, sitemap, robots, icons to prevent infinite loops
   if (
     pathname === '/manifest.webmanifest' ||
+    pathname === '/manifest.json' ||
     pathname === '/sw.js' ||
     pathname === '/robots.txt' ||
     pathname === '/sitemap.xml' ||
     pathname.startsWith('/icon') ||
     pathname.startsWith('/_next') ||
-    /\.(?:svg|png|jpg|jpeg|gif|webp|ico|webmanifest|txt|xml|js)$/i.test(pathname)
+    /\.(?:svg|png|jpg|jpeg|gif|webp|ico|webmanifest|txt|xml|js|json)$/i.test(pathname)
   ) {
     return NextResponse.next();
   }
@@ -140,6 +141,6 @@ export default proxy;
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|manifest\\.webmanifest|robots\\.txt|sitemap\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|webmanifest)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|manifest\\.webmanifest|manifest\\.json|sw\\.js|robots\\.txt|sitemap\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|webmanifest|json)$).*)',
   ],
 };

@@ -966,8 +966,8 @@ export function MessageThread({
     <div className={cn("flex min-w-0 flex-1 flex-col", DOODLE_BG_CLASSES)}>
       {/* Header — solid card surface sits on top of the doodle so the
           name/avatar/dropdowns stay legible. */}
-      <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-3 sm:px-4">
-        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+      <div className="flex items-center justify-between gap-1.5 sm:gap-2 border-b border-border bg-card px-2.5 py-2.5 sm:px-4 shrink-0">
+        <div className="flex min-w-0 items-center gap-1.5 sm:gap-3 flex-1">
           {/* Back-to-list button — mobile only. Hidden on lg+ where the
               conversation list is always visible next to the thread. */}
           {onBack && (
@@ -975,42 +975,42 @@ export function MessageThread({
               type="button"
               onClick={onBack}
               aria-label={t("backToConversations")}
-              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
+              className="flex h-8 w-8 sm:h-9 sm:w-9 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
           )}
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+          <div className="flex h-8 w-8 sm:h-9 sm:w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-xs sm:text-sm font-medium text-foreground">
             {displayName.charAt(0).toUpperCase()}
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <h2 className="truncate text-xs sm:text-sm font-semibold text-foreground">{displayName}</h2>
               {conversation.channel_type === 'telegram' ? (
-                <Badge variant="outline" className="border-sky-500/30 bg-sky-500/10 text-sky-400 text-[10px] gap-1 font-medium shrink-0">
+                <Badge variant="outline" className="hidden xs:inline-flex border-sky-500/30 bg-sky-500/10 text-sky-400 text-[10px] gap-1 font-medium shrink-0">
                   <Send className="size-2.5" />
-                  Telegram
+                  <span className="hidden sm:inline">Telegram</span>
                 </Badge>
               ) : conversation.channel_type === 'whatsapp_web' ? (
-                <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-[10px] gap-1 font-medium shrink-0">
+                <Badge variant="outline" className="hidden xs:inline-flex border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-[10px] gap-1 font-medium shrink-0">
                   <Smartphone className="size-2.5" />
-                  WhatsApp Web
+                  <span className="hidden sm:inline">WhatsApp Web</span>
                 </Badge>
               ) : (
-                <Badge variant="outline" className="border-green-500/30 bg-green-500/10 text-green-400 text-[10px] gap-1 font-medium shrink-0">
+                <Badge variant="outline" className="hidden xs:inline-flex border-green-500/30 bg-green-500/10 text-green-400 text-[10px] gap-1 font-medium shrink-0">
                   <MessageSquare className="size-2.5" />
-                  WhatsApp API
+                  <span className="hidden sm:inline">WhatsApp API</span>
                 </Badge>
               )}
             </div>
-            <p className="truncate text-xs text-muted-foreground">{contact.phone}</p>
+            <p className="truncate text-[11px] sm:text-xs text-muted-foreground">{contact.phone}</p>
           </div>
           {/* Session timer badge — hidden on the narrowest phones so
               the name + back arrow keep their room. */}
           <Badge
             variant="outline"
             className={cn(
-              "ml-1 hidden gap-1 border-border text-[10px] sm:inline-flex sm:ml-2",
+              "ml-1 hidden gap-1 border-border text-[10px] sm:inline-flex sm:ml-2 shrink-0",
               sessionInfo.expired ? "text-red-400" : "text-primary"
             )}
           >
@@ -1022,7 +1022,7 @@ export function MessageThread({
           <div
             title={isLiveConnected ? "Real-time Live WebSocket Active" : "Reconnecting to live stream..."}
             className={cn(
-              "ml-1 hidden items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide border sm:inline-flex",
+              "ml-1 hidden items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide border sm:inline-flex shrink-0",
               isLiveConnected
                 ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                 : "border-amber-500/30 bg-amber-500/10 text-amber-500 animate-pulse"
@@ -1038,8 +1038,8 @@ export function MessageThread({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Bot / Flow Automation Header Toggle */}
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          {/* Bot / Flow Automation Header Toggle — hidden on mobile since AiThreadBanner is visible right above composer */}
           <button
             type="button"
             onClick={handleToggleBotAutomation}
@@ -1050,7 +1050,7 @@ export function MessageThread({
                 : "Bot is active. Click to pause bot & take over."
             }
             className={cn(
-              "inline-flex items-center gap-1.5 h-7 px-2.5 text-xs font-semibold rounded-md border transition-all cursor-pointer",
+              "hidden sm:inline-flex items-center gap-1.5 h-7 px-2.5 text-xs font-semibold rounded-md border transition-all cursor-pointer shrink-0",
               isBotPaused
                 ? "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20"
                 : "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
@@ -1062,7 +1062,7 @@ export function MessageThread({
                 isBotPaused ? "bg-amber-500 animate-pulse" : "bg-emerald-500"
               )}
             />
-            <span className="hidden sm:inline">
+            <span>
               {isBotPaused ? "Bot: Paused" : "Bot: Active"}
             </span>
           </button>

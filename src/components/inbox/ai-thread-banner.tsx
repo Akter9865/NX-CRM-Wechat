@@ -131,8 +131,9 @@ export function AiThreadBanner({
         <div className="min-w-0 flex-1 flex items-center gap-2">
           <span className="size-2 rounded-full bg-amber-500 shrink-0 animate-pulse" />
           <div className="min-w-0">
-            <p className="font-medium text-foreground text-xs">
-              Bot & Automations Paused (Human Agent Mode)
+            <p className="font-medium text-foreground text-xs truncate">
+              <span className="hidden sm:inline">Bot & Automations Paused (Human Agent Mode)</span>
+              <span className="sm:hidden">Bot Paused (Human Mode)</span>
             </p>
             {handoffSummary && (
               <p className="truncate text-muted-foreground text-[11px]" title={handoffSummary}>
@@ -142,7 +143,8 @@ export function AiThreadBanner({
           </div>
         </div>
         <BannerButton onClick={() => toggle(false)} busy={busy} icon={Undo2}>
-          <span>Resume Bot / Automation</span>
+          <span className="hidden sm:inline">Resume Bot / Automation</span>
+          <span className="sm:hidden">Resume</span>
         </BannerButton>
       </Banner>
     );
@@ -155,11 +157,13 @@ export function AiThreadBanner({
         <span className="size-2 rounded-full bg-emerald-500 shrink-0" />
         <Sparkles className="h-3.5 w-3.5 flex-shrink-0 text-primary" />
         <span className="truncate font-medium text-foreground text-xs">
-          Bot & Flow Automation Active
+          <span className="hidden sm:inline">Bot & Flow Automation Active</span>
+          <span className="sm:hidden">Bot Active</span>
         </span>
       </div>
       <BannerButton onClick={() => toggle(true)} busy={busy} icon={Hand}>
-        <span>Pause Bot / Take Over</span>
+        <span className="hidden sm:inline">Pause Bot / Take Over</span>
+        <span className="sm:hidden">Take Over</span>
       </BannerButton>
     </Banner>
   );
@@ -175,7 +179,7 @@ function Banner({
   return (
     <div
       className={cn(
-        "flex items-center gap-3 border-b px-3 py-2 text-xs sm:px-4",
+        "flex items-center justify-between gap-2 border-b px-2.5 py-1.5 text-xs sm:px-4 sm:py-2 shrink-0",
         tone === "primary"
           ? "border-primary/20 bg-primary/5"
           : "border-border bg-muted/40",

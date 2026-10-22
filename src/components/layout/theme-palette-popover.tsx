@@ -18,7 +18,7 @@ export function ThemePalettePopover() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-all duration-200 hover:bg-muted hover:text-foreground border border-border/60 hover:border-primary/40 focus:outline-none"
+        className="flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-all duration-200 hover:bg-muted hover:text-foreground border border-border/60 hover:border-primary/40 focus:outline-none"
         title="Theme Palette Colors"
         aria-label="Change Color Theme"
       >

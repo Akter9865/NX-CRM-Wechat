@@ -16,6 +16,7 @@ import { ImpersonationBanner } from "@/components/admin/impersonation-banner";
 import { Zap, ArrowRight, Lock, Users, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 
 // Auth-gated & subscription-aware dashboard shell.
 function DashboardShellInner({ children }: { children: React.ReactNode }) {
@@ -90,16 +91,29 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   const isOverQuota = isContactsOverLimit || isMessagesOverLimit;
   const isLocked = (isSubscriptionLocked || isOverQuota) && isRestrictedRoute;
 
+  // Workspace canvas routes (/inbox, /flows/[id]) require 100% viewport fit without outer scrollbars
+  const isFullHeightRoute = pathname.startsWith('/inbox') || (pathname.startsWith('/flows/') && pathname !== '/flows');
+
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-[100dvh] overflow-hidden bg-background">
       <PresenceHeartbeat />
       <Sidebar open={sidebarOpen} onClose={closeSidebar} />
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex flex-1 flex-col overflow-hidden min-w-0">
         <ImpersonationBanner />
         <Header onOpenSidebar={() => setSidebarOpen(true)} />
-        <main className="flex-1 overflow-y-auto flex flex-col justify-between">
-          <div className="p-4 sm:p-6 flex-1 space-y-6">
-            <AccountAccessAlert />
+        <main
+          className={cn(
+            "flex-1 flex flex-col min-w-0",
+            isFullHeightRoute ? "overflow-hidden" : "overflow-y-auto justify-between"
+          )}
+        >
+          <div
+            className={cn(
+              "flex-1 flex flex-col min-w-0",
+              isFullHeightRoute ? "h-full w-full overflow-hidden p-0" : "p-4 sm:p-6 space-y-6"
+            )}
+          >
+            {!isFullHeightRoute && <AccountAccessAlert />}
 
             {entitlementSummary && (
               <>
@@ -176,8 +190,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
               children
             )}
           </div>
-
-          <AppFooter />
+          {!isFullHeightRoute && <AppFooter />}
         </main>
       </div>
     </div>

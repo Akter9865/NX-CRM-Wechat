@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { Download, Smartphone, Check, Share, PlusSquare, X } from 'lucide-react';
+import { Download, Smartphone, Check, Share, PlusSquare, X, MoreVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -51,6 +51,7 @@ export function usePwaInstall() {
   const isStandalone = useSyncExternalStore(subscribeStandalone, getStandaloneSnapshot, () => false);
   const isIos = useSyncExternalStore(emptySubscribe, getIosSnapshot, () => false);
   const [showIosGuide, setShowIosGuide] = useState(false);
+  const [showAndroidGuide, setShowAndroidGuide] = useState(false);
 
   useEffect(() => {
     const handleBeforeInstall = (e: Event) => {
@@ -100,21 +101,156 @@ export function usePwaInstall() {
       return;
     }
 
-    // Generic fallback for desktop / chrome when prompt event is already captured or needs browser menu
-    toast.info(
-      'To install, click the Install icon (⬇) in your browser address bar or menu.',
-      { duration: 5000 }
-    );
+    // Android / Desktop Chrome fallback modal with clear 1-2-3 guide
+    setShowAndroidGuide(true);
   };
 
   return {
-    isInstallable: isInstallable || (!isStandalone && isIos),
+    isInstallable: isInstallable || !isStandalone,
     isStandalone,
     isIos,
     showIosGuide,
     setShowIosGuide,
+    showAndroidGuide,
+    setShowAndroidGuide,
     triggerInstall,
   };
+}
+
+function PwaIosGuideModal({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base font-bold">
+            <Smartphone className="size-5 text-primary" />
+            <span>Add NX CRM to iPhone / iPad</span>
+          </DialogTitle>
+          <DialogDescription className="text-xs">
+            Follow these simple steps in Safari to install NX CRM on your iOS device:
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3 py-2 text-xs">
+          <div className="flex items-start gap-3 rounded-xl border border-border/70 bg-muted/40 p-3">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold">
+              1
+            </div>
+            <div>
+              <p className="font-semibold text-foreground flex items-center gap-1.5">
+                Tap the Share Button <Share className="size-3.5 text-primary inline" />
+              </p>
+              <p className="text-muted-foreground mt-0.5">
+                At the bottom of your Safari browser bar, tap the Share icon.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 rounded-xl border border-border/70 bg-muted/40 p-3">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold">
+              2
+            </div>
+            <div>
+              <p className="font-semibold text-foreground flex items-center gap-1.5">
+                Select &quot;Add to Home Screen&quot; <PlusSquare className="size-3.5 text-primary inline" />
+              </p>
+              <p className="text-muted-foreground mt-0.5">
+                Scroll down the share menu and tap &quot;Add to Home Screen&quot;.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 rounded-xl border border-border/70 bg-muted/40 p-3">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold">
+              3
+            </div>
+            <div>
+              <p className="font-semibold text-foreground flex items-center gap-1.5">
+                Tap &quot;Add&quot; in Top Right <Check className="size-3.5 text-emerald-500 inline" />
+              </p>
+              <p className="text-muted-foreground mt-0.5">
+                NX CRM icon will appear on your Home Screen for instant 1-tap access!
+              </p>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PwaAndroidGuideModal({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base font-bold">
+            <Smartphone className="size-5 text-emerald-500" />
+            <span>Install NX CRM on Android / Chrome</span>
+          </DialogTitle>
+          <DialogDescription className="text-xs">
+            Follow these 3 simple steps in Chrome to install the standalone app:
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3 py-2 text-xs">
+          <div className="flex items-start gap-3 rounded-xl border border-border/70 bg-muted/40 p-3">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500 font-bold">
+              1
+            </div>
+            <div>
+              <p className="font-semibold text-foreground flex items-center gap-1.5">
+                Tap the Menu Button <MoreVertical className="size-3.5 text-primary inline" />
+              </p>
+              <p className="text-muted-foreground mt-0.5">
+                At the top right corner of Chrome, tap the three dots icon (⋮).
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 rounded-xl border border-border/70 bg-muted/40 p-3">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500 font-bold">
+              2
+            </div>
+            <div>
+              <p className="font-semibold text-foreground flex items-center gap-1.5">
+                Tap &quot;Install app&quot; or &quot;Add to Home screen&quot; <Download className="size-3.5 text-primary inline" />
+              </p>
+              <p className="text-muted-foreground mt-0.5">
+                Select &quot;Install app&quot; (or &quot;Add to Home screen&quot;) in the browser menu.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 rounded-xl border border-border/70 bg-muted/40 p-3">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500 font-bold">
+              3
+            </div>
+            <div>
+              <p className="font-semibold text-foreground flex items-center gap-1.5">
+                Confirm &quot;Install&quot; <Check className="size-3.5 text-emerald-500 inline" />
+              </p>
+              <p className="text-muted-foreground mt-0.5">
+                NX CRM installs as a standalone native app with real-time push alerts and offline access!
+              </p>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export function PwaInstallButton({
@@ -130,9 +266,15 @@ export function PwaInstallButton({
   showLabel?: boolean;
   label?: string;
 }) {
-  const { isStandalone, showIosGuide, setShowIosGuide, triggerInstall } = usePwaInstall();
+  const {
+    isStandalone,
+    showIosGuide,
+    setShowIosGuide,
+    showAndroidGuide,
+    setShowAndroidGuide,
+    triggerInstall,
+  } = usePwaInstall();
 
-  // If already running as an installed desktop/mobile app, render nothing or small badge
   if (isStandalone) {
     return null;
   }
@@ -153,70 +295,21 @@ export function PwaInstallButton({
         {showLabel && <span>{label}</span>}
       </Button>
 
-      {/* iOS Add to Home Screen Instructions Modal */}
-      <Dialog open={showIosGuide} onOpenChange={setShowIosGuide}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base font-bold">
-              <Smartphone className="size-5 text-primary" />
-              <span>Add NX CRM to Home Screen</span>
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              Follow these simple steps in Safari to install NX CRM on your iPhone or iPad:
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-3 py-2 text-xs">
-            <div className="flex items-start gap-3 rounded-xl border border-border/70 bg-muted/40 p-3">
-              <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold">
-                1
-              </div>
-              <div>
-                <p className="font-semibold text-foreground flex items-center gap-1.5">
-                  Tap the Share Button <Share className="size-3.5 text-primary inline" />
-                </p>
-                <p className="text-muted-foreground mt-0.5">
-                  At the bottom of your Safari browser bar, tap the Share icon.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3 rounded-xl border border-border/70 bg-muted/40 p-3">
-              <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold">
-                2
-              </div>
-              <div>
-                <p className="font-semibold text-foreground flex items-center gap-1.5">
-                  Select &quot;Add to Home Screen&quot; <PlusSquare className="size-3.5 text-primary inline" />
-                </p>
-                <p className="text-muted-foreground mt-0.5">
-                  Scroll down the share menu and tap &quot;Add to Home Screen&quot;.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3 rounded-xl border border-border/70 bg-muted/40 p-3">
-              <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold">
-                3
-              </div>
-              <div>
-                <p className="font-semibold text-foreground flex items-center gap-1.5">
-                  Tap &quot;Add&quot; in Top Right <Check className="size-3.5 text-emerald-500 inline" />
-                </p>
-                <p className="text-muted-foreground mt-0.5">
-                  NX CRM icon will appear on your Home Screen for instant 1-tap access!
-                </p>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <PwaIosGuideModal open={showIosGuide} onOpenChange={setShowIosGuide} />
+      <PwaAndroidGuideModal open={showAndroidGuide} onOpenChange={setShowAndroidGuide} />
     </>
   );
 }
 
 export function PwaInstallBanner({ className }: { className?: string }) {
-  const { isStandalone, triggerInstall, showIosGuide, setShowIosGuide } = usePwaInstall();
+  const {
+    isStandalone,
+    triggerInstall,
+    showIosGuide,
+    setShowIosGuide,
+    showAndroidGuide,
+    setShowAndroidGuide,
+  } = usePwaInstall();
   const [dismissed, setDismissed] = useState(false);
 
   if (isStandalone || dismissed) {
@@ -227,7 +320,7 @@ export function PwaInstallBanner({ className }: { className?: string }) {
     <>
       <div
         className={cn(
-          'relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5 rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-4 shadow-xs backdrop-blur-md',
+          'relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5 rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-3.5 sm:p-4 shadow-xs backdrop-blur-md',
           className
         )}
       >
@@ -236,7 +329,7 @@ export function PwaInstallBanner({ className }: { className?: string }) {
             <Smartphone className="size-5" />
           </div>
           <div>
-            <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
+            <h4 className="text-sm font-bold text-foreground flex items-center gap-2 flex-wrap">
               <span>Install NX CRM App</span>
               <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
                 1-Click Add to Home Screen
@@ -268,64 +361,8 @@ export function PwaInstallBanner({ className }: { className?: string }) {
         </div>
       </div>
 
-      {/* iOS Modal */}
-      <Dialog open={showIosGuide} onOpenChange={setShowIosGuide}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base font-bold">
-              <Smartphone className="size-5 text-primary" />
-              <span>Add NX CRM to Home Screen</span>
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              Follow these simple steps in Safari to install NX CRM on your iPhone or iPad:
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-3 py-2 text-xs">
-            <div className="flex items-start gap-3 rounded-xl border border-border/70 bg-muted/40 p-3">
-              <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold">
-                1
-              </div>
-              <div>
-                <p className="font-semibold text-foreground flex items-center gap-1.5">
-                  Tap the Share Button <Share className="size-3.5 text-primary inline" />
-                </p>
-                <p className="text-muted-foreground mt-0.5">
-                  At the bottom of your Safari browser bar, tap the Share icon.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3 rounded-xl border border-border/70 bg-muted/40 p-3">
-              <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold">
-                2
-              </div>
-              <div>
-                <p className="font-semibold text-foreground flex items-center gap-1.5">
-                  Select &quot;Add to Home Screen&quot; <PlusSquare className="size-3.5 text-primary inline" />
-                </p>
-                <p className="text-muted-foreground mt-0.5">
-                  Scroll down the share menu and tap &quot;Add to Home Screen&quot;.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3 rounded-xl border border-border/70 bg-muted/40 p-3">
-              <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold">
-                3
-              </div>
-              <div>
-                <p className="font-semibold text-foreground flex items-center gap-1.5">
-                  Tap &quot;Add&quot; in Top Right <Check className="size-3.5 text-emerald-500 inline" />
-                </p>
-                <p className="text-muted-foreground mt-0.5">
-                  NX CRM icon will appear on your Home Screen for instant 1-tap access!
-                </p>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <PwaIosGuideModal open={showIosGuide} onOpenChange={setShowIosGuide} />
+      <PwaAndroidGuideModal open={showAndroidGuide} onOpenChange={setShowAndroidGuide} />
     </>
   );
 }

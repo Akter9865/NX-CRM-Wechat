@@ -74,29 +74,29 @@ export function Header({ onOpenSidebar }: HeaderProps) {
     "U";
 
   return (
-    <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between gap-3 border-b border-border/80 bg-background/80 backdrop-blur-md px-4 lg:px-6">
+    <header className="sticky top-0 z-20 flex h-14 sm:h-16 shrink-0 items-center justify-between gap-1.5 sm:gap-3 border-b border-border/80 bg-background/80 backdrop-blur-md px-3 sm:px-4 lg:px-6">
       {/* Left side: Mobile menu & Breadcrumb hierarchy */}
-      <div className="flex min-w-0 items-center gap-2.5">
+      <div className="flex min-w-0 items-center gap-1.5 sm:gap-2.5">
         <button
           type="button"
           onClick={onOpenSidebar}
           aria-label={t("openMenu")}
-          className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
+          className="flex h-8 w-8 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
         >
           <Menu className="h-5 w-5" />
         </button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
           <span className="hidden sm:inline text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors">
             NX CRM
           </span>
           <span className="hidden sm:inline text-xs text-muted-foreground/40 font-mono">/</span>
-          <div className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-card/60 px-2.5 py-1 text-xs font-bold text-foreground tracking-tight shadow-2xs">
-            <span className="relative flex h-1.5 w-1.5">
+          <div className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-card/60 px-2 sm:px-2.5 py-1 text-xs font-bold text-foreground tracking-tight shadow-2xs min-w-0">
+            <span className="relative flex h-1.5 w-1.5 shrink-0">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
             </span>
-            <span className="capitalize">{t(titleKey as string)}</span>
+            <span className="capitalize truncate max-w-[90px] xs:max-w-[140px] sm:max-w-none">{t(titleKey as string)}</span>
           </div>
         </div>
       </div>
@@ -114,10 +114,10 @@ export function Header({ onOpenSidebar }: HeaderProps) {
       </Link>
 
       {/* Right Action Icons & Profile */}
-      <div className="flex items-center gap-2 sm:gap-2.5">
+      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
         {/* WhatsApp Cloud API Live Status Badge */}
         {waLoading ? (
-          <div className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full border border-border/60 bg-muted/40 text-muted-foreground text-[11px] font-medium">
+          <div className="flex items-center gap-1 sm:gap-1.5 h-8 px-2 sm:px-2.5 py-1 rounded-full border border-border/60 bg-muted/40 text-muted-foreground text-[11px] font-medium shrink-0">
             <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-pulse" />
             <span className="hidden sm:inline">Checking Meta API...</span>
           </div>
@@ -129,15 +129,15 @@ export function Header({ onOpenSidebar }: HeaderProps) {
                 ? `Meta API Connected: ${primaryConnection.display_phone_number}${connectionCount > 1 ? ` (+${connectionCount - 1} more)` : ""}`
                 : "Meta API Connected — Click to manage"
             }
-            className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-all text-[11px] font-semibold animate-fade-in shadow-2xs"
+            className="flex items-center gap-1 sm:gap-1.5 h-8 px-2 sm:px-2.5 py-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-all text-[11px] font-semibold animate-fade-in shadow-2xs shrink-0"
           >
-            <span className="relative flex h-1.5 w-1.5">
+            <span className="relative flex h-1.5 w-1.5 shrink-0">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
             </span>
-            <Zap className="size-3 text-emerald-600 dark:text-emerald-400 fill-emerald-500/20" />
+            <Zap className="size-3 text-emerald-600 dark:text-emerald-400 fill-emerald-500/20 shrink-0" />
             <span className="hidden xl:inline">Meta API Connected</span>
-            <span className="hidden sm:inline xl:hidden">Live</span>
+            <span className="hidden md:inline xl:hidden">Live</span>
             {connectionCount > 1 && (
               <span className="rounded-full bg-emerald-500/20 px-1 py-0.2 text-[9px] font-bold">
                 {connectionCount}
@@ -148,27 +148,27 @@ export function Header({ onOpenSidebar }: HeaderProps) {
           <Link
             href="/settings?tab=whatsapp"
             title="Meta API Connection Error — Click to fix"
-            className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20 transition-all text-[11px] font-semibold animate-fade-in shadow-2xs"
+            className="flex items-center gap-1 sm:gap-1.5 h-8 px-2 sm:px-2.5 py-1 rounded-full border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20 transition-all text-[11px] font-semibold animate-fade-in shadow-2xs shrink-0"
           >
-            <span className="relative flex h-1.5 w-1.5">
+            <span className="relative flex h-1.5 w-1.5 shrink-0">
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red-500" />
             </span>
-            <AlertTriangle className="size-3 text-red-600 dark:text-red-400" />
+            <AlertTriangle className="size-3 text-red-600 dark:text-red-400 shrink-0" />
             <span className="hidden xl:inline">Meta API Error</span>
-            <span className="hidden sm:inline xl:hidden">Error</span>
+            <span className="hidden md:inline xl:hidden">Error</span>
           </Link>
         ) : (
           <Link
             href="/settings?tab=whatsapp"
             title="Meta API Not Connected — Click to connect WhatsApp Business"
-            className="hidden sm:flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-all text-[11px] font-semibold animate-fade-in shadow-2xs"
+            className="hidden sm:flex items-center gap-1.5 h-8 px-2.5 py-1 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-all text-[11px] font-semibold animate-fade-in shadow-2xs shrink-0"
           >
-            <span className="relative flex h-1.5 w-1.5">
+            <span className="relative flex h-1.5 w-1.5 shrink-0">
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-amber-500" />
             </span>
-            <AlertCircle className="size-3 text-amber-600 dark:text-amber-400" />
+            <AlertCircle className="size-3 text-amber-600 dark:text-amber-400 shrink-0" />
             <span className="hidden xl:inline">Meta API Not Connected</span>
-            <span className="hidden sm:inline xl:hidden">Connect</span>
+            <span className="hidden md:inline xl:hidden">Connect</span>
           </Link>
         )}
 
@@ -176,7 +176,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         <Link
           href="/notifications"
           aria-label={t("notifications")}
-          className="relative flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-all duration-150 hover:bg-muted hover:text-foreground border border-border/60 hover:border-primary/40"
+          className="relative flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-all duration-150 hover:bg-muted hover:text-foreground border border-border/60 hover:border-primary/40"
         >
           <Bell className="size-4" />
           {unreadNotifications > 0 && (
@@ -204,10 +204,10 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         {/* User Account Dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger
-            className="flex items-center gap-2 rounded-full border border-border/80 bg-card/60 p-1 shadow-sm transition-all hover:bg-muted/70 hover:border-primary/40 focus:outline-none data-popup-open:bg-muted/70 sm:pl-1 sm:pr-3"
+            className="flex items-center gap-1.5 rounded-full border border-border/80 bg-card/60 p-0.5 sm:p-1 shadow-sm transition-all hover:bg-muted/70 hover:border-primary/40 focus:outline-none data-popup-open:bg-muted/70 sm:pl-1 sm:pr-3 shrink-0"
             aria-label={t("openAccountMenu")}
           >
-            <Avatar className="size-7.5 ring-1 ring-border">
+            <Avatar className="size-7 sm:size-7.5 ring-1 ring-border shrink-0">
               {profile?.avatar_url ? (
                 <AvatarImage
                   src={profile.avatar_url}
