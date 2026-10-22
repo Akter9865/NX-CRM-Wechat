@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
 import { AdminRole, AdminPermission } from './types';
 import { hasPermission } from './permissions';
 import { getAdminSupabaseClient } from './admin-client';
@@ -203,19 +204,36 @@ export async function getAdminSession(): Promise<AdminSessionPayload | null> {
   return verifyAdminToken(token);
 }
 
+export class AdminAuthError extends Error {
+  status: number;
+  constructor(message: string, status: number = 401) {
+    super(message);
+    this.name = 'AdminAuthError';
+    this.status = status;
+  }
+}
+
+export function handleAdminError(err: unknown) {
+  if (err instanceof AdminAuthError) {
+    return NextResponse.json({ error: err.message }, { status: err.status });
+  }
+  const msg = err instanceof Error ? err.message : 'Internal error';
+  return NextResponse.json({ error: msg }, { status: 500 });
+}
+
 /**
  * Route Handler Guard enforcing permissions
  */
 export async function requireAdminSession(requiredPermission?: AdminPermission): Promise<AdminSessionPayload> {
   const session = await getAdminSession();
   if (!session) {
-    throw new Error('Unauthorized admin access');
+    throw new AdminAuthError('Unauthorized admin access', 401);
   }
 
   if (requiredPermission) {
     const permitted = hasPermission(session.role, requiredPermission, session.permissions);
     if (!permitted) {
-      throw new Error(`Forbidden: Role ${session.role} lacks permission '${requiredPermission}'`);
+      throw new AdminAuthError(`Forbidden: Role ${session.role} lacks permission '${requiredPermission}'`, 403);
     }
   }
 

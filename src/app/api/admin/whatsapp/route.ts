@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdminSession } from '@/lib/admin/auth';
+import { requireAdminSession, handleAdminError } from '@/lib/admin/auth';
 import { getAdminSupabaseClient } from '@/lib/admin/admin-client';
 
 export const dynamic = 'force-dynamic';
@@ -68,8 +68,7 @@ export async function GET(_req: NextRequest) {
       },
     });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Failed to fetch WhatsApp monitoring data';
     console.error('[Admin WhatsApp GET Error]:', err);
-    return NextResponse.json({ error: msg, connections: [], summary: { totalConnections: 0, activeConnections: 0, degradedConnections: 0, totalTemplates: 0 } });
+    return handleAdminError(err);
   }
 }

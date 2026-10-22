@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdminSession } from '@/lib/admin/auth';
+import { requireAdminSession, handleAdminError } from '@/lib/admin/auth';
 import { getAdminSupabaseClient } from '@/lib/admin/admin-client';
 import { logAdminAction } from '@/lib/admin/audit';
 
@@ -27,9 +27,8 @@ export async function GET() {
 
     return NextResponse.json({ success: true, plans: enrichedPlans });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Failed to fetch plans';
     console.error('[Admin Plans GET Error]:', err);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return handleAdminError(err);
   }
 }
 
@@ -100,9 +99,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, plan: newPlan });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Failed to create plan';
     console.error('[Admin Plan POST Error]:', err);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return handleAdminError(err);
   }
 }
 
@@ -175,8 +173,7 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ success: true, plan: updatedPlan });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Failed to update plan';
     console.error('[Admin Plan PATCH Error]:', err);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return handleAdminError(err);
   }
 }

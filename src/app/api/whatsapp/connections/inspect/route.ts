@@ -55,6 +55,7 @@ export async function POST(request: Request) {
     let appId: string | null = null;
     let isValidToken = false;
     let tokenScopes: string[] = [];
+    let detectedWabaId: string | null = null;
 
     try {
       const debugRes = await fetch(
@@ -69,6 +70,17 @@ export async function POST(request: Request) {
           }
           if (Array.isArray(debugData.data.scopes)) {
             tokenScopes = debugData.data.scopes;
+          }
+          if (Array.isArray(debugData.data.granular_scopes)) {
+            const wabaScope = debugData.data.granular_scopes.find(
+              (s: { scope?: string; target_ids?: string[] }) =>
+                (s.scope === 'whatsapp_business_management' || s.scope === 'whatsapp_business_messaging') &&
+                Array.isArray(s.target_ids) &&
+                s.target_ids.length > 0
+            );
+            if (wabaScope && wabaScope.target_ids?.[0]) {
+              detectedWabaId = String(wabaScope.target_ids[0]);
+            }
           }
         }
       }
@@ -100,7 +112,7 @@ export async function POST(request: Request) {
           verifiedName: info.verified_name || null,
           qualityRating: info.quality_rating || null,
           codeVerificationStatus: info.code_verification_status || null,
-          wabaId: info.whatsapp_business_account?.id || null,
+          wabaId: detectedWabaId || null,
         };
         // If phone verification succeeded, token is definitely valid
         isValidToken = true;
@@ -131,6 +143,7 @@ export async function POST(request: Request) {
       success: true,
       valid: true,
       appId,
+      wabaId: detectedWabaId,
       tokenScopes,
       phoneInfo,
     });

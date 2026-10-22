@@ -12,11 +12,8 @@ import {
   parseContactCsv,
   type ParsedContactRow,
 } from '@/lib/contacts/parse-contact-csv';
-import {
-  assignImportedContactTags,
-  resolveImportTagIds,
-  type ContactTagAssignment,
-} from '@/lib/contacts/resolve-import-tags';
+import { assignImportedContactTags, resolveImportTagIds, type ContactTagAssignment } from '@/lib/contacts/resolve-import-tags';
+import { checkCanAddContact } from '@/lib/billing/entitlements';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -321,7 +318,18 @@ export function ImportModal({
         return true;
       });
 
-      // 3) Resolve tag names → ids (admin+ may auto-create missing tags).
+      // 3) Entitlement Guard: Check plan contact limits before importing
+      if (toInsert.length > 0) {
+        const canAdd = await checkCanAddContact(accountId, toInsert.length, supabase);
+        if (!canAdd.allowed) {
+          throw new Error(
+            canAdd.message ||
+              'Contact limit reached for your plan. Please upgrade to import more contacts.'
+          );
+        }
+      }
+
+      // 4) Resolve tag names → ids (admin+ may auto-create missing tags).
       //    Skip the round-trip when the import carries no tag names.
       const allTagNames = toInsert.flatMap((row) => row.tagNames);
       let tagIdByKey = new Map<string, string>();

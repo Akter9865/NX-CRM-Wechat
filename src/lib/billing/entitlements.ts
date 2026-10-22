@@ -331,7 +331,20 @@ export async function getAccountEntitlement(
       sb.from('subscriptions').select('plan_id, status, current_period_end, cancel_at_period_end').eq('account_id', accountId)
     );
     const statusInfo = evaluateSubscriptionStatus(sub);
-    const plan = statusInfo.plan;
+    const plan = { ...statusInfo.plan };
+
+    // If database plans table has custom limits configured, merge them
+    try {
+      const dbPlan = await safeMaybeSingle(
+        sb.from?.('plans')?.select?.('name, contact_limit, monthly_message_limit, whatsapp_connection_limit')?.eq?.('id', statusInfo.planId)
+      );
+      if (dbPlan) {
+        if (dbPlan.name) plan.name = dbPlan.name;
+        if (dbPlan.contact_limit !== undefined) plan.contactLimit = dbPlan.contact_limit;
+        if (dbPlan.monthly_message_limit !== undefined) plan.monthlyMessageLimit = dbPlan.monthly_message_limit;
+        if (dbPlan.whatsapp_connection_limit !== undefined) plan.whatsappConnectionLimit = dbPlan.whatsapp_connection_limit;
+      }
+    } catch {}
 
     let currentContacts = 0;
     try {
@@ -618,6 +631,29 @@ export async function canUseFeature(
       allowed: false,
       message: `Feature '${featureKey}' is not included in your ${summary.plan.name} plan. Upgrade to access this feature.`,
     };
+  }
+
+  return { allowed: true };
+}
+
+/**
+ * Backend guard: check if running a broadcast campaign is allowed for the account.
+ */
+export async function checkCanBroadcast(
+  accountId: string,
+  recipientCount = 1,
+  client?: any,
+): Promise<{ allowed: boolean; locked?: boolean; message?: string }> {
+  // 1. Check feature permission (broadcast)
+  const featCheck = await canUseFeature(accountId, 'broadcast', client);
+  if (!featCheck.allowed) {
+    return featCheck;
+  }
+
+  // 2. Check message sending limits
+  const sendCheck = await checkCanSendMessage(accountId, recipientCount, client);
+  if (!sendCheck.allowed) {
+    return sendCheck;
   }
 
   return { allowed: true };

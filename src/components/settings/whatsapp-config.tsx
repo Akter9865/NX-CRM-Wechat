@@ -184,9 +184,14 @@ export function WhatsAppConfigForm() {
         setAppId(data.appId);
       }
 
+      const effectiveWabaId = data.phoneInfo?.wabaId || data.wabaId;
+      if (effectiveWabaId && !wabaId) {
+        setWabaId(effectiveWabaId);
+      }
+
       if (data.phoneInfo) {
-        if (data.phoneInfo.wabaId) {
-          setWabaId(data.phoneInfo.wabaId);
+        if (effectiveWabaId) {
+          setWabaId(effectiveWabaId);
         }
         if (data.phoneInfo.verifiedName && !connectionName) {
           setConnectionName(data.phoneInfo.verifiedName);
@@ -194,15 +199,17 @@ export function WhatsAppConfigForm() {
         setAutoDetectedInfo({
           verifiedName: data.phoneInfo.verifiedName,
           displayPhoneNumber: data.phoneInfo.displayPhoneNumber,
-          wabaId: data.phoneInfo.wabaId,
+          wabaId: effectiveWabaId,
           appId: data.appId,
           qualityRating: data.phoneInfo.qualityRating,
         });
         toast.success(
           `Verified: ${data.phoneInfo.verifiedName || 'WhatsApp Number'} (${data.phoneInfo.displayPhoneNumber || 'Connected'})`
         );
-      } else if (data.appId) {
-        toast.success(`Valid Meta Token! Detected App ID: ${data.appId}`);
+      } else if (data.appId || effectiveWabaId) {
+        toast.success(
+          `Valid Meta Token! ${data.appId ? `Detected App ID: ${data.appId}` : ''}${effectiveWabaId ? ` | WABA: ${effectiveWabaId}` : ''}`
+        );
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Auto-detect failed';

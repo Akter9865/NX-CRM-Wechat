@@ -3,6 +3,7 @@ import {
   INTERACTIVE_LIMITS,
   sendInteractiveButtons,
   sendInteractiveList,
+  verifyPhoneNumber,
 } from "./meta-api";
 
 // All assertions in this file run BEFORE the network call. We stub fetch
@@ -267,3 +268,43 @@ describe("sendInteractiveList — validation", () => {
     });
   });
 });
+
+describe("verifyPhoneNumber", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("queries the correct valid phone number fields without whatsapp_business_account", async () => {
+    let capturedUrl = "";
+    let capturedHeaders: Record<string, string> = {};
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        capturedUrl = url;
+        capturedHeaders = (init?.headers as Record<string, string>) || {};
+        return new Response(
+          JSON.stringify({
+            id: "1307186435821886",
+            display_phone_number: "+1 555-0199",
+            verified_name: "Yellow Clothing Ltd",
+            quality_rating: "GREEN",
+          }),
+          { status: 200 }
+        );
+      })
+    );
+
+    const info = await verifyPhoneNumber({
+      phoneNumberId: "1307186435821886",
+      accessToken: "test_token_123",
+    });
+
+    expect(info.id).toBe("1307186435821886");
+    expect(info.verified_name).toBe("Yellow Clothing Ltd");
+    expect(capturedHeaders["Authorization"]).toBe("Bearer test_token_123");
+    expect(capturedUrl).toContain("fields=id,display_phone_number,verified_name,quality_rating,code_verification_status");
+    expect(capturedUrl).not.toContain("whatsapp_business_account");
+  });
+});
+

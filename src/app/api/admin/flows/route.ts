@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdminSession } from '@/lib/admin/auth';
+import { requireAdminSession, handleAdminError } from '@/lib/admin/auth';
 import { getAdminSupabaseClient } from '@/lib/admin/admin-client';
 
 export const dynamic = 'force-dynamic';
@@ -39,8 +39,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ success: true, flows: enriched });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Failed to inspect flows';
     console.error('[Admin Flows GET Error]:', err);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return handleAdminError(err);
   }
 }

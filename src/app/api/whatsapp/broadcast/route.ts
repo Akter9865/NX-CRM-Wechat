@@ -15,6 +15,10 @@ import {
   rateLimitResponse,
   RATE_LIMITS,
 } from '@/lib/rate-limit'
+import {
+  checkCanBroadcast,
+  trackOutboundMessage,
+} from '@/lib/billing/entitlements'
 
 interface BroadcastResult {
   phone: string
@@ -119,6 +123,19 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'template_name is required' },
         { status: 400 }
+      )
+    }
+
+    // Entitlement & Plan Guard: Check if broadcast is included and quota is available
+    const broadcastCheck = await checkCanBroadcast(accountId, recipients.length, supabase)
+    if (!broadcastCheck.allowed) {
+      return NextResponse.json(
+        {
+          error:
+            broadcastCheck.message ||
+            'Broadcast campaigns are not allowed on your plan or message quota exceeded.',
+        },
+        { status: 403 }
       )
     }
 
@@ -243,6 +260,10 @@ export async function POST(request: Request) {
         })
         failedCount++
       }
+    }
+
+    if (sentCount > 0) {
+      await trackOutboundMessage(accountId, sentCount, supabase)
     }
 
     return NextResponse.json({

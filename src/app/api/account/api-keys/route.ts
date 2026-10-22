@@ -31,6 +31,7 @@ import {
   rateLimitResponse,
   RATE_LIMITS,
 } from '@/lib/rate-limit';
+import { canUseFeature } from '@/lib/billing/entitlements';
 
 const MAX_NAME_LEN = 80;
 // Hard ceiling on caller-supplied expiry (1 year), mirroring the
@@ -77,6 +78,19 @@ export async function POST(request: Request) {
       RATE_LIMITS.adminAction
     );
     if (!limit.success) return rateLimitResponse(limit);
+
+    // Entitlement Guard: API access must be enabled in plan
+    const featCheck = await canUseFeature(ctx.accountId, 'api_access', ctx.supabase);
+    if (!featCheck.allowed) {
+      return NextResponse.json(
+        {
+          error:
+            featCheck.message ||
+            'REST API & Webhooks are not included in your current plan. Please upgrade to Pro or higher.',
+        },
+        { status: 403 }
+      );
+    }
 
     const body = (await request.json().catch(() => null)) as {
       name?: unknown;

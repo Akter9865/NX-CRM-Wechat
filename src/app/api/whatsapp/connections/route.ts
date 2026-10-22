@@ -268,28 +268,35 @@ export async function POST(request: Request) {
       );
     }
 
-    // Auto-detect app_id if omitted
+    // Auto-detect app_id and waba_id if omitted
     let resolvedAppId = app_id?.trim() || null;
-    if (!resolvedAppId) {
+    let resolvedWabaId = waba_id?.trim() || null;
+
+    if (!resolvedAppId || !resolvedWabaId) {
       try {
         const debugRes = await fetch(
-          `https://graph.facebook.com/debug_token?input_token=${access_token}&access_token=${access_token}`
+          `https://graph.facebook.com/v21.0/debug_token?input_token=${access_token}&access_token=${access_token}`
         );
         if (debugRes.ok) {
           const debugData = await debugRes.json();
-          if (debugData?.data?.app_id) {
+          if (debugData?.data?.app_id && !resolvedAppId) {
             resolvedAppId = String(debugData.data.app_id);
+          }
+          if (!resolvedWabaId && Array.isArray(debugData?.data?.granular_scopes)) {
+            const wabaScope = debugData.data.granular_scopes.find(
+              (s: { scope?: string; target_ids?: string[] }) =>
+                (s.scope === 'whatsapp_business_management' || s.scope === 'whatsapp_business_messaging') &&
+                Array.isArray(s.target_ids) &&
+                s.target_ids.length > 0
+            );
+            if (wabaScope && wabaScope.target_ids?.[0]) {
+              resolvedWabaId = String(wabaScope.target_ids[0]);
+            }
           }
         }
       } catch (err) {
         console.warn('[connections] Token debug inspection skipped:', err);
       }
-    }
-
-    // Auto-detect waba_id if omitted
-    let resolvedWabaId = waba_id?.trim() || null;
-    if (!resolvedWabaId && phoneInfo.whatsapp_business_account?.id) {
-      resolvedWabaId = String(phoneInfo.whatsapp_business_account.id);
     }
 
     // 4. Encrypt sensitive credentials

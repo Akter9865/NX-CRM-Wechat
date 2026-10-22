@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { getFlowTemplate } from '@/lib/flows/templates'
+import { checkCanCreateAutomation } from '@/lib/billing/entitlements'
 
 /**
  * GET /api/flows — list the caller's flows.
@@ -73,6 +74,15 @@ export async function POST(request: Request) {
   if (!accountId) {
     return NextResponse.json(
       { error: 'Your profile is not linked to an account.' },
+      { status: 403 },
+    )
+  }
+
+  // Entitlement Guard: Check flow limit under plan
+  const canCreate = await checkCanCreateAutomation(accountId, supabase)
+  if (!canCreate.allowed) {
+    return NextResponse.json(
+      { error: canCreate.message || 'Flow limit reached for your plan.' },
       { status: 403 },
     )
   }
