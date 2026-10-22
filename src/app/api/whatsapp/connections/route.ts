@@ -286,13 +286,20 @@ export async function POST(request: Request) {
       }
     }
 
+    // Auto-detect waba_id if omitted
+    let resolvedWabaId = waba_id?.trim() || null;
+    if (!resolvedWabaId && phoneInfo.whatsapp_business_account?.id) {
+      resolvedWabaId = String(phoneInfo.whatsapp_business_account.id);
+    }
+
     // 4. Encrypt sensitive credentials
     let encryptedAccessToken: string;
     let encryptedVerifyToken: string | null;
     let encryptedAppSecret: string | null;
     try {
       encryptedAccessToken = encrypt(access_token);
-      encryptedVerifyToken = verify_token ? encrypt(verify_token) : null;
+      const effectiveVerifyToken = verify_token?.trim() || 'wacrm_verify_token';
+      encryptedVerifyToken = encrypt(effectiveVerifyToken);
       encryptedAppSecret = app_secret ? encrypt(app_secret) : null;
 
       // If app_secret was omitted but app_id matches a known configured secret, inherit it
@@ -336,10 +343,10 @@ export async function POST(request: Request) {
 
     // 6. Subscribe WABA to this app
     let subscribedAppsAt: string | null = null;
-    if (waba_id) {
+    if (resolvedWabaId) {
       try {
         await subscribeWabaToApp({
-          wabaId: waba_id,
+          wabaId: resolvedWabaId,
           accessToken: access_token,
         });
         subscribedAppsAt = new Date().toISOString();
@@ -362,7 +369,7 @@ export async function POST(request: Request) {
       user_id: user.id,
       connection_name: connection_name?.trim() || phoneInfo.verified_name || `WhatsApp (${phone_number_id.slice(-4)})`,
       phone_number_id,
-      waba_id: waba_id?.trim() || null,
+      waba_id: resolvedWabaId,
       business_portfolio_id: business_portfolio_id?.trim() || null,
       app_id: resolvedAppId,
       app_secret: encryptedAppSecret,

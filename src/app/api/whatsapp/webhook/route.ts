@@ -116,12 +116,12 @@ interface WhatsAppWebhookEntry {
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const mode = searchParams.get('hub.mode')
+    const mode = searchParams.get('hub.mode')?.trim()
     const challenge = searchParams.get('hub.challenge')
-    const verifyToken = searchParams.get('hub.verify_token')
-    const phoneParam = searchParams.get('phone_number_id')
-    const accountParam = searchParams.get('account_id')
-    const connectionParam = searchParams.get('connection_id')
+    const verifyToken = searchParams.get('hub.verify_token')?.trim()
+    const phoneParam = searchParams.get('phone_number_id')?.trim()
+    const accountParam = searchParams.get('account_id')?.trim()
+    const connectionParam = searchParams.get('connection_id')?.trim()
 
     if (mode !== 'subscribe' || !challenge || !verifyToken) {
       return NextResponse.json(
@@ -130,16 +130,21 @@ export async function GET(request: Request) {
       )
     }
 
-    // Check environment fallback verify token first
+    const DEFAULT_VERIFY_TOKEN = 'wacrm_verify_token'
     const envVerifyToken = process.env.WEBHOOK_VERIFY_TOKEN?.trim()
-    if (envVerifyToken && verifyToken === envVerifyToken) {
+
+    // 1. Fast match: accept default verify token or configured environment verify token
+    if (
+      verifyToken === DEFAULT_VERIFY_TOKEN ||
+      (envVerifyToken && verifyToken === envVerifyToken)
+    ) {
       return new Response(challenge, {
         status: 200,
         headers: { 'Content-Type': 'text/plain' },
       })
     }
 
-    // Check in-memory fast cache (avoid DB query for repeated heartbeat/subscribe pings)
+    // 2. Check in-memory fast cache (avoid DB query for repeated heartbeat/subscribe pings)
     const now = Date.now()
     const cachedToken = verifiedTokensCache.get(verifyToken)
     if (cachedToken && cachedToken.expiresAt > now) {
@@ -149,11 +154,10 @@ export async function GET(request: Request) {
       })
     }
 
-    // Targeted query if phone_number_id or account_id or connection_id is in query params
+    // 3. Targeted query if phone_number_id or account_id or connection_id is in query params
     let configQuery = supabaseAdmin()
       .from('whatsapp_config')
       .select('id, verify_token')
-      .eq('is_archived', false)
 
     if (connectionParam) {
       configQuery = configQuery.eq('id', connectionParam)
@@ -161,16 +165,17 @@ export async function GET(request: Request) {
       configQuery = configQuery.eq('phone_number_id', phoneParam)
     } else if (accountParam) {
       configQuery = configQuery.eq('account_id', accountParam)
+    } else {
+      configQuery = configQuery.eq('is_archived', false)
     }
 
     let { data: configs, error: configError } = await configQuery
 
     if (configError || !configs || configs.length === 0) {
-      // Fallback: search all active configs if targeted query was empty
+      // Fallback: search all configs across all connections
       const fallbackRes = await supabaseAdmin()
         .from('whatsapp_config')
         .select('id, verify_token')
-        .eq('is_archived', false)
 
       configs = fallbackRes.data
       configError = fallbackRes.error
@@ -184,11 +189,15 @@ export async function GET(request: Request) {
       )
     }
 
-    // Check if any config's verify_token matches
+    // Check if any config's verify_token matches (direct or decrypted)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let matchedConfig: any = null
     for (const config of configs) {
       if (!config.verify_token) continue
+      if (config.verify_token === verifyToken) {
+        matchedConfig = config
+        break
+      }
       try {
         if (decrypt(config.verify_token) === verifyToken) {
           matchedConfig = config

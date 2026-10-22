@@ -20,6 +20,7 @@ import {
   PhoneCall,
   ArrowRightLeft,
   Settings2,
+  Sparkles,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { dispatchWhatsAppStatusChanged } from '@/hooks/use-whatsapp-status';
@@ -114,10 +115,102 @@ export function WhatsAppConfigForm() {
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<WhatsAppTestResults | null>(null);
 
+  // Webhook Test State
+  const [webhookTesting, setWebhookTesting] = useState(false);
+  const [webhookStatus, setWebhookStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  // Auto-Detect Meta Credentials State
+  const [inspecting, setInspecting] = useState(false);
+  const [autoDetectedInfo, setAutoDetectedInfo] = useState<{
+    verifiedName?: string | null;
+    displayPhoneNumber?: string | null;
+    wabaId?: string | null;
+    appId?: string | null;
+    qualityRating?: string | null;
+  } | null>(null);
+
   const webhookUrl =
     typeof window !== 'undefined'
       ? `${window.location.origin}/api/whatsapp/webhook`
       : 'https://your-domain.com/api/whatsapp/webhook';
+
+  const handleTestWebhook = async () => {
+    try {
+      setWebhookTesting(true);
+      const testChallenge = `challenge_${Math.random().toString(36).substring(2, 9)}`;
+      const res = await fetch(
+        `/api/whatsapp/webhook?hub.mode=subscribe&hub.challenge=${testChallenge}&hub.verify_token=wacrm_verify_token`
+      );
+      const text = await res.text();
+      if (res.ok && text.trim() === testChallenge) {
+        setWebhookStatus('success');
+        toast.success('Webhook is online and verified! Meta will connect seamlessly.');
+      } else {
+        setWebhookStatus('error');
+        toast.error(`Webhook check returned ${res.status}: ${text || 'Validation failed'}`);
+      }
+    } catch (err: unknown) {
+      setWebhookStatus('error');
+      const msg = err instanceof Error ? err.message : 'Webhook test failed';
+      toast.error(msg);
+    } finally {
+      setWebhookTesting(false);
+    }
+  };
+
+  const handleAutoDetect = async () => {
+    if (!accessToken.trim()) {
+      toast.error('Please enter your Permanent Access Token first');
+      return;
+    }
+    try {
+      setInspecting(true);
+      setAutoDetectedInfo(null);
+      const res = await fetch('/api/whatsapp/connections/inspect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accessToken: accessToken.trim(),
+          phoneNumberId: phoneNumberId.trim() || undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to inspect Meta credentials');
+      }
+
+      if (data.appId && !appId) {
+        setAppId(data.appId);
+      }
+
+      if (data.phoneInfo) {
+        if (data.phoneInfo.wabaId) {
+          setWabaId(data.phoneInfo.wabaId);
+        }
+        if (data.phoneInfo.verifiedName && !connectionName) {
+          setConnectionName(data.phoneInfo.verifiedName);
+        }
+        setAutoDetectedInfo({
+          verifiedName: data.phoneInfo.verifiedName,
+          displayPhoneNumber: data.phoneInfo.displayPhoneNumber,
+          wabaId: data.phoneInfo.wabaId,
+          appId: data.appId,
+          qualityRating: data.phoneInfo.qualityRating,
+        });
+        toast.success(
+          `Verified: ${data.phoneInfo.verifiedName || 'WhatsApp Number'} (${data.phoneInfo.displayPhoneNumber || 'Connected'})`
+        );
+      } else if (data.appId) {
+        toast.success(`Valid Meta Token! Detected App ID: ${data.appId}`);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Auto-detect failed';
+      toast.error(msg);
+    } finally {
+      setInspecting(false);
+    }
+  };
 
   const fetchConnections = useCallback(async () => {
     try {
@@ -159,6 +252,7 @@ export function WhatsAppConfigForm() {
     setShowAccessToken(false);
     setShowAppSecret(false);
     setMirrorMedia(true);
+    setAutoDetectedInfo(null);
   };
 
   const openAddModal = () => {
@@ -649,30 +743,145 @@ export function WhatsAppConfigForm() {
       </div>
 
       {/* Centralized Webhook Card */}
-      <Card className="border-border shadow-sm">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-foreground text-base">{t('webhookTitle')}</CardTitle>
-          <CardDescription className="text-muted-foreground text-xs">
-            {t('webhookDesc')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <Label className="text-muted-foreground text-xs">{t('webhookUrl')}</Label>
-            <div className="flex gap-2">
-              <Input
-                readOnly
-                value={webhookUrl}
-                className="bg-muted border-border text-muted-foreground font-mono text-xs"
-              />
+      <Card className="border-border shadow-sm overflow-hidden bg-gradient-to-br from-card via-card to-muted/20">
+        <CardHeader className="pb-3 border-b border-border/40">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="size-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500">
+                <Radio className="size-4 animate-pulse" />
+              </div>
+              <div>
+                <CardTitle className="text-foreground text-base flex items-center gap-2">
+                  {t('webhookTitle')}
+                  {webhookStatus === 'success' && (
+                    <Badge variant="outline" className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 text-[10px] px-2 py-0">
+                      ✓ Ready for Meta
+                    </Badge>
+                  )}
+                </CardTitle>
+                <CardDescription className="text-muted-foreground text-xs mt-0.5">
+                  Configure these exact settings in Meta Developers Console &gt; WhatsApp &gt; Configuration &gt; Webhook
+                </CardDescription>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
               <Button
                 variant="outline"
-                size="icon"
-                onClick={() => handleCopy(webhookUrl, 'Webhook URL')}
-                className="shrink-0 border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+                size="sm"
+                onClick={handleTestWebhook}
+                disabled={webhookTesting}
+                className="text-xs h-8 border-border text-foreground hover:bg-muted"
               >
-                <Copy className="size-4" />
+                {webhookTesting ? (
+                  <>
+                    <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+                    Testing...
+                  </>
+                ) : (
+                  <>
+                    <Activity className="size-3.5 mr-1.5 text-emerald-500" />
+                    Test Webhook
+                  </>
+                )}
               </Button>
+              <a
+                href="https://developers.facebook.com/apps"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border rounded-md px-2.5 h-8 bg-background hover:bg-muted transition-colors font-medium"
+              >
+                <ExternalLink className="size-3.5" />
+                Meta Console
+              </a>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-4 space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* 1. Callback URL */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label className="text-foreground text-xs font-semibold flex items-center gap-1.5">
+                  <span className="size-4 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">1</span>
+                  Callback URL
+                </Label>
+                <span className="text-[10px] text-muted-foreground">Paste into Meta Callback URL</span>
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  readOnly
+                  value={webhookUrl}
+                  className="bg-muted/80 border-border text-foreground font-mono text-xs select-all"
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => handleCopy(webhookUrl, 'Webhook Callback URL')}
+                  className="shrink-0 border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+                  title="Copy Callback URL"
+                >
+                  <Copy className="size-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* 2. Verify Token */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label className="text-foreground text-xs font-semibold flex items-center gap-1.5">
+                  <span className="size-4 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">2</span>
+                  Verify Token
+                </Label>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Pre-verified &amp; Ready</span>
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  readOnly
+                  value="wacrm_verify_token"
+                  className="bg-muted/80 border-border text-foreground font-mono text-xs select-all font-semibold"
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => handleCopy('wacrm_verify_token', 'Verify Token')}
+                  className="shrink-0 border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+                  title="Copy Verify Token"
+                >
+                  <Copy className="size-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Webhook Subscription Fields Required */}
+          <div className="rounded-lg border border-border/60 bg-muted/30 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="size-4 text-primary shrink-0" />
+              <div>
+                <span className="font-semibold text-foreground">Required Webhook Fields in Meta:</span>
+                <span className="text-muted-foreground ml-1.5">After verifying, click &quot;Manage&quot; and subscribe to:</span>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleCopy('messages', 'Field name')}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-background border border-border text-foreground font-mono text-[11px] hover:border-primary/50 transition-colors"
+                title="Click to copy"
+              >
+                <code>messages</code>
+                <Copy className="size-3 text-muted-foreground" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCopy('message_template_status_update', 'Field name')}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-background border border-border text-foreground font-mono text-[11px] hover:border-primary/50 transition-colors"
+                title="Click to copy"
+              >
+                <code>message_template_status_update</code>
+                <Copy className="size-3 text-muted-foreground" />
+              </button>
             </div>
           </div>
         </CardContent>
@@ -784,51 +993,33 @@ export function WhatsAppConfigForm() {
           </DialogHeader>
 
           <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">{t('connectionName')}</Label>
-              <Input
-                placeholder={t('connectionNamePlaceholder')}
-                value={connectionName}
-                onChange={(e) => setConnectionName(e.target.value)}
-                className="bg-muted text-xs font-medium"
-              />
-              <p className="text-[11px] text-muted-foreground">{t('connectionNameHint')}</p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">{t('phoneNumberId')} *</Label>
-                <Input
-                  placeholder="e.g. 102938475610293"
-                  value={phoneNumberId}
-                  onChange={(e) => setPhoneNumberId(e.target.value.trim())}
-                  className="bg-muted text-xs font-mono"
-                />
+            {/* Quick helper banner */}
+            <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs space-y-1">
+              <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                <Sparkles className="size-3.5 text-primary" />
+                Quick 2-Step Connection
               </div>
+              <p className="text-muted-foreground text-[11px] leading-relaxed">
+                1. Ensure Callback URL &amp; Verify Token (<code className="font-mono text-foreground font-semibold">wacrm_verify_token</code>) are saved in your Meta App Webhook.<br />
+                2. Enter your Permanent Access Token and Phone Number ID below, then click <strong className="text-foreground">Auto-Detect</strong> to complete setup.
+              </p>
+            </div>
 
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">{t('wabaId')}</Label>
-                <Input
-                  placeholder="e.g. 987654321098765"
-                  value={wabaId}
-                  onChange={(e) => setWabaId(e.target.value.trim())}
-                  className="bg-muted text-xs font-mono"
-                />
+            {/* Permanent Access Token */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs text-foreground font-semibold flex items-center gap-1">
+                  {t('accessToken')} *
+                </Label>
+                <a
+                  href="https://developers.facebook.com/apps"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] text-primary hover:underline flex items-center gap-1"
+                >
+                  Meta System Users <ExternalLink className="size-3" />
+                </a>
               </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">{t('businessPortfolioId')}</Label>
-              <Input
-                placeholder={t('businessPortfolioIdPlaceholder')}
-                value={businessPortfolioId}
-                onChange={(e) => setBusinessPortfolioId(e.target.value.trim())}
-                className="bg-muted text-xs font-mono"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">{t('accessToken')} *</Label>
               <div className="relative">
                 <Input
                   type={showAccessToken ? 'text' : 'password'}
@@ -845,12 +1036,103 @@ export function WhatsAppConfigForm() {
                   {showAccessToken ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
               </div>
-              <p className="text-[11px] text-muted-foreground">{t('appSecretHint')}</p>
+              <p className="text-[11px] text-muted-foreground">Permanent token generated in Meta Business Settings &gt; System Users</p>
             </div>
 
+            {/* Phone Number ID & WABA ID */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">{t('webhookVerifyToken')}</Label>
+                <Label className="text-xs text-foreground font-semibold">{t('phoneNumberId')} *</Label>
+                <Input
+                  placeholder="e.g. 102938475610293"
+                  value={phoneNumberId}
+                  onChange={(e) => setPhoneNumberId(e.target.value.trim())}
+                  className="bg-muted text-xs font-mono"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-muted-foreground">{t('wabaId')}</Label>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Auto-detected if empty</span>
+                </div>
+                <Input
+                  placeholder="e.g. 987654321098765"
+                  value={wabaId}
+                  onChange={(e) => setWabaId(e.target.value.trim())}
+                  className="bg-muted text-xs font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Auto-Detect Helper Button */}
+            <div className="flex items-center justify-between pt-0.5">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={handleAutoDetect}
+                disabled={inspecting || !accessToken.trim()}
+                className="text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 h-8"
+              >
+                {inspecting ? (
+                  <>
+                    <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+                    Inspecting Meta Account...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="size-3.5 mr-1.5 text-primary" />
+                    Auto-Detect &amp; Verify with Meta
+                  </>
+                )}
+              </Button>
+              <span className="text-[10px] text-muted-foreground">Checks token &amp; fills name/WABA ID automatically</span>
+            </div>
+
+            {/* Auto-detected success summary box */}
+            {autoDetectedInfo && (
+              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs space-y-1">
+                <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold">
+                  <CheckCircle2 className="size-4 shrink-0" />
+                  Meta Connected &amp; Verified!
+                </div>
+                <div className="text-muted-foreground text-[11px] grid grid-cols-2 gap-x-2 gap-y-0.5 pt-1">
+                  {autoDetectedInfo.verifiedName && (
+                    <div><span className="text-foreground font-medium">Verified Name:</span> {autoDetectedInfo.verifiedName}</div>
+                  )}
+                  {autoDetectedInfo.displayPhoneNumber && (
+                    <div><span className="text-foreground font-medium">Phone:</span> {autoDetectedInfo.displayPhoneNumber}</div>
+                  )}
+                  {autoDetectedInfo.qualityRating && (
+                    <div><span className="text-foreground font-medium">Quality Rating:</span> {autoDetectedInfo.qualityRating}</div>
+                  )}
+                  {autoDetectedInfo.wabaId && (
+                    <div><span className="text-foreground font-medium">WABA ID:</span> {autoDetectedInfo.wabaId}</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Connection Name */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">{t('connectionName')}</Label>
+              <Input
+                placeholder={t('connectionNamePlaceholder')}
+                value={connectionName}
+                onChange={(e) => setConnectionName(e.target.value)}
+                className="bg-muted text-xs font-medium"
+              />
+              <p className="text-[11px] text-muted-foreground">{t('connectionNameHint')}</p>
+            </div>
+
+            {/* Verify Token & PIN */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-muted-foreground">{t('webhookVerifyToken')}</Label>
+                  <span className="text-[10px] text-muted-foreground font-mono">default</span>
+                </div>
                 <Input
                   value={verifyToken}
                   onChange={(e) => setVerifyToken(e.target.value)}
