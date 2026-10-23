@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
@@ -9,6 +9,7 @@ import { useTotalUnread } from "@/hooks/use-total-unread";
 import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
 import {
   Bell,
+  Blocks,
   Bot,
   Crown,
   CreditCard,
@@ -117,6 +118,12 @@ const navItems: NavItem[] = [
   { href: "/flows", labelKey: "flows", icon: Workflow },
   { href: "/agents", labelKey: "aiAgents", icon: Bot },
   {
+    href: "/settings?tab=integrations",
+    labelKey: "integrations",
+    labelFallback: "Integrations & Apps",
+    icon: Blocks,
+  },
+  {
     href: "/tools",
     labelKey: "tools",
     labelFallback: "Tools",
@@ -154,6 +161,8 @@ import { useTranslations } from "next-intl";
 export function Sidebar({ open = false, onClose }: SidebarProps) {
   const t = useTranslations("Sidebar");
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get("tab");
   const { profile, profileLoading, account, accountRole, signOut } = useAuth();
   const totalUnread = useTotalUnread();
   const unreadNotifications = useUnreadNotifications();
@@ -257,9 +266,11 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <ul className="flex flex-col gap-1">
             {navItems.map((item) => {
-              const isActive =
-                pathname === item.href ||
-                (item.href !== "/dashboard" && pathname.startsWith(item.href));
+              const isIntegrationsItem = item.href.includes("tab=integrations");
+              const isActive = isIntegrationsItem
+                ? pathname === "/settings" && currentTab === "integrations"
+                : pathname === item.href ||
+                  (item.href !== "/dashboard" && !item.href.includes("?") && pathname.startsWith(item.href));
 
               const showUnreadDot =
                 item.href === "/inbox" && totalUnread > 0 && !isActive;
@@ -352,7 +363,11 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
 
           <ul className="flex flex-col gap-1">
             {bottomNavItems.map((item) => {
-              const isActive = pathname.startsWith(item.href);
+              const isSettings = item.href === "/settings";
+              const isIntegrationsTab = pathname === "/settings" && currentTab === "integrations";
+              const isActive = isSettings
+                ? pathname.startsWith(item.href) && !isIntegrationsTab
+                : pathname.startsWith(item.href);
               return (
                 <li key={item.href}>
                   <Link

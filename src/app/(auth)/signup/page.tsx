@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PasswordInput } from '@/components/auth/password-input';
 import { PasswordStrength } from '@/components/auth/password-strength';
+import { GoogleAuthButton } from '@/components/auth/google-auth-button';
 import {
   MessageSquare,
   UsersRound,
@@ -176,6 +177,26 @@ function SignupPageInner() {
           <div className="flex-1 leading-relaxed">{error}</div>
         </div>
       )}
+
+      {/* Google Sign-up */}
+      <div className="space-y-4">
+        <GoogleAuthButton
+          mode="signup"
+          inviteToken={inviteToken}
+          label="Sign up with Google"
+          onError={(err) => setError(err)}
+          disabled={loading}
+        />
+
+        <div className="relative flex items-center justify-center">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-border/60" />
+          </div>
+          <div className="relative bg-background px-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
+            Or register with email
+          </div>
+        </div>
+      </div>
 
       {/* Form */}
       <form onSubmit={handleSignup} className="space-y-3.5">

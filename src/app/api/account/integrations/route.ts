@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { INTEGRATION_DEFINITIONS, type IntegrationId } from '@/lib/integrations/types';
+import { syncContactToGoogleSheet } from '@/lib/integrations/google/sheets';
 
 function supabaseAdmin() {
   return createAdminClient(
@@ -69,16 +70,23 @@ export async function GET() {
       .select('*')
       .eq('account_id', accountId);
 
-    // If table doesn't exist yet or is empty, return empty list safely
-    const activeIntegrations = (integrationsData || []).map((row: any) => ({
-      id: row.id,
-      integration_id: row.integration_id,
-      is_enabled: row.is_enabled,
-      config: row.config || {},
-      last_synced_at: row.last_synced_at,
-      last_error: row.last_error,
-      updated_at: row.updated_at,
-    }));
+    // Sanitize configs so sensitive tokens are NEVER leaked to the client
+    const activeIntegrations = (integrationsData || []).map((row: any) => {
+      const sanitizedConfig = { ...(row.config || {}) };
+      delete sanitizedConfig.encrypted_refresh_token;
+      delete sanitizedConfig.access_token;
+
+      return {
+        id: row.id,
+        integration_id: row.integration_id,
+        is_enabled: row.is_enabled,
+        google_account_email: row.google_account_email || sanitizedConfig.google_email || null,
+        config: sanitizedConfig,
+        last_synced_at: row.last_synced_at,
+        last_error: row.last_error,
+        updated_at: row.updated_at,
+      };
+    });
 
     return NextResponse.json({
       success: true,
@@ -230,26 +238,50 @@ export async function POST(request: Request) {
       }
 
       if (integration_id === 'google_sheets') {
-        let webhookUrl = config?.webhook_url;
-        if (!webhookUrl) {
-          const { data: integ } = await supabaseAdmin()
-            .from('account_integrations')
-            .select('config, is_enabled')
-            .eq('account_id', accountId)
-            .eq('integration_id', 'google_sheets')
-            .maybeSingle();
-          if (!integ?.is_enabled || !integ.config?.webhook_url) {
-            return NextResponse.json(
-              { error: 'Google Sheets is not configured or enabled in Integrations Hub.' },
-              { status: 400 }
-            );
-          }
-          webhookUrl = integ.config.webhook_url;
-        }
+        const { data: integ } = await supabaseAdmin()
+          .from('account_integrations')
+          .select('config, is_enabled, encrypted_refresh_token')
+          .eq('account_id', accountId)
+          .eq('integration_id', 'google_sheets')
+          .maybeSingle();
 
         const tagNames = Array.isArray(contact.contact_tags)
           ? contact.contact_tags.map((ct: any) => ct.tags?.name).filter(Boolean).join(', ')
           : '';
+
+        // If connected via Google OAuth, use the direct Sheets API
+        const hasOAuth = Boolean(
+          integ?.is_enabled &&
+            (integ.encrypted_refresh_token || integ.config?.encrypted_refresh_token)
+        );
+
+        if (hasOAuth) {
+          const syncResult = await syncContactToGoogleSheet(
+            accountId,
+            {
+              id: contact.id,
+              name: contact.name,
+              phone: contact.phone,
+              email: contact.email,
+              stage: contact.status || 'Lead',
+              tags: tagNames,
+              notes: 'NX CRM Live Inbox',
+              created_at: contact.created_at,
+            },
+            { source: 'NX CRM Live Inbox' }
+          );
+
+          return NextResponse.json(syncResult);
+        }
+
+        // Fallback: Legacy webhook URL if OAuth not connected
+        let webhookUrl = config?.webhook_url || integ?.config?.webhook_url;
+        if (!webhookUrl) {
+          return NextResponse.json(
+            { error: 'Google Sheets is not connected. Please connect with Google in Integrations & Apps.' },
+            { status: 400 }
+          );
+        }
 
         const payload = {
           event: 'LEAD_SYNC',

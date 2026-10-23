@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 /**
  * GET /auth/callback
  * 
- * Handles Supabase email confirmation, password reset tokens, and OAuth redirects.
+ * Handles Supabase email confirmation, password reset tokens, and Google / OAuth redirects.
  * Exchanges authorization code for an authenticated session cookie and redirects to target route.
  */
 export async function GET(request: Request) {
@@ -14,10 +14,21 @@ export async function GET(request: Request) {
   const error = requestUrl.searchParams.get('error');
   const errorDescription = requestUrl.searchParams.get('error_description');
 
-  // Use configured production site URL or request origin to prevent localhost redirects behind proxies
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') || requestUrl.origin;
+  // Resolve target base URL reliably across localhost, custom domains, and reverse proxies
+  const isLocalHost = requestUrl.hostname === 'localhost' || requestUrl.hostname === '127.0.0.1';
+  let siteUrl = requestUrl.origin;
 
-  // Handle explicit errors returned from Supabase Auth (e.g., expired token, link invalid)
+  if (!isLocalHost) {
+    const forwardedHost = request.headers.get('x-forwarded-host');
+    const forwardedProto = request.headers.get('x-forwarded-proto') || 'https';
+    if (forwardedHost) {
+      siteUrl = `${forwardedProto}://${forwardedHost}`;
+    } else {
+      siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') || requestUrl.origin;
+    }
+  }
+
+  // Handle explicit errors returned from Supabase Auth (e.g., cancelled popup, expired token)
   if (error) {
     console.error('[auth/callback] Supabase auth returned error:', error, errorDescription);
     const targetPath = next.includes('reset-password') ? '/forgot-password' : '/login';
@@ -31,7 +42,7 @@ export async function GET(request: Request) {
 
     if (!exchangeError) {
       // Ensure target redirect is a relative path to prevent open redirect vulnerabilities
-      const safeNext = next.startsWith('/') ? next : `/${next}`;
+      const safeNext = next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard';
       return NextResponse.redirect(`${siteUrl}${safeNext}`);
     }
 

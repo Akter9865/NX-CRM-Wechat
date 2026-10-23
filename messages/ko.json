@@ -12,7 +12,9 @@
     "signingIn": "로그인 중...",
     "signIn": "로그인",
     "noAccount": "계정이 없으신가요?",
-    "createAccount": "계정 만들기"
+    "createAccount": "계정 만들기",
+    "continueWithGoogle": "Google 계정으로 계속",
+    "orContinueWithEmail": "또는 이메일로 계속"
   },
   "Sidebar": {
     "title": "NX CRM Wechat",
@@ -25,6 +27,7 @@
     "automations": "자동화",
     "flows": "플로우",
     "aiAgents": "AI 에이전트",
+    "integrations": "연동 및 앱",
     "tools": "도구",
     "whatsappLink": "WhatsApp 링크",
     "whatsappButton": "WhatsApp 버튼",

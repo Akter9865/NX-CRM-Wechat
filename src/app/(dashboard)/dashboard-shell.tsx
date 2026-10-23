@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -97,7 +97,9 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-background">
       <PresenceHeartbeat />
-      <Sidebar open={sidebarOpen} onClose={closeSidebar} />
+      <Suspense fallback={<aside className="hidden lg:block lg:w-60 border-r border-border bg-card shrink-0" />}>
+        <Sidebar open={sidebarOpen} onClose={closeSidebar} />
+      </Suspense>
       <div className="flex flex-1 flex-col overflow-hidden min-w-0">
         <ImpersonationBanner />
         <Header onOpenSidebar={() => setSidebarOpen(true)} />

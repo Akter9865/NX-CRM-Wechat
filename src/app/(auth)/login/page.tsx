@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { PasswordInput } from '@/components/auth/password-input';
+import { GoogleAuthButton } from '@/components/auth/google-auth-button';
 import {
   MessageSquare,
   UsersRound,
@@ -123,6 +124,26 @@ function LoginPageInner() {
           <div className="flex-1 leading-relaxed">{error}</div>
         </div>
       )}
+
+      {/* Google Sign-in */}
+      <div className="space-y-4">
+        <GoogleAuthButton
+          mode="signin"
+          inviteToken={inviteToken}
+          label={t('continueWithGoogle')}
+          onError={(err) => setError(err)}
+          disabled={loading}
+        />
+
+        <div className="relative flex items-center justify-center">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-border/60" />
+          </div>
+          <div className="relative bg-background px-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
+            {t('orContinueWithEmail')}
+          </div>
+        </div>
+      </div>
 
       {/* Form */}
       <form onSubmit={handleLogin} className="space-y-4">
