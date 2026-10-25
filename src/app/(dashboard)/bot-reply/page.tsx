@@ -247,14 +247,14 @@ export default function BotReplyPage() {
             <BotMessageSquare className="h-6 w-6" />
           </div>
           <div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
                 Bot Reply Control Center
               </h1>
               <Badge
                 variant="outline"
                 className={cn(
-                  'text-xs font-semibold px-2.5 py-0.5 border',
+                  'text-xs font-semibold px-2.5 py-0.5 border shrink-0',
                   globalBotActive
                     ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                     : 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400'
@@ -275,13 +275,13 @@ export default function BotReplyPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <Button
             variant="outline"
             size="sm"
             onClick={() => fetchStatus()}
             disabled={loading}
-            className="h-9 gap-1.5"
+            className="h-9 gap-1.5 flex-1 sm:flex-initial"
           >
             <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
             <span>Refresh</span>
@@ -290,7 +290,7 @@ export default function BotReplyPage() {
             href="/inbox"
             className={cn(
               buttonVariants({ size: 'sm' }),
-              'h-9 gap-1.5 bg-primary text-primary-foreground'
+              'h-9 gap-1.5 bg-primary text-primary-foreground flex-1 sm:flex-initial'
             )}
           >
             <MessageSquare className="h-3.5 w-3.5" />
@@ -597,13 +597,13 @@ export default function BotReplyPage() {
             </div>
 
             {/* Batch Actions */}
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handlePauseAllChats}
                 disabled={actionLoading === 'pause_all'}
-                className="h-8 text-xs font-medium gap-1 text-muted-foreground hover:text-foreground"
+                className="h-8 text-xs font-medium gap-1 text-muted-foreground hover:text-foreground flex-1 sm:flex-initial"
               >
                 <UserCheck className="h-3 w-3" />
                 <span>Pause All Chats</span>
@@ -613,10 +613,10 @@ export default function BotReplyPage() {
                 size="sm"
                 onClick={handleResumeAllChats}
                 disabled={actionLoading === 'resume_all' || pausedCount === 0}
-                className="h-8 text-xs font-semibold gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                className="h-8 text-xs font-semibold gap-1 bg-emerald-600 hover:bg-emerald-700 text-white flex-1 sm:flex-initial"
               >
                 <CheckCircle2 className="h-3 w-3" />
-                <span>Resume Bot on All Chats</span>
+                <span>Resume Bot on All</span>
               </Button>
             </div>
           </div>
@@ -712,13 +712,13 @@ export default function BotReplyPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0 pt-2 sm:pt-0 border-t sm:border-0 border-border/40">
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => handleResumeChat(chat.id)}
                         disabled={isResuming}
-                        className="h-8 text-xs font-semibold gap-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 border-emerald-500/30"
+                        className="h-8 text-xs font-semibold gap-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 border-emerald-500/30 flex-1 sm:flex-initial"
                       >
                         <Play className="h-3 w-3 fill-current" />
                         <span>Resume Bot</span>
@@ -728,7 +728,7 @@ export default function BotReplyPage() {
                         href={`/inbox?c=${chat.id}`}
                         className={cn(
                           buttonVariants({ variant: 'ghost', size: 'sm' }),
-                          'h-8 text-xs gap-1 text-foreground/80 hover:text-foreground'
+                          'h-8 text-xs gap-1 text-foreground/80 hover:text-foreground flex-1 sm:flex-initial justify-center'
                         )}
                       >
                         <span>Open in Inbox</span>
