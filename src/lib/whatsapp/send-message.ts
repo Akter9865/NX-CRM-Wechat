@@ -48,7 +48,6 @@ import {
   templateBodyParams,
   templateContentText,
 } from '@/lib/whatsapp/template-body';
-import { checkContentCompliance } from '@/lib/whatsapp/compliance-guard';
 import {
   assertOutboundEligibility,
   OutboundEligibilityError,

@@ -7,6 +7,7 @@ import { checkContentCompliance } from './compliance-guard';
 import { handleAccountWebhookChange } from './account-webhook';
 import { verifyMetaWebhookSignature } from './webhook-signature';
 import { MetaApiError } from './meta-api';
+import crypto from 'crypto';
 
 describe('WhatsApp Production Audit & Bug Fix Validation (15 Scenarios)', () => {
   beforeEach(() => {
@@ -348,7 +349,6 @@ describe('WhatsApp Production Audit & Bug Fix Validation (15 Scenarios)', () => 
     const secret = 'valid_app_secret_12345';
 
     // Compute legitimate signature
-    const crypto = require('crypto');
     const validHmac = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
     const validHeader = `sha256=${validHmac}`;
     const invalidHeader = `sha256=0000000000000000000000000000000000000000000000000000000000000000`;
