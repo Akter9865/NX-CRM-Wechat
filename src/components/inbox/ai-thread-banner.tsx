@@ -1,11 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useEffect, useCallback } from "react";
-import { Sparkles, Hand, Undo2, Loader2 } from "lucide-react";
+import { Sparkles, Hand, Undo2, Loader2, BotOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/hooks/use-auth";
+import { useWhatsAppStatus } from "@/hooks/use-whatsapp-status";
 
 // ------------------------------------------------------------
 // Account AI status is the same for every conversation, so cache it per
@@ -123,6 +125,35 @@ export function AiThreadBanner({
     },
     [conversationId, currentUserId, onChange],
   );
+
+  const { isGlobalBotPaused } = useWhatsAppStatus();
+
+  // If Bot replies are globally disabled across all numbers (100% Human Agent Mode)
+  if (isGlobalBotPaused) {
+    return (
+      <Banner tone="muted">
+        <div className="min-w-0 flex-1 flex items-center gap-2">
+          <span className="size-2 rounded-full bg-amber-500 shrink-0" />
+          <BotOff className="h-3.5 w-3.5 flex-shrink-0 text-amber-500" />
+          <div className="min-w-0">
+            <p className="font-medium text-foreground text-xs truncate">
+              <span className="hidden sm:inline">Global Bot Reply Disabled (100% Human Agent Mode)</span>
+              <span className="sm:hidden">Global Bot: Disabled</span>
+            </p>
+            <p className="truncate text-muted-foreground text-[11px]">
+              Automations & AI replies are stopped. Inquiries wait for human agents.
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/bot-reply"
+          className="inline-flex flex-shrink-0 items-center gap-1 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+        >
+          <span>Manage Bot</span>
+        </Link>
+      </Banner>
+    );
+  }
 
   // Paused here (a human took over, or bot was disabled for this chat).
   if (paused) {

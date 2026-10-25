@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { usePresence } from "@/hooks/use-presence";
+import { useWhatsAppStatus } from "@/hooks/use-whatsapp-status";
 import { PresenceDot } from "@/components/presence/presence-dot";
 import { presenceLabel } from "@/lib/presence";
 import { cn } from "@/lib/utils";
@@ -172,6 +173,7 @@ export function MessageThread({
   const tQuote = useTranslations("Inbox.replyQuote");
 
   const { user } = useAuth();
+  const { isGlobalBotPaused } = useWhatsAppStatus();
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -897,6 +899,20 @@ export function MessageThread({
 
   const handleToggleBotAutomation = useCallback(async () => {
     if (!conversation) return;
+    if (isGlobalBotPaused) {
+      toast.info(
+        "Global Bot Reply is OFF (100% Human Agent Mode). Activate Bot Reply in the sidebar to enable automated replies.",
+        {
+          action: {
+            label: "Bot Reply",
+            onClick: () => {
+              window.location.href = "/bot-reply";
+            },
+          },
+        }
+      );
+      return;
+    }
     setBotToggling(true);
     const nextPaused = !isBotPaused;
     try {
@@ -922,7 +938,7 @@ export function MessageThread({
     } finally {
       setBotToggling(false);
     }
-  }, [conversation, isBotPaused, user?.id, onAssignChange]);
+  }, [conversation, isBotPaused, isGlobalBotPaused, user?.id, onAssignChange]);
 
   // Empty state — same WhatsApp-style doodle background as the active
   // thread below, so swapping between empty/selected doesn't change the
@@ -1045,13 +1061,15 @@ export function MessageThread({
             onClick={handleToggleBotAutomation}
             disabled={botToggling}
             title={
-              isBotPaused
-                ? "Bot is paused. Click to resume bot & automations."
-                : "Bot is active. Click to pause bot & take over."
+              isGlobalBotPaused
+                ? "Global Bot is turned OFF (100% Human Agent Mode). Click to view Bot Reply settings."
+                : isBotPaused
+                  ? "Bot is paused for this conversation. Click to resume bot & automations."
+                  : "Bot is active for this conversation. Click to pause bot & take over."
             }
             className={cn(
               "hidden sm:inline-flex items-center gap-1.5 h-7 px-2.5 text-xs font-semibold rounded-md border transition-all cursor-pointer shrink-0",
-              isBotPaused
+              isGlobalBotPaused || isBotPaused
                 ? "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20"
                 : "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
             )}
@@ -1059,11 +1077,15 @@ export function MessageThread({
             <span
               className={cn(
                 "size-2 rounded-full shrink-0",
-                isBotPaused ? "bg-amber-500 animate-pulse" : "bg-emerald-500"
+                isGlobalBotPaused || isBotPaused ? "bg-amber-500 animate-pulse" : "bg-emerald-500"
               )}
             />
             <span>
-              {isBotPaused ? "Bot: Paused" : "Bot: Active"}
+              {isGlobalBotPaused
+                ? "Global Bot: Off"
+                : isBotPaused
+                  ? "Bot: Paused"
+                  : "Bot: Active"}
             </span>
           </button>
 

@@ -42,6 +42,7 @@ const pageTitles: Record<string, string> = {
   "/broadcasts": "broadcasts",
   "/automations": "automations",
   "/flows": "flows",
+  "/bot-reply": "botReply",
   "/agents": "aiAgents",
   "/tools": "tools",
   "/billing": "billing",
@@ -65,7 +66,16 @@ export function Header({ onOpenSidebar }: HeaderProps) {
   const pathname = usePathname();
   const { profile, signOut } = useAuth();
   const unreadNotifications = useUnreadNotifications();
-  const { isConnected, hasError, isLoading: waLoading, connectionCount, primaryConnection } = useWhatsAppStatus();
+  const {
+    isConnected,
+    hasError,
+    isLoading: waLoading,
+    connectionCount,
+    primaryConnection,
+    isBanned,
+    isRestricted,
+    bannedCount,
+  } = useWhatsAppStatus();
   const titleKey = getPageTitleKey(pathname);
 
   const initial =
@@ -121,6 +131,35 @@ export function Header({ onOpenSidebar }: HeaderProps) {
             <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-pulse" />
             <span className="hidden sm:inline">Checking Meta API...</span>
           </div>
+        ) : isBanned ? (
+          <Link
+            href="/settings?tab=whatsapp"
+            title="Meta API Banned: Policy violation detected. Click to view appeal instructions."
+            className="flex items-center gap-1 sm:gap-1.5 h-8 px-2 sm:px-2.5 py-1 rounded-full border border-rose-500/40 bg-rose-500/15 text-rose-600 dark:text-rose-400 hover:bg-rose-500/25 transition-all text-[11px] font-bold animate-pulse shadow-2xs shrink-0"
+          >
+            <span className="relative flex h-1.5 w-1.5 shrink-0">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-rose-500" />
+            </span>
+            <AlertCircle className="size-3 text-rose-600 dark:text-rose-400 shrink-0" />
+            <span className="hidden xl:inline">Meta API Banned</span>
+            <span className="hidden md:inline xl:hidden">Banned</span>
+            {bannedCount > 1 && (
+              <span className="rounded-full bg-rose-500/20 px-1 py-0.2 text-[9px] font-bold">
+                {bannedCount}
+              </span>
+            )}
+          </Link>
+        ) : isRestricted ? (
+          <Link
+            href="/settings?tab=whatsapp"
+            title="Meta API Restricted: Messaging restricted by Meta. Click to review."
+            className="flex items-center gap-1 sm:gap-1.5 h-8 px-2 sm:px-2.5 py-1 rounded-full border border-amber-500/40 bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/25 transition-all text-[11px] font-semibold animate-fade-in shadow-2xs shrink-0"
+          >
+            <AlertTriangle className="size-3 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span className="hidden xl:inline">Meta API Restricted</span>
+            <span className="hidden md:inline xl:hidden">Restricted</span>
+          </Link>
         ) : isConnected ? (
           <Link
             href="/settings?tab=whatsapp"

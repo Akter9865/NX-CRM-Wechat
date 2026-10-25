@@ -15,6 +15,7 @@ import {
   phoneVariants,
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils'
+import { checkContentCompliance } from '@/lib/whatsapp/compliance-guard'
 import { supabaseAdmin } from './admin-client'
 
 // ------------------------------------------------------------
@@ -107,6 +108,12 @@ async function resolveWhatsAppConfig(
   if (configErr || !config) {
     throw new Error('WhatsApp not configured for this account')
   }
+  if (config.status === 'banned') {
+    throw new Error('WhatsApp connection is BANNED by Meta. Flow send aborted.')
+  }
+  if (config.is_automations_paused) {
+    throw new Error('Automations are paused for this WhatsApp connection.')
+  }
   return config
 }
 
@@ -136,6 +143,15 @@ export async function engineSendText(
 
   const config = await resolveWhatsAppConfig(db, args.accountId, args.conversationId)
 
+  if (args.text) {
+    const compliance = checkContentCompliance(args.text)
+    if (!compliance.compliant && compliance.riskLevel === 'critical') {
+      throw new Error(
+        `Flow send blocked by Anti-Ban Guard: Prohibited content detected (${compliance.violations.join(', ')})`
+      )
+    }
+  }
+
   const accessToken = decrypt(config.access_token)
 
   const attempt = async (phone: string): Promise<string> => {
@@ -160,6 +176,22 @@ export async function engineSendText(
       break
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
+      if (
+        msg.includes('131042') ||
+        msg.includes('131053') ||
+        msg.includes('368') ||
+        /banned|restricted|policy violation/i.test(msg)
+      ) {
+        void db
+          .from('whatsapp_config')
+          .update({
+            status: 'banned',
+            is_automations_paused: true,
+            last_error_at: new Date().toISOString(),
+            last_error_message: msg,
+          })
+          .eq('id', config.id)
+      }
       if (!isRecipientNotAllowedError(msg)) throw err
       lastError = err
     }

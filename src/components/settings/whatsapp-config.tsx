@@ -611,14 +611,20 @@ export function WhatsAppConfigForm() {
                               <CheckCircle2 className="size-3" />
                               {t('statusConnected')}
                             </Badge>
+                          ) : conn.status === 'banned' ? (
+                            <Badge className="bg-rose-500/15 text-rose-400 border-rose-500/30 text-xs flex items-center gap-1 font-bold animate-pulse">
+                              <AlertTriangle className="size-3 text-rose-400" />
+                              BANNED BY META
+                            </Badge>
+                          ) : conn.status === 'restricted' ? (
+                            <Badge className="bg-amber-500/15 text-amber-400 border-amber-500/30 text-xs flex items-center gap-1 font-semibold">
+                              <AlertTriangle className="size-3 text-amber-400" />
+                              RESTRICTED
+                            </Badge>
                           ) : conn.status === 'error' ? (
                             <Badge className="bg-amber-500/15 text-amber-400 border-amber-500/30 text-xs flex items-center gap-1">
                               <AlertTriangle className="size-3" />
                               {t('statusError')}
-                            </Badge>
-                          ) : conn.status === 'banned' ? (
-                            <Badge className="bg-rose-500/15 text-rose-400 border-rose-500/30 text-xs flex items-center gap-1">
-                              {t('statusBanned')}
                             </Badge>
                           ) : (
                             <Badge variant="outline" className="text-muted-foreground text-xs">
@@ -693,6 +699,37 @@ export function WhatsAppConfigForm() {
                         </Button>
                       </div>
                     </div>
+
+                    {conn.status === 'banned' && (
+                      <div className="mt-3 p-3.5 rounded-xl border border-rose-500/30 bg-rose-500/10 text-xs space-y-2">
+                        <div className="flex items-center gap-2 font-bold text-rose-400">
+                          <AlertTriangle className="size-4 shrink-0" />
+                          <span>WhatsApp Account Banned by Meta Policy Violation</span>
+                        </div>
+                        <p className="text-muted-foreground text-[11px] leading-relaxed">
+                          Meta has banned this phone number ({conn.display_phone_number || conn.phone_number_id}) due to a violation of WhatsApp Commerce or Business Policies (such as prohibited gambling/betting exchange keywords, masked URL redirectors like anon.to/bit.ly, or high spam reports). All automated bot sends for this number have been automatically halted to protect your WABA.
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                          <a
+                            href="https://business.facebook.com/latest/settings/whatsapp_business_presence"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-400 hover:text-rose-300 underline"
+                          >
+                            <span>Open Meta Business Support Appeal</span>
+                            <ExternalLink className="size-3" />
+                          </a>
+                          <span className="text-muted-foreground text-[10px]">•</span>
+                          <button
+                            type="button"
+                            onClick={() => openReplaceModal(conn)}
+                            className="text-[11px] font-semibold text-primary hover:underline"
+                          >
+                            Replace with Clean Number
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </CardHeader>
 
                   <CardContent className="p-4 sm:p-5 pt-0">

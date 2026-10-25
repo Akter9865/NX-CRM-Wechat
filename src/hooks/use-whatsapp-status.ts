@@ -15,6 +15,7 @@ export interface WhatsAppConnectionItem {
   registered?: boolean;
   registration_error?: string;
   last_webhook_at?: string;
+  is_automations_paused?: boolean;
 }
 
 export interface WhatsAppStatusState {
@@ -22,6 +23,10 @@ export interface WhatsAppStatusState {
   isConnected: boolean;
   isLoading: boolean;
   hasError: boolean;
+  isBanned: boolean;
+  isRestricted: boolean;
+  isGlobalBotPaused: boolean;
+  bannedCount: number;
   connectionCount: number;
   primaryConnection: WhatsAppConnectionItem | null;
   refetch: () => Promise<void>;
@@ -81,8 +86,12 @@ export function useWhatsAppStatus(): WhatsAppStatusState {
     };
   }, [fetchConnections]);
 
-  const isConnected = connections.length > 0 && connections.some((c) => c.status !== "error");
-  const hasError = connections.some((c) => c.status === "error" || Boolean(c.registration_error));
+  const isBanned = connections.some((c) => c.status === "banned");
+  const isRestricted = connections.some((c) => c.status === "restricted");
+  const bannedCount = connections.filter((c) => c.status === "banned").length;
+  const isGlobalBotPaused = connections.length > 0 && connections.every((c) => Boolean(c.is_automations_paused));
+  const isConnected = connections.length > 0 && connections.some((c) => c.status === "connected") && !isBanned;
+  const hasError = !isBanned && connections.some((c) => c.status === "error" || Boolean(c.registration_error));
   const primaryConnection = connections.find((c) => c.is_default) || connections[0] || null;
 
   return {
@@ -90,6 +99,10 @@ export function useWhatsAppStatus(): WhatsAppStatusState {
     isConnected,
     isLoading,
     hasError,
+    isBanned,
+    isRestricted,
+    isGlobalBotPaused,
+    bannedCount,
     connectionCount: connections.length,
     primaryConnection,
     refetch: fetchConnections,

@@ -130,6 +130,7 @@ export async function GET(_request: Request) {
       last_message_received_at?: string;
       last_message_sent_at?: string;
       mirror_inbound_media?: boolean;
+      is_automations_paused?: boolean;
       created_at?: string;
       updated_at?: string;
     }>).map((row) => ({
@@ -146,6 +147,7 @@ export async function GET(_request: Request) {
       code_verification_status: row.code_verification_status,
       status: row.status,
       is_default: row.is_default,
+      is_automations_paused: Boolean(row.is_automations_paused),
       connected_at: row.connected_at,
       registered_at: row.registered_at,
       subscribed_apps_at: row.subscribed_apps_at,

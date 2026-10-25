@@ -153,23 +153,21 @@ export async function GET(request: Request) {
         accessToken,
       })
 
-      // Optionally refresh cached metadata in background if changed
-      if (
-        phoneInfo &&
-        (phoneInfo.verified_name !== config.business_name ||
-          phoneInfo.display_phone_number !== config.display_phone_number ||
-          phoneInfo.quality_rating !== config.quality_rating)
-      ) {
-        void supabase
-          .from('whatsapp_config')
-          .update({
-            business_name: phoneInfo.verified_name ?? config.business_name,
-            display_phone_number: phoneInfo.display_phone_number ?? config.display_phone_number,
-            quality_rating: phoneInfo.quality_rating ?? config.quality_rating,
-            code_verification_status: phoneInfo.code_verification_status ?? config.code_verification_status,
-          })
-          .eq('id', config.id)
-      }
+      const isBanned = String(phoneInfo?.status || '').toUpperCase() === 'BANNED'
+      const isRestricted = String(phoneInfo?.status || '').toUpperCase() === 'RESTRICTED'
+      const determinedStatus = isBanned ? 'banned' : isRestricted ? 'restricted' : 'connected'
+
+      void supabase
+        .from('whatsapp_config')
+        .update({
+          business_name: phoneInfo.verified_name ?? config.business_name,
+          display_phone_number: phoneInfo.display_phone_number ?? config.display_phone_number,
+          quality_rating: phoneInfo.quality_rating ?? config.quality_rating,
+          code_verification_status: phoneInfo.code_verification_status ?? config.code_verification_status,
+          status: determinedStatus,
+          ...(isBanned ? { is_automations_paused: true } : {}),
+        })
+        .eq('id', config.id)
 
       return NextResponse.json({
         connected: true,
@@ -193,6 +191,24 @@ export async function GET(request: Request) {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown Meta API error'
       console.error('[whatsapp/config GET] Meta API verification failed:', message)
+
+      const isBannedError =
+        message.includes('131042') ||
+        message.includes('131053') ||
+        message.includes('368') ||
+        /banned|restricted|policy violation/i.test(message)
+
+      if (isBannedError) {
+        void supabase
+          .from('whatsapp_config')
+          .update({
+            status: 'banned',
+            is_automations_paused: true,
+            last_error_at: new Date().toISOString(),
+            last_error_message: message,
+          })
+          .eq('id', config.id)
+      }
       return NextResponse.json(
         {
           connected: false,

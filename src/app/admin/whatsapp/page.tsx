@@ -47,6 +47,7 @@ export default function AdminWhatsAppPage() {
     totalConnections: number;
     activeConnections: number;
     degradedConnections: number;
+    bannedConnections?: number;
     totalTemplates: number;
   } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -200,9 +201,23 @@ export default function AdminWhatsAppPage() {
                       {c.wabaId}
                     </TableCell>
                     <TableCell>
-                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
-                        {c.status}
-                      </span>
+                      {c.status === 'banned' ? (
+                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border border-rose-500/30 bg-rose-500/10 text-rose-400 animate-pulse">
+                          BANNED
+                        </span>
+                      ) : c.status === 'restricted' ? (
+                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-400">
+                          RESTRICTED
+                        </span>
+                      ) : c.status === 'error' ? (
+                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-400">
+                          ERROR
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
+                          {c.status}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-xs">
                       {c.approvedTemplatesCount} / {c.templatesCount} approved

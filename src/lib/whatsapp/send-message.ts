@@ -48,6 +48,7 @@ import {
   templateBodyParams,
   templateContentText,
 } from '@/lib/whatsapp/template-body';
+import { checkContentCompliance } from '@/lib/whatsapp/compliance-guard';
 
 export const MEDIA_KINDS = ['image', 'video', 'document', 'audio'] as const;
 export const VALID_MESSAGE_TYPES = [
@@ -325,6 +326,15 @@ export async function sendMessageToConversation(
     );
   }
 
+  // Anti-Ban Guard: Refuse outbound sends if connection is banned
+  if (config.status === 'banned') {
+    throw new SendMessageError(
+      'account_banned',
+      'This WhatsApp Business number is BANNED by Meta. Outbound sending has been halted to protect your account. Visit Meta Business Suite to appeal.',
+      403
+    );
+  }
+
   let accessToken: string;
   try {
     accessToken = decrypt(config.access_token);
@@ -403,6 +413,27 @@ export async function sendMessageToConversation(
     }
     templateRow = resolved.row;
     sendLanguage = resolved.language;
+  }
+
+  // Content Compliance & Anti-Ban Safety Check
+  const outboundText =
+    messageType === 'text'
+      ? contentText
+      : messageType === 'interactive'
+        ? interactivePayload?.body
+        : messageType === 'template'
+          ? contentText
+          : null;
+
+  if (outboundText) {
+    const compliance = checkContentCompliance(outboundText);
+    if (!compliance.compliant && compliance.riskLevel === 'critical') {
+      throw new SendMessageError(
+        'policy_violation_risk',
+        `Sending blocked: Message violates Meta WhatsApp Commerce & Anti-Abuse Policies (${compliance.violations.join(', ')}). Sending this will trigger an immediate Meta API account ban.`,
+        400
+      );
+    }
   }
 
   const attempt = async (phone: string): Promise<string> => {
@@ -523,6 +554,29 @@ export async function sendMessageToConversation(
         'undeliverable',
         'Message undeliverable. The recipient number may not be active on WhatsApp or unable to receive business messages.',
         400
+      );
+    }
+    if (
+      rawMessage.includes('131042') ||
+      rawMessage.includes('131053') ||
+      rawMessage.includes('368') ||
+      /banned|restricted|policy violation|temporarily blocked/i.test(rawMessage)
+    ) {
+      // Auto-update DB status to banned and trip emergency safety stop
+      void db
+        .from('whatsapp_config')
+        .update({
+          status: 'banned',
+          is_automations_paused: true,
+          last_error_at: new Date().toISOString(),
+          last_error_message: rawMessage,
+        })
+        .eq('id', config.id);
+
+      throw new SendMessageError(
+        'account_banned',
+        'Meta API rejected send: WhatsApp Business Account or number is BANNED or RESTRICTED due to policy violation. Outbound messages halted.',
+        403
       );
     }
 

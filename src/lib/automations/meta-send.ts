@@ -17,6 +17,7 @@ import {
   resolveTemplateRow,
   templateContentText,
 } from '@/lib/whatsapp/template-body'
+import { checkContentCompliance } from '@/lib/whatsapp/compliance-guard'
 import { supabaseAdmin } from './admin-client'
 
 // ------------------------------------------------------------
@@ -182,6 +183,23 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     throw new Error('WhatsApp not configured for this account')
   }
 
+  if (config.status === 'banned') {
+    throw new Error('WhatsApp connection is BANNED by Meta. Automation send aborted.')
+  }
+
+  if (config.is_automations_paused) {
+    throw new Error('Automations are paused for this WhatsApp connection.')
+  }
+
+  if (input.kind === 'text' && input.text) {
+    const compliance = checkContentCompliance(input.text)
+    if (!compliance.compliant && compliance.riskLevel === 'critical') {
+      throw new Error(
+        `Automation send blocked by Anti-Ban Guard: Prohibited content detected (${compliance.violations.join(', ')})`
+      )
+    }
+  }
+
   const accessToken = decrypt(config.access_token)
 
   // Local template row — read for the body we persist below, not for
@@ -236,6 +254,22 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       break
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
+      if (
+        msg.includes('131042') ||
+        msg.includes('131053') ||
+        msg.includes('368') ||
+        /banned|restricted|policy violation/i.test(msg)
+      ) {
+        void db
+          .from('whatsapp_config')
+          .update({
+            status: 'banned',
+            is_automations_paused: true,
+            last_error_at: new Date().toISOString(),
+            last_error_message: msg,
+          })
+          .eq('id', config.id)
+      }
       if (!isRecipientNotAllowedError(msg)) throw err
       lastError = err
     }

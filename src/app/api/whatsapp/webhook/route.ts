@@ -15,6 +15,10 @@ import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
 } from '@/lib/whatsapp/template-webhook'
+import {
+  handleAccountWebhookChange,
+  isAccountWebhookField,
+} from '@/lib/whatsapp/account-webhook'
 
 // The `after()` callback in POST runs within this route's max duration.
 // Inbound processing can fan out to per-media Meta verification calls, so
@@ -376,6 +380,17 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
         continue
       }
 
+      // Account-lifecycle events (phone_number_quality_update / account_update /
+      // account_review_update / security) from Meta alert us to quality degradation,
+      // policy violations, account bans, or restrictions.
+      if (isAccountWebhookField(change.field)) {
+        await handleAccountWebhookChange(
+          { field: change.field, value: change.value as unknown },
+          supabaseAdmin(),
+        )
+        continue
+      }
+
       const value = change.value
 
       // Handle status updates
@@ -422,14 +437,18 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
         configRows.find((r: { status: string }) => r.status === 'connected') ||
         configRows[0]
 
-      // Record live heartbeat on incoming webhook
+      // Record live heartbeat on incoming webhook without erasing ban/restricted state
+      const heartbeatUpdate: Record<string, unknown> = {
+        last_webhook_at: new Date().toISOString(),
+        last_message_received_at: new Date().toISOString(),
+      }
+      if (config.status !== 'banned' && config.status !== 'restricted') {
+        heartbeatUpdate.status = 'connected'
+      }
+
       await supabaseAdmin()
         .from('whatsapp_config')
-        .update({
-          last_webhook_at: new Date().toISOString(),
-          last_message_received_at: new Date().toISOString(),
-          status: 'connected',
-        })
+        .update(heartbeatUpdate)
         .eq('id', config.id)
 
       let decryptedAccessToken: string
@@ -439,6 +458,9 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
         console.error('[webhook] Failed to decrypt access_token for config:', config.id, decErr)
         continue
       }
+
+      // Halt bot/flow automations if connection is banned or restricted
+      const isConnectionBlocked = config.status === 'banned' || config.status === 'restricted'
 
       for (let i = 0; i < value.messages.length; i++) {
         const message = value.messages[i]
@@ -464,7 +486,7 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
           // and losing attachments is the failure mode worth avoiding.
           config.mirror_inbound_media !== false,
           config.id,
-          Boolean(config.is_automations_paused)
+          Boolean(config.is_automations_paused) || isConnectionBlocked
         )
       }
     }

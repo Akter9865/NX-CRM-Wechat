@@ -11,6 +11,7 @@ import {
   Bell,
   Blocks,
   Bot,
+  BotMessageSquare,
   Crown,
   CreditCard,
   GitBranch,
@@ -116,6 +117,7 @@ const navItems: NavItem[] = [
     badgeClass: "border border-amber-500/40 bg-amber-500/15 text-amber-400 font-extrabold text-[8px] tracking-wider px-1.5 py-0.5 rounded",
   },
   { href: "/flows", labelKey: "flows", icon: Workflow },
+  { href: "/bot-reply", labelKey: "botReply", labelFallback: "Bot Reply", icon: BotMessageSquare },
   { href: "/agents", labelKey: "aiAgents", icon: Bot },
   {
     href: "/settings?tab=integrations",

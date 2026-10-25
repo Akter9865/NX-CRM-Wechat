@@ -295,7 +295,7 @@ export interface WhatsAppConfig {
   code_verification_status?: string;
   access_token: string;
   verify_token?: string;
-  status: 'connected' | 'connecting' | 'disconnected' | 'error' | 'banned' | 'deactivated' | 'replaced';
+  status: 'connected' | 'connecting' | 'disconnected' | 'error' | 'banned' | 'restricted' | 'flagged' | 'deactivated' | 'replaced';
   is_default?: boolean;
   is_archived?: boolean;
   deleted_at?: string | null;

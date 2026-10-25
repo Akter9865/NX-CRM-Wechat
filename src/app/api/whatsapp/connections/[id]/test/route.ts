@@ -4,6 +4,7 @@ import { createClient as createAdminClient, type SupabaseClient } from '@supabas
 import {
   getSubscribedApps,
   verifyPhoneNumber,
+  type MetaPhoneInfo,
 } from '@/lib/whatsapp/meta-api';
 import { decrypt } from '@/lib/whatsapp/encryption';
 
@@ -106,12 +107,7 @@ export async function POST(
       registered: connection.registered_at !== null,
     };
 
-    let phoneInfo: {
-      quality_rating?: string;
-      display_phone_number?: string;
-      verified_name?: string;
-      code_verification_status?: string;
-    } | null = null;
+    let phoneInfo: MetaPhoneInfo | null = null;
     let errorMessage: string | null = null;
 
     // 1. Check Phone Number metadata
@@ -140,18 +136,40 @@ export async function POST(
 
     const isHealthy = checks.token_decryptable && checks.phone_api_reachable;
 
+    const metaStatusUpper = String(phoneInfo?.status || '').toUpperCase();
+    const isMetaBanned =
+      metaStatusUpper === 'BANNED' ||
+      Boolean(
+        errorMessage &&
+          (errorMessage.includes('131042') ||
+            errorMessage.includes('131053') ||
+            errorMessage.includes('368') ||
+            /banned|restricted|policy violation/i.test(errorMessage))
+      );
+
+    const isMetaRestricted = metaStatusUpper === 'RESTRICTED';
+
+    const finalStatus = isMetaBanned
+      ? 'banned'
+      : isMetaRestricted
+        ? 'restricted'
+        : isHealthy
+          ? 'connected'
+          : 'error';
+
     // Update connection record with fresh health info
     await supabaseAdmin()
       .from('whatsapp_config')
       .update({
-        status: isHealthy ? 'connected' : 'error',
+        status: finalStatus,
         quality_rating: phoneInfo?.quality_rating ?? connection.quality_rating,
         display_phone_number: phoneInfo?.display_phone_number ?? connection.display_phone_number,
         business_name: phoneInfo?.verified_name ?? connection.business_name,
         code_verification_status: phoneInfo?.code_verification_status ?? connection.code_verification_status,
         last_api_check_at: new Date().toISOString(),
-        last_error_at: isHealthy ? connection.last_error_at : new Date().toISOString(),
-        last_error_message: isHealthy ? null : errorMessage,
+        last_error_at: isHealthy && !isMetaBanned ? connection.last_error_at : new Date().toISOString(),
+        last_error_message: isHealthy && !isMetaBanned ? null : errorMessage || (isMetaBanned ? 'WhatsApp account is BANNED by Meta' : null),
+        ...(isMetaBanned ? { is_automations_paused: true } : {}),
       })
       .eq('id', id);
 

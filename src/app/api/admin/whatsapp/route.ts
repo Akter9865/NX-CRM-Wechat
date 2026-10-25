@@ -63,7 +63,8 @@ export async function GET(_req: NextRequest) {
       summary: {
         totalConnections: enrichedConnections.length,
         activeConnections: enrichedConnections.filter((c) => !c.isArchived && c.status === 'connected').length,
-        degradedConnections: enrichedConnections.filter((c) => !c.isArchived && c.status === 'error').length,
+        degradedConnections: enrichedConnections.filter((c) => !c.isArchived && (c.status === 'error' || c.status === 'restricted')).length,
+        bannedConnections: enrichedConnections.filter((c) => !c.isArchived && c.status === 'banned').length,
         totalTemplates: templates?.length || 0,
       },
     });
