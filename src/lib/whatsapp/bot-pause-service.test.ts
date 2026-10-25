@@ -47,7 +47,7 @@ describe('Bot Pause Service & Master Toggle', () => {
           return {
             select: vi.fn().mockReturnThis(),
             eq: vi.fn((col: string, val: any) => ({
-              eq: vi.fn((c2: string, v2: any) => ({
+              eq: vi.fn((_c2: string, _v2: any) => ({
                 order: vi.fn().mockImplementation(async () => {
                   const configs = mockConfigsTable.filter(
                     (c) => c.account_id === val && !c.is_archived
@@ -186,5 +186,26 @@ describe('Bot Pause Service & Master Toggle', () => {
     await setAccountBotPauseStatus(accountId, false, { unpauseAllChats: true });
 
     expect(mockConversationsTable.every((cv) => !cv.ai_autoreply_disabled)).toBe(true);
+  });
+
+  it('updates single connection bot pause status and unpauses account master if connection is activated', async () => {
+    const accountId = 'test-acct-single-conn';
+    mockAccountsTable.set(accountId, { id: accountId, is_automations_paused: true });
+    mockConfigsTable = [
+      {
+        id: 'cfg-test-1',
+        account_id: accountId,
+        is_archived: false,
+        is_default: true,
+        is_automations_paused: true,
+        phone_number_id: '9999',
+      },
+    ];
+
+    // Activate the single connection
+    await setConnectionBotPauseStatus(accountId, 'cfg-test-1', false);
+
+    expect(mockConfigsTable[0].is_automations_paused).toBe(false);
+    expect(mockAccountsTable.get(accountId).is_automations_paused).toBe(false);
   });
 });

@@ -275,7 +275,7 @@ export async function POST(request: Request) {
         }
 
         // Fallback: Legacy webhook URL if OAuth not connected
-        let webhookUrl = config?.webhook_url || integ?.config?.webhook_url;
+        const webhookUrl = config?.webhook_url || integ?.config?.webhook_url;
         if (!webhookUrl) {
           return NextResponse.json(
             { error: 'Google Sheets is not connected. Please connect with Google in Integrations & Apps.' },

@@ -62,6 +62,7 @@ ALTER TABLE accounts ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'acti
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS default_currency TEXT NOT NULL DEFAULT 'INR';
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS notes TEXT;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS settings JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS is_automations_paused BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_one_per_owner ON accounts(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_accounts_status ON accounts(status);
@@ -175,6 +176,67 @@ CREATE POLICY "Users can update own profile" ON profiles
 -- ==============================================================================
 -- 3. WHATSAPP CLOUD API & MULTI-LINE CONNECTIONS
 -- ==============================================================================
+CREATE TABLE IF NOT EXISTS whatsapp_config (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  account_id UUID REFERENCES accounts(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  phone_number_id TEXT NOT NULL,
+  waba_id TEXT,
+  access_token TEXT NOT NULL,
+  verify_token TEXT,
+  display_phone_number TEXT,
+  verified_name TEXT,
+  phone_number TEXT,
+  quality_rating TEXT DEFAULT 'UNKNOWN',
+  status TEXT NOT NULL DEFAULT 'disconnected',
+  is_connected BOOLEAN DEFAULT FALSE,
+  messaging_limit_tier TEXT,
+  ban_reason TEXT,
+  ban_date TIMESTAMPTZ,
+  is_automations_paused BOOLEAN NOT NULL DEFAULT FALSE,
+  connected_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Upgrade existing whatsapp_config columns if missing
+ALTER TABLE whatsapp_config ADD COLUMN IF NOT EXISTS account_id UUID REFERENCES accounts(id) ON DELETE CASCADE;
+ALTER TABLE whatsapp_config ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
+ALTER TABLE whatsapp_config ADD COLUMN IF NOT EXISTS phone_number_id TEXT;
+ALTER TABLE whatsapp_config ADD COLUMN IF NOT EXISTS waba_id TEXT;
+ALTER TABLE whatsapp_config ADD COLUMN IF NOT EXISTS access_token TEXT;
+ALTER TABLE whatsapp_config ADD COLUMN IF NOT EXISTS verify_token TEXT;
+ALTER TABLE whatsapp_config ADD COLUMN IF NOT EXISTS display_phone_number TEXT;
+ALTER TABLE whatsapp_config ADD COLUMN IF NOT EXISTS verified_name TEXT;
+ALTER TABLE whatsapp_config ADD COLUMN IF NOT EXISTS phone_number TEXT;
+ALTER TABLE whatsapp_config ADD COLUMN IF NOT EXISTS quality_rating TEXT DEFAULT 'UNKNOWN';
+ALTER TABLE whatsapp_config ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'disconnected';
+ALTER TABLE whatsapp_config ADD COLUMN IF NOT EXISTS is_connected BOOLEAN DEFAULT FALSE;
+ALTER TABLE whatsapp_config ADD COLUMN IF NOT EXISTS messaging_limit_tier TEXT;
+ALTER TABLE whatsapp_config ADD COLUMN IF NOT EXISTS ban_reason TEXT;
+ALTER TABLE whatsapp_config ADD COLUMN IF NOT EXISTS ban_date TIMESTAMPTZ;
+ALTER TABLE whatsapp_config ADD COLUMN IF NOT EXISTS is_automations_paused BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE whatsapp_config ADD COLUMN IF NOT EXISTS connected_at TIMESTAMPTZ;
+
+-- Drop and recreate constraint to include all compliance statuses
+ALTER TABLE whatsapp_config DROP CONSTRAINT IF EXISTS whatsapp_config_status_check;
+ALTER TABLE whatsapp_config ADD CONSTRAINT whatsapp_config_status_check
+  CHECK (status IN ('connected', 'disconnected', 'error', 'banned', 'restricted', 'flagged', 'connecting', 'deactivated', 'replaced'));
+
+CREATE INDEX IF NOT EXISTS idx_whatsapp_config_account ON whatsapp_config(account_id);
+ALTER TABLE whatsapp_config ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Members can view whatsapp config" ON whatsapp_config;
+CREATE POLICY "Members can view whatsapp config" ON whatsapp_config
+  FOR SELECT TO authenticated
+  USING (is_account_member(account_id, 'viewer'));
+
+DROP POLICY IF EXISTS "Admins can manage whatsapp config" ON whatsapp_config;
+CREATE POLICY "Admins can manage whatsapp config" ON whatsapp_config
+  FOR ALL TO authenticated
+  USING (is_account_member(account_id, 'admin'));
+
+-- Ensure backward compatibility for whatsapp_configs
 CREATE TABLE IF NOT EXISTS whatsapp_configs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -191,18 +253,7 @@ CREATE TABLE IF NOT EXISTS whatsapp_configs (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(account_id)
 );
-
 ALTER TABLE whatsapp_configs ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Members can view whatsapp config" ON whatsapp_configs;
-CREATE POLICY "Members can view whatsapp config" ON whatsapp_configs
-  FOR SELECT TO authenticated
-  USING (is_account_member(account_id, 'viewer'));
-
-DROP POLICY IF EXISTS "Admins can manage whatsapp config" ON whatsapp_configs;
-CREATE POLICY "Admins can manage whatsapp config" ON whatsapp_configs
-  FOR ALL TO authenticated
-  USING (is_account_member(account_id, 'admin'));
 
 -- Multiple WhatsApp Phone Connections Per Account (Multi-Line WABA)
 CREATE TABLE IF NOT EXISTS whatsapp_connections (
@@ -595,6 +646,37 @@ DROP POLICY IF EXISTS "Admins can manage ai configs" ON ai_configs;
 CREATE POLICY "Admins can manage ai configs" ON ai_configs
   FOR ALL TO authenticated
   USING (is_account_member(account_id, 'admin'));
+
+-- Update provider check constraint to support OpenAI, Anthropic, Gemini, OpenRouter
+ALTER TABLE ai_configs DROP CONSTRAINT IF EXISTS ai_configs_provider_check;
+ALTER TABLE ai_configs ADD CONSTRAINT ai_configs_provider_check
+  CHECK (provider IN ('openai', 'anthropic', 'gemini', 'openrouter'));
+
+-- AI Usage and Token Logs
+CREATE TABLE IF NOT EXISTS ai_usage_log (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  conversation_id UUID REFERENCES conversations(id) ON DELETE SET NULL,
+  provider TEXT NOT NULL CHECK (provider IN ('openai', 'anthropic', 'gemini', 'openrouter')),
+  model TEXT NOT NULL,
+  prompt_tokens INT NOT NULL DEFAULT 0,
+  completion_tokens INT NOT NULL DEFAULT 0,
+  total_tokens INT NOT NULL DEFAULT 0,
+  latency_ms INT,
+  status TEXT NOT NULL DEFAULT 'success' CHECK (status IN ('success', 'error', 'cancelled')),
+  error_message TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_usage_log_account_created
+  ON ai_usage_log(account_id, created_at DESC);
+
+ALTER TABLE ai_usage_log ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Members can view ai usage log" ON ai_usage_log;
+CREATE POLICY "Members can view ai usage log" ON ai_usage_log
+  FOR SELECT TO authenticated
+  USING (is_account_member(account_id, 'viewer'));
 
 CREATE TABLE IF NOT EXISTS ai_knowledge_bases (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
