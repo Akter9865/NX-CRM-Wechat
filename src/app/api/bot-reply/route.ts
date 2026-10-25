@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { supabaseAdmin } from '@/lib/automations/admin-client';
+import {
+  getAccountBotPauseStatus,
+  setAccountBotPauseStatus,
+  setConnectionBotPauseStatus,
+} from '@/lib/whatsapp/bot-pause-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,17 +19,8 @@ export async function GET() {
   try {
     const { supabase, accountId } = await requireRole('viewer');
 
-    // 1. Fetch WhatsApp connections for this account
-    const { data: configs } = await supabaseAdmin()
-      .from('whatsapp_config')
-      .select('id, connection_name, business_name, display_phone_number, phone_number_id, is_default, status, is_automations_paused')
-      .eq('account_id', accountId)
-      .eq('is_archived', false)
-      .order('is_default', { ascending: false });
-
-    // Determine if all connections are paused
-    const activeConfigs = configs || [];
-    const isGlobalPaused = activeConfigs.length > 0 && activeConfigs.every((c) => Boolean(c.is_automations_paused));
+    // 1. Fetch master bot pause status & WhatsApp connections for this account
+    const { isGlobalPaused, activeConfigs } = await getAccountBotPauseStatus(accountId);
     const isAnyPaused = activeConfigs.some((c) => Boolean(c.is_automations_paused));
 
     // 2. Fetch conversations with individual bot pause overrides
@@ -110,40 +105,14 @@ export async function POST(request: Request) {
       const active = Boolean(body.active);
       const isPaused = !active;
 
-      // Update all whatsapp_config rows for this account
-      await supabaseAdmin()
-        .from('whatsapp_config')
-        .update({
-          is_automations_paused: isPaused,
-          updated_at: now,
-        })
-        .eq('account_id', accountId);
-
-      // Also mirror to accounts table if column exists
-      try {
-        await supabaseAdmin()
-          .from('accounts')
-          .update({ is_automations_paused: isPaused })
-          .eq('id', accountId);
-      } catch {}
-
-      // If user chose to resume all individual chats as well
-      if (active && body.unpause_all_chats) {
-        await supabaseAdmin()
-          .from('conversations')
-          .update({
-            ai_autoreply_disabled: false,
-            assigned_agent_id: null,
-            ai_reply_count: 0,
-            ai_handoff_summary: null,
-            updated_at: now,
-          })
-          .eq('account_id', accountId);
-      }
+      await setAccountBotPauseStatus(accountId, isPaused, {
+        unpauseAllChats: active && Boolean(body.unpause_all_chats),
+      });
 
       return NextResponse.json({
         success: true,
         global_bot_active: active,
+        is_global_paused: isPaused,
         message: active
           ? 'Bot auto-reply and automated flows are now ACTIVE globally across all chats.'
           : 'Bot auto-reply has been completely DISABLED. All chats are now in 100% Human Agent Mode.',
@@ -157,14 +126,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'connection_id is required' }, { status: 400 });
       }
 
-      await supabaseAdmin()
-        .from('whatsapp_config')
-        .update({
-          is_automations_paused: !active,
-          updated_at: now,
-        })
-        .eq('id', connection_id)
-        .eq('account_id', accountId);
+      await setConnectionBotPauseStatus(accountId, connection_id, !active);
 
       return NextResponse.json({
         success: true,

@@ -32,6 +32,21 @@ BEGIN
     ALTER TABLE whatsapp_config ADD COLUMN ban_date TIMESTAMPTZ;
   END IF;
 
+  -- Ensure is_automations_paused column exists for master toggle
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'whatsapp_config' AND column_name = 'is_automations_paused'
+  ) THEN
+    ALTER TABLE whatsapp_config ADD COLUMN is_automations_paused BOOLEAN NOT NULL DEFAULT FALSE;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'accounts' AND column_name = 'is_automations_paused'
+  ) THEN
+    ALTER TABLE accounts ADD COLUMN is_automations_paused BOOLEAN NOT NULL DEFAULT FALSE;
+  END IF;
+
   -- Update status check constraint
   IF EXISTS (
     SELECT 1 FROM pg_constraint

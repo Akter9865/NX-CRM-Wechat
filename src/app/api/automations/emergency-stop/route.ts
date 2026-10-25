@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
-import { supabaseAdmin } from '@/lib/automations/admin-client'
+import {
+  getAccountBotPauseStatus,
+  setAccountBotPauseStatus,
+} from '@/lib/whatsapp/bot-pause-service'
 
 export async function GET() {
   const supabase = await createClient()
@@ -20,17 +23,10 @@ export async function GET() {
     return NextResponse.json({ error: 'No account linked' }, { status: 403 })
   }
 
-  const { data: config } = await supabaseAdmin()
-    .from('whatsapp_config')
-    .select('is_automations_paused')
-    .eq('account_id', accountId)
-    .eq('is_archived', false)
-    .order('is_default', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  const { isGlobalPaused } = await getAccountBotPauseStatus(accountId)
 
   return NextResponse.json({
-    is_paused: Boolean(config?.is_automations_paused),
+    is_paused: isGlobalPaused,
   })
 }
 
@@ -60,16 +56,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}))
   const isPaused = Boolean(body.paused)
 
-  // Update all active whatsapp_config rows for this account
-  const { error } = await supabaseAdmin()
-    .from('whatsapp_config')
-    .update({ is_automations_paused: isPaused })
-    .eq('account_id', accountId)
-
-  if (error) {
-    console.error('[emergency-stop] error updating whatsapp_config:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
+  await setAccountBotPauseStatus(accountId, isPaused)
 
   console.info(`[emergency-stop] Account ${accountId} automations paused set to: ${isPaused}`)
 

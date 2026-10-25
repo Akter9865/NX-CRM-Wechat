@@ -43,6 +43,7 @@ export function dispatchWhatsAppStatusChanged() {
 export function useWhatsAppStatus(): WhatsAppStatusState {
   const { user } = useAuth();
   const [connections, setConnections] = useState<WhatsAppConnectionItem[]>([]);
+  const [isGlobalBotPausedFromServer, setIsGlobalBotPausedFromServer] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchConnections = useCallback(async () => {
@@ -63,6 +64,9 @@ export function useWhatsAppStatus(): WhatsAppStatusState {
       }
       const data = await res.json();
       setConnections(data.connections || []);
+      if (typeof data.is_global_bot_paused === 'boolean') {
+        setIsGlobalBotPausedFromServer(data.is_global_bot_paused);
+      }
     } catch {
       // Graceful fallback on network error
     } finally {
@@ -89,7 +93,9 @@ export function useWhatsAppStatus(): WhatsAppStatusState {
   const isBanned = connections.some((c) => c.status === "banned");
   const isRestricted = connections.some((c) => c.status === "restricted");
   const bannedCount = connections.filter((c) => c.status === "banned").length;
-  const isGlobalBotPaused = connections.length > 0 && connections.every((c) => Boolean(c.is_automations_paused));
+  const isGlobalBotPaused =
+    isGlobalBotPausedFromServer ||
+    (connections.length > 0 && connections.every((c) => Boolean(c.is_automations_paused)));
   const isConnected = connections.length > 0 && connections.some((c) => c.status === "connected") && !isBanned && !isRestricted;
   const hasError = !isBanned && !isRestricted && connections.some((c) => c.status === "error" || Boolean(c.registration_error));
   const primaryConnection = connections.find((c) => c.is_default) || connections[0] || null;

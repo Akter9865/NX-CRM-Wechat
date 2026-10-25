@@ -9,6 +9,7 @@ import {
 import { encrypt } from '@/lib/whatsapp/encryption';
 import { checkCanAddConnection, getAccountEntitlement } from '@/lib/billing/entitlements';
 import { logAuditEvent } from '@/lib/audit/log';
+import { getAccountBotPauseStatus } from '@/lib/whatsapp/bot-pause-service';
 
 async function resolveUserAndAccount(supabase: Awaited<ReturnType<typeof createClient>>) {
   const {
@@ -160,8 +161,11 @@ export async function GET(_request: Request) {
       updated_at: row.updated_at,
     }));
 
+    const { isGlobalPaused } = await getAccountBotPauseStatus(accountId);
+
     return NextResponse.json({
       connections,
+      is_global_bot_paused: isGlobalPaused,
       usage: {
         current: entitlement.connections.current,
         limit: entitlement.connections.limit,
@@ -384,6 +388,8 @@ export async function POST(request: Request) {
           ? 'error'
           : 'connected';
 
+    const { isGlobalPaused: isAccountPaused } = await getAccountBotPauseStatus(accountId);
+
     const rowData = {
       account_id: accountId,
       user_id: user.id,
@@ -402,7 +408,7 @@ export async function POST(request: Request) {
       status: connectionStatus,
       is_default: isFirstConnection,
       is_archived: false,
-      is_automations_paused: isBanned ? true : false,
+      is_automations_paused: isBanned ? true : Boolean(isAccountPaused),
       last_api_check_at: new Date().toISOString(),
       connected_at: registrationError || isBanned ? null : new Date().toISOString(),
       registered_at: registeredAt,

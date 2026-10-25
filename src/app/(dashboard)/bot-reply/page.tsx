@@ -100,6 +100,7 @@ export default function BotReplyPage() {
   // Master Global Switch Handler
   const handleToggleGlobal = async (nextActive: boolean) => {
     setActionLoading('global_toggle');
+    setGlobalBotActive(nextActive);
     try {
       const res = await fetch('/api/bot-reply', {
         method: 'POST',
@@ -114,7 +115,9 @@ export default function BotReplyPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to update global bot status');
 
-      setGlobalBotActive(nextActive);
+      if (typeof data.global_bot_active === 'boolean') {
+        setGlobalBotActive(data.global_bot_active);
+      }
       toast.success(
         nextActive
           ? 'Bot auto-reply turned ON globally!'
@@ -122,6 +125,7 @@ export default function BotReplyPage() {
       );
       await fetchStatus(true);
     } catch (err: unknown) {
+      setGlobalBotActive(!nextActive);
       const msg = err instanceof Error ? err.message : 'Failed to toggle global bot';
       toast.error(msg);
     } finally {
