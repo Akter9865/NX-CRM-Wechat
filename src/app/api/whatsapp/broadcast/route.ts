@@ -19,6 +19,10 @@ import {
   checkCanBroadcast,
   trackOutboundMessage,
 } from '@/lib/billing/entitlements'
+import {
+  assertOutboundEligibility,
+  OutboundEligibilityError,
+} from '@/lib/whatsapp/eligibility-guard'
 
 interface BroadcastResult {
   phone: string
@@ -191,9 +195,28 @@ export async function POST(request: Request) {
     }
     const templateRow = resolvedTemplate.row
 
+    // Central Server-Side Outbound Eligibility Check for Broadcast Campaign
+    try {
+      assertOutboundEligibility({
+        config,
+        messageType: 'template',
+        templateRow,
+        isAutomated: true,
+      })
+    } catch (eligibilityErr) {
+      if (eligibilityErr instanceof OutboundEligibilityError) {
+        return NextResponse.json(
+          { error: eligibilityErr.message, code: eligibilityErr.code },
+          { status: eligibilityErr.status }
+        )
+      }
+      throw eligibilityErr
+    }
+
     const results: BroadcastResult[] = []
     let sentCount = 0
     let failedCount = 0
+    let campaignAborted = false
 
     for (const recipient of recipients) {
       const sanitized = sanitizePhoneForMeta(recipient.phone)
@@ -249,6 +272,34 @@ export async function POST(request: Request) {
         })
         sentCount++
       } else {
+        const isBanError =
+          Boolean(lastError) &&
+          (lastError!.includes('131042') ||
+            lastError!.includes('131053') ||
+            lastError!.includes('368') ||
+            /banned|restricted|policy violation/i.test(lastError!))
+
+        if (isBanError) {
+          void supabase
+            .from('whatsapp_config')
+            .update({
+              status: 'banned',
+              is_automations_paused: true,
+              last_error_at: new Date().toISOString(),
+              last_error_message: lastError,
+            })
+            .eq('id', config.id)
+
+          results.push({
+            phone: recipient.phone,
+            status: 'failed',
+            error: 'WhatsApp account was BANNED or RESTRICTED by Meta during broadcast. Campaign halted immediately.',
+          })
+          failedCount++
+          campaignAborted = true
+          break
+        }
+
         console.error(
           `Failed to send broadcast to ${recipient.phone}:`,
           lastError

@@ -29,6 +29,10 @@ import {
 import { resolveTemplateRow } from '@/lib/whatsapp/template-body';
 import type { MessageTemplate } from '@/types';
 import { findOrCreateContact } from '@/lib/api/v1/contacts';
+import {
+  assertOutboundEligibility,
+  OutboundEligibilityError,
+} from '@/lib/whatsapp/eligibility-guard';
 
 /** Thrown by createBroadcast on a caller-visible failure; route maps it. */
 export class BroadcastError extends Error {
@@ -154,6 +158,25 @@ export async function createBroadcast(
     );
   }
   const templateRow = resolvedTemplate.row;
+
+  // Central Server-Side Outbound Eligibility Check for Broadcast Creation
+  try {
+    assertOutboundEligibility({
+      config,
+      messageType: 'template',
+      templateRow,
+      isAutomated: true,
+    });
+  } catch (eligibilityErr) {
+    if (eligibilityErr instanceof OutboundEligibilityError) {
+      throw new BroadcastError(
+        eligibilityErr.code,
+        eligibilityErr.message,
+        eligibilityErr.status
+      );
+    }
+    throw eligibilityErr;
+  }
 
   // Resolve each recipient to a contact. Invalid phones are dropped
   // (counted as rejected) rather than aborting the whole broadcast.
@@ -342,6 +365,30 @@ export async function deliverBroadcast(
           error_message: lastError || 'Unknown error',
         })
         .eq('id', recipient.recipientRowId);
+
+      const isBanError =
+        Boolean(lastError) &&
+        (lastError!.includes('131042') ||
+          lastError!.includes('131053') ||
+          lastError!.includes('368') ||
+          /banned|restricted|policy violation/i.test(lastError!));
+
+      if (isBanError) {
+        void db
+          .from('whatsapp_config')
+          .update({
+            status: 'banned',
+            is_automations_paused: true,
+            last_error_at: new Date().toISOString(),
+            last_error_message: lastError,
+          })
+          .eq('phone_number_id', plan.phoneNumberId);
+
+        console.warn(
+          `[anti-ban guard] Broadcast ${plan.broadcastId} halted immediately due to Meta account ban/restriction error: ${lastError}`
+        );
+        break;
+      }
 
       // Circuit Breaker: If 15 consecutive messages fail (e.g. Meta policy rate limits or quality flag),
       // pause immediately to protect the WhatsApp Business Account from automated banning.

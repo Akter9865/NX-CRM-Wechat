@@ -90,8 +90,8 @@ export function useWhatsAppStatus(): WhatsAppStatusState {
   const isRestricted = connections.some((c) => c.status === "restricted");
   const bannedCount = connections.filter((c) => c.status === "banned").length;
   const isGlobalBotPaused = connections.length > 0 && connections.every((c) => Boolean(c.is_automations_paused));
-  const isConnected = connections.length > 0 && connections.some((c) => c.status === "connected") && !isBanned;
-  const hasError = !isBanned && connections.some((c) => c.status === "error" || Boolean(c.registration_error));
+  const isConnected = connections.length > 0 && connections.some((c) => c.status === "connected") && !isBanned && !isRestricted;
+  const hasError = !isBanned && !isRestricted && connections.some((c) => c.status === "error" || Boolean(c.registration_error));
   const primaryConnection = connections.find((c) => c.is_default) || connections[0] || null;
 
   return {

@@ -165,12 +165,40 @@ export async function GET(request: Request) {
           quality_rating: phoneInfo.quality_rating ?? config.quality_rating,
           code_verification_status: phoneInfo.code_verification_status ?? config.code_verification_status,
           status: determinedStatus,
+          last_api_check_at: new Date().toISOString(),
           ...(isBanned ? { is_automations_paused: true } : {}),
         })
         .eq('id', config.id)
 
+      if (isBanned || isRestricted) {
+        return NextResponse.json({
+          connected: false,
+          status: determinedStatus,
+          reason: isBanned ? 'banned' : 'restricted',
+          message: isBanned
+            ? 'WhatsApp account is BANNED by Meta. Outbound messaging is halted. Visit Meta Business Suite to appeal: https://business.facebook.com/support'
+            : 'WhatsApp account is RESTRICTED by Meta. Automated campaigns and broadcasts are limited.',
+          id: config.id,
+          phone_info: phoneInfo,
+          business_portfolio_id: config.business_portfolio_id ?? null,
+          app_id: config.app_id ?? null,
+          has_app_secret: Boolean(config.app_secret),
+          waba_id: config.waba_id ?? null,
+          phone_number_id: config.phone_number_id,
+          display_phone_number: phoneInfo.display_phone_number ?? config.display_phone_number,
+          business_name: phoneInfo.verified_name ?? config.business_name,
+          quality_rating: phoneInfo.quality_rating ?? config.quality_rating,
+          registered_at: config.registered_at ?? null,
+          subscribed_apps_at: config.subscribed_apps_at ?? null,
+          last_webhook_at: config.last_webhook_at ?? null,
+          last_registration_error: config.last_registration_error ?? null,
+          mirror_inbound_media: config.mirror_inbound_media !== false,
+        })
+      }
+
       return NextResponse.json({
         connected: true,
+        status: 'connected',
         id: config.id,
         connection_name: config.connection_name || null,
         phone_info: phoneInfo,
@@ -464,6 +492,21 @@ export async function POST(request: Request) {
       }
     }
 
+    const metaStatusUpper = String(phoneInfo?.status || '').toUpperCase()
+    const isBanned = metaStatusUpper === 'BANNED'
+    const isRestricted = metaStatusUpper === 'RESTRICTED'
+    const isFlagged = metaStatusUpper === 'FLAGGED'
+
+    const determinedStatus = isBanned
+      ? 'banned'
+      : isRestricted
+        ? 'restricted'
+        : isFlagged
+          ? 'flagged'
+          : registrationError
+            ? 'disconnected'
+            : 'connected'
+
     // Persist everything in one shot. If /register failed we still
     // store the credentials and the error so the UI can guide the
     // user through a retry.
@@ -479,8 +522,10 @@ export async function POST(request: Request) {
       code_verification_status: phoneInfo?.code_verification_status || null,
       access_token: encryptedAccessToken,
       verify_token: encryptedVerifyToken,
-      status: registrationError ? 'disconnected' : 'connected',
-      connected_at: registrationError ? null : new Date().toISOString(),
+      status: determinedStatus,
+      is_automations_paused: isBanned ? true : false,
+      last_api_check_at: new Date().toISOString(),
+      connected_at: registrationError || isBanned ? null : new Date().toISOString(),
       registered_at: registrationError ? null : registeredAt,
       subscribed_apps_at: subscribedAppsAt ?? null,
       last_registration_error: registrationError,

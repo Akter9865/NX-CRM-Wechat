@@ -10,7 +10,9 @@ export type ChannelStatus =
   | 'connecting'
   | 'disconnected'
   | 'error'
-  | 'pairing';
+  | 'pairing'
+  | 'banned'
+  | 'restricted';
 
 export interface ChannelConnection {
   id: string;

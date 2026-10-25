@@ -58,7 +58,7 @@ export class MetaApiError extends Error {
     this.error_subcode = details.error_subcode
     this.type = details.type
     this.status = details.status
-    // Permanent errors: 4xx (client errors), expired 24h window (131047), undeliverable (131026), invalid phone (131030), auth/token (190, 100)
+    // Permanent errors: 4xx (client errors), expired 24h window (131047), undeliverable (131026), invalid phone (131030), auth/token (190, 100), account banned/restricted (131042, 131053, 368)
     this.isPermanent =
       details.status === 400 ||
       details.status === 401 ||
@@ -67,8 +67,28 @@ export class MetaApiError extends Error {
       details.code === 131026 ||
       details.code === 131047 ||
       details.code === 131030 ||
+      details.code === 131042 ||
+      details.code === 131053 ||
+      details.code === 368 ||
       details.code === 100 ||
       details.code === 190
+  }
+
+  get isAccountBanned(): boolean {
+    return (
+      this.code === 131042 ||
+      this.code === 131053 ||
+      this.code === 368 ||
+      /banned|restricted|policy violation/i.test(this.message)
+    )
+  }
+
+  get isRateLimited(): boolean {
+    return this.code === 130429 || this.code === 80007 || this.status === 429
+  }
+
+  get isAuthError(): boolean {
+    return this.code === 190 || this.status === 401
   }
 }
 

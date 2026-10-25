@@ -134,8 +134,6 @@ export async function POST(
       }
     }
 
-    const isHealthy = checks.token_decryptable && checks.phone_api_reachable;
-
     const metaStatusUpper = String(phoneInfo?.status || '').toUpperCase();
     const isMetaBanned =
       metaStatusUpper === 'BANNED' ||
@@ -148,6 +146,8 @@ export async function POST(
       );
 
     const isMetaRestricted = metaStatusUpper === 'RESTRICTED';
+
+    const isHealthy = checks.token_decryptable && checks.phone_api_reachable && !isMetaBanned && !isMetaRestricted;
 
     const finalStatus = isMetaBanned
       ? 'banned'
@@ -167,18 +167,22 @@ export async function POST(
         business_name: phoneInfo?.verified_name ?? connection.business_name,
         code_verification_status: phoneInfo?.code_verification_status ?? connection.code_verification_status,
         last_api_check_at: new Date().toISOString(),
-        last_error_at: isHealthy && !isMetaBanned ? connection.last_error_at : new Date().toISOString(),
-        last_error_message: isHealthy && !isMetaBanned ? null : errorMessage || (isMetaBanned ? 'WhatsApp account is BANNED by Meta' : null),
+        last_error_at: isHealthy ? connection.last_error_at : new Date().toISOString(),
+        last_error_message: isHealthy ? null : errorMessage || (isMetaBanned ? 'WhatsApp account is BANNED by Meta' : isMetaRestricted ? 'WhatsApp account is RESTRICTED by Meta' : null),
         ...(isMetaBanned ? { is_automations_paused: true } : {}),
       })
       .eq('id', id);
 
     return NextResponse.json({
       healthy: isHealthy,
-      status: isHealthy ? 'Healthy' : 'Action Required',
-      message: isHealthy
-        ? `WhatsApp API connection is healthy and verified (${phoneInfo?.verified_name || phoneInfo?.display_phone_number || connection.phone_number_id}).`
-        : `Connection test failed: ${errorMessage || 'Unknown Meta error'}`,
+      status: isMetaBanned ? 'Banned' : isMetaRestricted ? 'Restricted' : isHealthy ? 'Healthy' : 'Action Required',
+      message: isMetaBanned
+        ? 'WhatsApp account is BANNED by Meta: Policy violation detected. Outbound messaging is halted. Visit Meta Business Suite to appeal: https://business.facebook.com/support'
+        : isMetaRestricted
+          ? 'WhatsApp account is RESTRICTED by Meta: Automated messaging is limited. Review policy violations in Meta Business Manager.'
+          : isHealthy
+            ? `WhatsApp API connection is healthy and verified (${phoneInfo?.verified_name || phoneInfo?.display_phone_number || connection.phone_number_id}).`
+            : `Connection test failed: ${errorMessage || 'Unknown Meta error'}`,
       checks,
       phone_info: phoneInfo,
       last_webhook_at: connection.last_webhook_at,

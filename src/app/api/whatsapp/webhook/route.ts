@@ -437,13 +437,10 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
         configRows.find((r: { status: string }) => r.status === 'connected') ||
         configRows[0]
 
-      // Record live heartbeat on incoming webhook without erasing ban/restricted state
+      // Record live heartbeat on incoming webhook without mutating connection status
       const heartbeatUpdate: Record<string, unknown> = {
         last_webhook_at: new Date().toISOString(),
         last_message_received_at: new Date().toISOString(),
-      }
-      if (config.status !== 'banned' && config.status !== 'restricted') {
-        heartbeatUpdate.status = 'connected'
       }
 
       await supabaseAdmin()

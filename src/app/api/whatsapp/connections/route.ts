@@ -373,6 +373,17 @@ export async function POST(request: Request) {
 
     const isFirstConnection = (existingCount || 0) === 0;
 
+    const metaStatusUpper = String(phoneInfo?.status || '').toUpperCase();
+    const isBanned = metaStatusUpper === 'BANNED';
+    const isRestricted = metaStatusUpper === 'RESTRICTED';
+    const connectionStatus = isBanned
+      ? 'banned'
+      : isRestricted
+        ? 'restricted'
+        : registrationError
+          ? 'error'
+          : 'connected';
+
     const rowData = {
       account_id: accountId,
       user_id: user.id,
@@ -388,10 +399,12 @@ export async function POST(request: Request) {
       code_verification_status: phoneInfo.code_verification_status || null,
       access_token: encryptedAccessToken,
       verify_token: encryptedVerifyToken,
-      status: registrationError ? 'error' : 'connected',
+      status: connectionStatus,
       is_default: isFirstConnection,
       is_archived: false,
-      connected_at: registrationError ? null : new Date().toISOString(),
+      is_automations_paused: isBanned ? true : false,
+      last_api_check_at: new Date().toISOString(),
+      connected_at: registrationError || isBanned ? null : new Date().toISOString(),
       registered_at: registeredAt,
       subscribed_apps_at: subscribedAppsAt,
       last_registration_error: registrationError,

@@ -45,7 +45,7 @@ export async function getAccountChannelConnections(
           channel_type: 'whatsapp_cloud',
           connection_name: wa.connection_name || wa.business_name || `WhatsApp (${wa.display_phone_number || wa.phone_number_id})`,
           identifier: wa.display_phone_number || wa.phone_number_id,
-          status: wa.status === 'connected' ? 'connected' : 'disconnected',
+          status: (['connected', 'banned', 'restricted', 'error', 'connecting'].includes(wa.status) ? wa.status : 'disconnected'),
           is_default: wa.is_default ?? false,
           is_archived: wa.is_archived ?? false,
           metadata: {

@@ -49,6 +49,10 @@ import {
   templateContentText,
 } from '@/lib/whatsapp/template-body';
 import { checkContentCompliance } from '@/lib/whatsapp/compliance-guard';
+import {
+  assertOutboundEligibility,
+  OutboundEligibilityError,
+} from '@/lib/whatsapp/eligibility-guard';
 
 export const MEDIA_KINDS = ['image', 'video', 'document', 'audio'] as const;
 export const VALID_MESSAGE_TYPES = [
@@ -415,7 +419,6 @@ export async function sendMessageToConversation(
     sendLanguage = resolved.language;
   }
 
-  // Content Compliance & Anti-Ban Safety Check
   const outboundText =
     messageType === 'text'
       ? contentText
@@ -425,15 +428,26 @@ export async function sendMessageToConversation(
           ? contentText
           : null;
 
-  if (outboundText) {
-    const compliance = checkContentCompliance(outboundText);
-    if (!compliance.compliant && compliance.riskLevel === 'critical') {
+  // Central Server-Side Outbound Eligibility & Compliance Check
+  try {
+    assertOutboundEligibility({
+      config,
+      contact,
+      messageType,
+      text: outboundText,
+      templateRow,
+      isAutomated: false,
+      lastCustomerMessageAt: conversation.last_inbound_message_at || conversation.last_message_at,
+    });
+  } catch (eligibilityErr) {
+    if (eligibilityErr instanceof OutboundEligibilityError) {
       throw new SendMessageError(
-        'policy_violation_risk',
-        `Sending blocked: Message violates Meta WhatsApp Commerce & Anti-Abuse Policies (${compliance.violations.join(', ')}). Sending this will trigger an immediate Meta API account ban.`,
-        400
+        eligibilityErr.code,
+        eligibilityErr.message,
+        eligibilityErr.status
       );
     }
+    throw eligibilityErr;
   }
 
   const attempt = async (phone: string): Promise<string> => {
