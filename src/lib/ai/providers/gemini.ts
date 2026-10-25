@@ -51,16 +51,16 @@ function normalizeForGemini(messages: ChatMessage[]): { role: 'user' | 'model'; 
 
 /**
  * Call Google Gemini generateContent endpoint with the caller's own key.
- * Supports gemini-2.5-flash, gemini-2.0-flash, gemini-1.5-flash, gemini-1.5-pro, etc.
+ * Supports gemini-2.0-flash, gemini-1.5-flash, gemini-1.5-pro, etc.
  */
 export async function generateGemini(args: ProviderArgs): Promise<ProviderResult> {
   const { apiKey, model, systemPrompt, messages, timeoutMs } = args
 
-  // Clean model identifier (e.g. if user entered "models/gemini-1.5-flash", strip "models/")
-  const cleanModel = model.replace(/^models\//, '').trim()
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(cleanModel)}:generateContent`
+  const cleanApiKey = apiKey.trim().replace(/^['"]|['"]$/g, '')
+  // Clean model identifier (e.g. if user entered "models/gemini-2.0-flash", strip "models/")
+  const initialModel = model.replace(/^models\//, '').trim() || 'gemini-2.0-flash'
 
-  const body: Record<string, unknown> = {
+  const bodyPayload: Record<string, unknown> = {
     contents: normalizeForGemini(messages),
     generationConfig: {
       maxOutputTokens: MAX_OUTPUT_TOKENS,
@@ -68,22 +68,42 @@ export async function generateGemini(args: ProviderArgs): Promise<ProviderResult
   }
 
   if (systemPrompt && systemPrompt.trim()) {
-    body.system_instruction = {
+    bodyPayload.system_instruction = {
       parts: [{ text: systemPrompt.trim() }],
     }
   }
 
-  let res: Response
-  try {
-    res = await fetch(endpoint, {
+  const tryCallModel = async (targetModel: string): Promise<Response> => {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(targetModel)}:generateContent?key=${encodeURIComponent(cleanApiKey)}`
+    return fetch(endpoint, {
       method: 'POST',
       headers: {
-        'x-goog-api-key': apiKey,
+        'x-goog-api-key': cleanApiKey,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(bodyPayload),
       signal: AbortSignal.timeout(timeoutMs),
     })
+  }
+
+  let res: Response
+  try {
+    res = await tryCallModel(initialModel)
+
+    // If initial model returned 404 (not found) or 403 (access restricted for 2.5),
+    // and it is not already gemini-2.0-flash or gemini-1.5-flash, automatically fallback!
+    if (!res.ok && (res.status === 404 || res.status === 403) && initialModel !== 'gemini-2.0-flash') {
+      console.warn(`[gemini] Model ${initialModel} returned ${res.status}. Falling back to gemini-2.0-flash...`)
+      const fallbackRes = await tryCallModel('gemini-2.0-flash')
+      if (fallbackRes.ok) {
+        res = fallbackRes
+      } else if (fallbackRes.status === 404) {
+        const fallback15 = await tryCallModel('gemini-1.5-flash')
+        if (fallback15.ok) {
+          res = fallback15
+        }
+      }
+    }
   } catch (err) {
     throw toNetworkError(err)
   }
@@ -107,6 +127,11 @@ export async function generateGemini(args: ProviderArgs): Promise<ProviderResult
     .trim()
 
   if (!text) {
+    if (candidate?.finishReason === 'SAFETY') {
+      throw new AiError('Google Gemini response was blocked by safety filters.', {
+        code: 'safety_blocked',
+      })
+    }
     throw new AiError('Google Gemini returned an empty response.', {
       code: 'empty_response',
     })

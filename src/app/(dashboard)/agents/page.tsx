@@ -1,20 +1,21 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Bot, Sparkles, Settings2, BarChart3, Tag as TagIcon, Cpu } from 'lucide-react';
+import { Bot, Sparkles, Settings2, BarChart3, Tag as TagIcon, Cpu, BookOpen } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { AiPlayground } from '@/components/agents/ai-playground';
 import { AiUsageCard } from '@/components/agents/ai-usage';
 import { AiConfig } from '@/components/settings/ai-config';
+import { AiKnowledgeCard } from '@/components/settings/ai-knowledge';
 import { TagManager } from '@/components/settings/tag-manager';
 import { useAuth } from '@/hooks/use-auth';
 import { canEditSettings } from '@/lib/auth/roles';
 
-type Tab = 'playground' | 'setup' | 'tags' | 'usage';
+type Tab = 'playground' | 'setup' | 'knowledge' | 'tags' | 'usage';
 
 export default function AgentsPage() {
-  const { accountRole } = useAuth();
-  const canViewUsage = accountRole ? canEditSettings(accountRole) : false;
+  const { accountId, accountRole } = useAuth();
+  const canEdit = accountRole ? canEditSettings(accountRole) : false;
   const [tab, setTab] = useState<Tab>('playground');
   const [decided, setDecided] = useState(false);
 
@@ -55,7 +56,7 @@ export default function AgentsPage() {
                 </h1>
                 <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Gemini & OpenAI Ready
+                  Gemini • OpenRouter • OpenAI Ready
                 </span>
               </div>
               <p className="text-xs text-muted-foreground">
@@ -69,7 +70,7 @@ export default function AgentsPage() {
           <div className="flex items-center gap-1.5 rounded-xl border border-border/80 bg-card/60 px-3 py-1.5 text-xs backdrop-blur-sm">
             <Cpu className="h-3.5 w-3.5 text-primary" />
             <span className="text-muted-foreground">Supported Providers:</span>
-            <span className="font-semibold text-foreground">Gemini • OpenAI • Claude</span>
+            <span className="font-semibold text-foreground">Gemini • OpenRouter • ChatGPT • Claude</span>
           </div>
         </div>
       </div>
@@ -87,10 +88,13 @@ export default function AgentsPage() {
             <TabsTrigger value="setup" className="rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
               <Settings2 className="mr-1.5 h-4 w-4 text-blue-500" /> Setup & Keys
             </TabsTrigger>
+            <TabsTrigger value="knowledge" className="rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
+              <BookOpen className="mr-1.5 h-4 w-4 text-emerald-500" /> Memory & Docs
+            </TabsTrigger>
             <TabsTrigger value="tags" className="rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
               <TagIcon className="mr-1.5 h-4 w-4 text-cyan-500" /> CRM Tags
             </TabsTrigger>
-            {canViewUsage && (
+            {canEdit && (
               <TabsTrigger value="usage" className="rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
                 <BarChart3 className="mr-1.5 h-4 w-4 text-purple-500" /> Usage & Tokens
               </TabsTrigger>
@@ -103,6 +107,23 @@ export default function AgentsPage() {
 
           <TabsContent value="setup" className="mt-4 animate-in fade-in-50 duration-200">
             <AiConfig />
+          </TabsContent>
+
+          <TabsContent value="knowledge" className="mt-4 animate-in fade-in-50 duration-200 space-y-4">
+            <div className="rounded-2xl border border-border/80 bg-card p-5 shadow-sm">
+              <div className="flex items-center gap-2 text-base font-semibold text-foreground">
+                <BookOpen className="h-5 w-5 text-emerald-500" />
+                <span>AI Agent Long-Term Memory (Knowledge Base)</span>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                Upload your company FAQs, product catalogs, refund policies, or business documentation. When customer messages arrive on WhatsApp or Livechat, the AI agent searches this knowledge base in real-time to answer accurately instead of escalating to human agents.
+              </p>
+            </div>
+            <AiKnowledgeCard
+              accountId={accountId}
+              canEdit={canEdit}
+              hasEmbeddingsKey={true}
+            />
           </TabsContent>
 
           <TabsContent value="tags" className="mt-4 animate-in fade-in-50 duration-200">
@@ -120,7 +141,7 @@ export default function AgentsPage() {
             </div>
           </TabsContent>
 
-          {canViewUsage && (
+          {canEdit && (
             <TabsContent value="usage" className="mt-4 animate-in fade-in-50 duration-200">
               <AiUsageCard />
             </TabsContent>

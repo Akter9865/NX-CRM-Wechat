@@ -229,10 +229,35 @@ describe('generateReply — Gemini', () => {
     const [url, opts] = fetchMock.mock.calls[0]
     expect(url).toContain('generativelanguage.googleapis.com')
     expect(url).toContain('gemini-2.5-flash')
+    expect(url).toContain('key=AIzaSyTestKey')
     expect(opts.headers['x-goog-api-key']).toBe('AIzaSyTestKey')
     const body = JSON.parse(opts.body)
     expect(body.system_instruction.parts[0].text).toBe('You are an assistant')
     expect(body.contents[0].parts[0].text).toBe('Hello')
+  })
+
+  it('automatically falls back to gemini-2.0-flash when selected model returns 404', async () => {
+    const fetchMock = vi.fn()
+      // First call for gemini-2.5-flash fails with 404
+      .mockResolvedValueOnce(errResponse(404, { error: { message: 'models/gemini-2.5-flash not found' } }))
+      // Fallback call for gemini-2.0-flash succeeds
+      .mockResolvedValueOnce(
+        okResponse({
+          candidates: [{ content: { parts: [{ text: 'Recovered with Gemini 2.0 Flash!' }] } }],
+          usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 },
+        }),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await generateReply({
+      config: config({ provider: 'gemini', apiKey: 'AIzaSyKey', model: 'gemini-2.5-flash' }),
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'Hi' }],
+    })
+
+    expect(res.text).toBe('Recovered with Gemini 2.0 Flash!')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls[1][0]).toContain('gemini-2.0-flash')
   })
 
   it('detects handoff in Gemini output', async () => {
@@ -258,5 +283,38 @@ describe('generateReply — Gemini', () => {
     })
     expect(res.handoff).toBe(true)
     expect(res.text).toBe('')
+  })
+})
+
+describe('generateReply — OpenRouter', () => {
+  it('calls OpenRouter chat completions endpoint and returns reply', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        choices: [{ message: { content: 'Hello from OpenRouter!' } }],
+        usage: { prompt_tokens: 30, completion_tokens: 12, total_tokens: 42 },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await generateReply({
+      config: config({
+        provider: 'openrouter',
+        apiKey: 'sk-or-v1-testkey',
+        model: 'google/gemini-2.0-flash-001',
+      }),
+      systemPrompt: 'You are helpful',
+      messages: [{ role: 'user', content: 'Hello' }],
+    })
+
+    expect(res).toEqual({
+      text: 'Hello from OpenRouter!',
+      handoff: false,
+      usage: { promptTokens: 30, completionTokens: 12, totalTokens: 42 },
+    })
+
+    const [url, opts] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://openrouter.ai/api/v1/chat/completions')
+    expect(opts.headers.Authorization).toBe('Bearer sk-or-v1-testkey')
+    expect(opts.headers['HTTP-Referer']).toBe('https://nxcrm.online')
   })
 })

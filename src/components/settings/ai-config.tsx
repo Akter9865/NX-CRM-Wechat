@@ -41,38 +41,48 @@ const HANDOFF_QUEUE = '__queue__';
 
 const PROVIDER_LABEL: Record<AiProvider, string> = {
   gemini: 'Google Gemini',
-  openai: 'OpenAI',
+  openai: 'OpenAI (ChatGPT)',
+  openrouter: 'OpenRouter (All-in-One)',
   anthropic: 'Anthropic (Claude)',
 };
 
 const KEY_PLACEHOLDER: Record<AiProvider, string> = {
   gemini: 'AIzaSy...',
   openai: 'sk-...',
+  openrouter: 'sk-or-v1-...',
   anthropic: 'sk-ant-...',
 };
 
 const KEY_URL: Record<AiProvider, { label: string; url: string }> = {
   gemini: { label: 'Get Gemini API Key (Google AI Studio)', url: 'https://aistudio.google.com/app/apikey' },
   openai: { label: 'Get OpenAI API Key', url: 'https://platform.openai.com/api-keys' },
+  openrouter: { label: 'Get OpenRouter API Key', url: 'https://openrouter.ai/keys' },
   anthropic: { label: 'Get Anthropic API Key', url: 'https://console.anthropic.com/settings/keys' },
 };
 
 const MODEL_PRESETS: Record<AiProvider, { id: string; label: string; badge?: string }[]> = {
   gemini: [
-    { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', badge: 'Fast & Smart' },
-    { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', badge: 'Fast' },
-    { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
+    { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', badge: 'Recommended & Fast' },
+    { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', badge: 'High Quota' },
     { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', badge: 'High Reasoning' },
-    { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', badge: 'Ultra' },
+    { id: 'gemini-2.0-pro-exp-02-05', label: 'Gemini 2.0 Pro Experimental', badge: 'Advanced' },
   ],
   openai: [
-    { id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini', badge: 'Default' },
-    { id: 'gpt-4o-mini', label: 'GPT-4o Mini', badge: 'Fast' },
+    { id: 'gpt-4o-mini', label: 'GPT-4o Mini', badge: 'Recommended & Fast' },
     { id: 'gpt-4o', label: 'GPT-4o', badge: 'Flagship' },
+    { id: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
+    { id: 'o3-mini', label: 'o3-mini', badge: 'Reasoning' },
+  ],
+  openrouter: [
+    { id: 'google/gemini-2.0-flash-001', label: 'Gemini 2.0 Flash (OpenRouter)', badge: 'Recommended' },
+    { id: 'openai/gpt-4o-mini', label: 'GPT-4o Mini (OpenRouter)', badge: 'Fast' },
+    { id: 'deepseek/deepseek-chat', label: 'DeepSeek V3', badge: 'Ultra Cheap' },
+    { id: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet', badge: 'Flagship' },
+    { id: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B', badge: 'Open Source' },
   ],
   anthropic: [
-    { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', badge: 'Default' },
     { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet', badge: 'Flagship' },
+    { id: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku', badge: 'Fast' },
   ],
 };
 
@@ -156,11 +166,7 @@ export function AiConfig() {
   // typed a custom model.
   const handleProviderChange = (next: AiProvider) => {
     setProvider(next);
-    const isDefaultModel =
-      model === AI_PROVIDER_DEFAULT_MODEL.openai ||
-      model === AI_PROVIDER_DEFAULT_MODEL.anthropic ||
-      model.trim() === '';
-    if (isDefaultModel) setModel(AI_PROVIDER_DEFAULT_MODEL[next]);
+    setModel(AI_PROVIDER_DEFAULT_MODEL[next]);
   };
 
   const keyPayload = () => (keyEdited ? apiKey.trim() : undefined);

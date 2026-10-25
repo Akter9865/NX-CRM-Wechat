@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Loader2, Plus, Trash2, Pencil, RefreshCw, BookOpen } from 'lucide-react';
+import { Loader2, Plus, Trash2, Pencil, RefreshCw, BookOpen, Upload, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -41,8 +41,34 @@ export function AiKnowledgeCard({
   const [content, setContent] = useState('');
   const [saving, setSaving] = useState(false);
   const [reindexing, setReindexing] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const loadedAccountIdRef = useRef<string | null>(null);
   const t = useTranslations('Settings.aiKnowledge');
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const fileNameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
+    const reader = new FileReader();
+
+    reader.onload = (event) => {
+      const text = event.target?.result;
+      if (typeof text === 'string') {
+        setEditing('new');
+        setTitle(fileNameWithoutExt);
+        setContent(text.trim());
+        toast.success(`Loaded "${file.name}". Click "Save document" to index it into AI memory.`);
+      }
+    };
+
+    reader.onerror = () => {
+      toast.error('Failed to read document file.');
+    };
+
+    reader.readAsText(file);
+    e.target.value = '';
+  };
 
   const fetchDocs = useCallback(async () => {
     setLoading(true);
@@ -242,22 +268,50 @@ export function AiKnowledgeCard({
                     disabled={saving}
                   />
                 </div>
-                <div className="flex justify-end gap-2">
-                  <Button variant="ghost" onClick={cancelEdit} disabled={saving}>
-                    {t('cancel')}
+                <div className="flex items-center justify-between pt-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="text-xs text-muted-foreground gap-1.5 hover:text-foreground"
+                  >
+                    <Upload className="h-3.5 w-3.5 text-emerald-500" /> Load content from file
                   </Button>
-                  <Button onClick={save} disabled={saving}>
-                    {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    {t('saveDoc')}
-                  </Button>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="ghost" onClick={cancelEdit} disabled={saving}>
+                      {t('cancel')}
+                    </Button>
+                    <Button onClick={save} disabled={saving}>
+                      {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      {t('saveDoc')}
+                    </Button>
+                  </div>
                 </div>
               </div>
             ) : (
               canEdit && (
-                <div className="flex items-center justify-between">
-                  <Button variant="outline" size="sm" onClick={openNew}>
-                    <Plus className="mr-2 h-4 w-4" /> {t('addDoc')}
-                  </Button>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                    accept=".txt,.md,.markdown,.json,.csv,.text"
+                    className="hidden"
+                  />
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button variant="outline" size="sm" onClick={openNew}>
+                      <Plus className="mr-2 h-4 w-4" /> {t('addDoc')}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-dashed border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+                    >
+                      <Upload className="mr-2 h-4 w-4" /> Upload Document (.txt, .md, .csv)
+                    </Button>
+                  </div>
                   {hasEmbeddingsKey && docs.length > 0 && (
                     <Button
                       variant="ghost"
