@@ -108,7 +108,6 @@ const navItems: NavItem[] = [
   { href: "/notifications", labelKey: "notifications", icon: Bell },
   { href: "/contacts", labelKey: "contacts", icon: Users },
   { href: "/pipelines", labelKey: "pipelines", icon: GitBranch },
-  { href: "/automations", labelKey: "automations", icon: Zap },
   {
     href: "/broadcasts",
     labelKey: "broadcasts",
@@ -116,7 +115,7 @@ const navItems: NavItem[] = [
     badgeText: "COMING SOON",
     badgeClass: "border border-amber-500/40 bg-amber-500/15 text-amber-400 font-extrabold text-[8px] tracking-wider px-1.5 py-0.5 rounded",
   },
-  { href: "/flows", labelKey: "flows", icon: Workflow },
+  { href: "/flows", labelKey: "flows", labelFallback: "Flow Automations", icon: Workflow },
   { href: "/bot-reply", labelKey: "botReply", labelFallback: "Bot Reply", icon: BotMessageSquare },
   { href: "/agents", labelKey: "aiAgents", icon: Bot },
   {

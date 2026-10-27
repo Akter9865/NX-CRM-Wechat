@@ -282,6 +282,30 @@ function validateNode(
       break;
     }
 
+    case "delay": {
+      const cfg = node.config as { delay_seconds?: number; next_node_key?: string };
+      const sec = Number(cfg.delay_seconds);
+      if (isNaN(sec) || sec < 1 || sec > 60) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "delay_seconds",
+          message: "Delay must be between 1 and 60 seconds.",
+        });
+      }
+      if (cfg.next_node_key && !knownKeys.has(cfg.next_node_key)) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "next_node_key",
+          message: `Delay points to non-existent node "${cfg.next_node_key}".`,
+        });
+      }
+      break;
+    }
+
     case "send_buttons": {
       const cfg = node.config as {
         text?: string;
@@ -731,6 +755,7 @@ function outgoingEdges(node: NodeInput): string[] {
     case "start":
     case "send_message":
     case "send_media":
+    case "delay":
     case "collect_input":
     case "set_tag": {
       const cfg = node.config as { next_node_key?: string };

@@ -17,6 +17,7 @@
  */
 
 import {
+  Clock,
   FileText,
   Flag,
   GitFork,
@@ -50,6 +51,7 @@ export type NodeType =
   | 'send_buttons'
   | 'send_list'
   | 'send_media'
+  | 'delay'
   | 'collect_input'
   | 'condition'
   | 'set_tag'
@@ -219,6 +221,17 @@ export const FLOW_BLOCKS: FlowBlockItem[] = [
     customKeyBase: 'tag_contact',
   },
   {
+    id: 'delay',
+    node_type: 'delay',
+    label: 'Delay / Wait',
+    blurb: 'Pause for seconds before advancing',
+    category: 'flow_control',
+    icon: Clock,
+    color: 'text-amber-400',
+    initialConfig: { delay_seconds: 5, next_node_key: '' },
+    customKeyBase: 'delay',
+  },
+  {
     id: 'handoff',
     node_type: 'handoff',
     label: 'Handoff to Agent',
@@ -306,6 +319,13 @@ export const NODE_META: Record<
     blurb: 'Adds or removes a contact tag',
     category: 'logic',
   },
+  delay: {
+    label: 'Delay / Wait',
+    icon: Clock,
+    color: 'text-amber-400',
+    blurb: 'Pause execution before next step',
+    category: 'flow',
+  },
   handoff: {
     label: 'Handoff to agent',
     icon: UserPlus,
@@ -356,6 +376,7 @@ const NODE_HUE: Record<NodeType, { l: number; c: number; h: number }> = {
   send_buttons: { l: 0.62, c: 0.16, h: 254 }, // cobalt
   send_list: { l: 0.62, c: 0.15, h: 277 }, // indigo
   send_media: { l: 0.65, c: 0.12, h: 210 }, // sky
+  delay: { l: 0.72, c: 0.16, h: 80 }, // amber/yellow
   collect_input: { l: 0.65, c: 0.1, h: 185 }, // teal — capture
   condition: { l: 0.72, c: 0.15, h: 65 }, // amber — a fork in the road
   set_tag: { l: 0.65, c: 0.15, h: 350 }, // pink
@@ -573,6 +594,10 @@ export function summarizeNode(
       return tagId
         ? t ? t('tagPicked', { mode, tag: tagId.slice(0, 8) }) : `${mode} tag ${tagId.slice(0, 8)}…`
         : t ? t('tagNone', { mode }) : `${mode} tag (none picked)`;
+    }
+    case 'delay': {
+      const sec = Number(cfg.delay_seconds) || 5;
+      return `Wait ${sec}s`;
     }
     case 'handoff': {
       const note = typeof cfg.note === 'string' ? cfg.note : '';

@@ -62,6 +62,7 @@ import {
   type SetTagNodeConfig,
   type StartNodeConfig,
   type KeywordTriggerConfig,
+  type DelayNodeConfig,
 } from "./types";
 
 // ============================================================
@@ -90,6 +91,82 @@ export function matchReplyId(
     }
     return null;
   }
+  return null;
+}
+
+/**
+ * Match a typed customer text reply against buttons or list rows.
+ * Allows customers who type their answer (e.g. "1", "pricing", "Yes")
+ * instead of tapping to still advance through the flow.
+ */
+export function matchInteractiveTextReply(
+  node: { node_type: string; config: Record<string, unknown> },
+  rawText: string,
+): string | null {
+  const query = rawText.trim().toLowerCase();
+  if (!query) return null;
+
+  if (node.node_type === "send_buttons") {
+    const cfg = node.config as unknown as SendButtonsNodeConfig;
+    const buttons = cfg.buttons ?? [];
+    // 1. Direct index match (e.g. user sends "1", "2", "3")
+    const indexNum = parseInt(query, 10);
+    if (!isNaN(indexNum) && indexNum >= 1 && indexNum <= buttons.length) {
+      return buttons[indexNum - 1].next_node_key ?? null;
+    }
+    // 2. Exact reply_id or title match
+    for (const b of buttons) {
+      const bTitle = (b.title || "").trim().toLowerCase();
+      const bId = (b.reply_id || "").trim().toLowerCase();
+      if (query === bTitle || query === bId) {
+        return b.next_node_key ?? null;
+      }
+    }
+    // 3. Substring match (min 3 chars)
+    if (query.length >= 3) {
+      for (const b of buttons) {
+        const bTitle = (b.title || "").trim().toLowerCase();
+        if (bTitle && (bTitle.includes(query) || query.includes(bTitle))) {
+          return b.next_node_key ?? null;
+        }
+      }
+    }
+    return null;
+  }
+
+  if (node.node_type === "send_list") {
+    const cfg = node.config as unknown as SendListNodeConfig;
+    const allRows: Array<{ reply_id: string; title: string; next_node_key: string }> = [];
+    for (const section of cfg.sections ?? []) {
+      for (const row of section.rows ?? []) {
+        allRows.push(row);
+      }
+    }
+    // 1. Direct index match (e.g. user sends "1", "2")
+    const indexNum = parseInt(query, 10);
+    if (!isNaN(indexNum) && indexNum >= 1 && indexNum <= allRows.length) {
+      return allRows[indexNum - 1].next_node_key ?? null;
+    }
+    // 2. Exact reply_id or title match
+    for (const r of allRows) {
+      const rTitle = (r.title || "").trim().toLowerCase();
+      const rId = (r.reply_id || "").trim().toLowerCase();
+      if (query === rTitle || query === rId) {
+        return r.next_node_key ?? null;
+      }
+    }
+    // 3. Substring match (min 3 chars)
+    if (query.length >= 3) {
+      for (const r of allRows) {
+        const rTitle = (r.title || "").trim().toLowerCase();
+        if (rTitle && (rTitle.includes(query) || query.includes(rTitle))) {
+          return r.next_node_key ?? null;
+        }
+      }
+    }
+    return null;
+  }
+
   return null;
 }
 
@@ -140,7 +217,8 @@ export function isAutoAdvancing(node_type: string): boolean {
     node_type === "send_message" ||
     node_type === "send_media" ||
     node_type === "condition" ||
-    node_type === "set_tag"
+    node_type === "set_tag" ||
+    node_type === "delay"
   );
 }
 
@@ -735,12 +813,29 @@ async function advanceFromNodeKey(
       currentKey = cfg.next_node_key || null;
       continue;
     }
+    if (node.node_type === "delay") {
+      const cfg = node.config as unknown as DelayNodeConfig;
+      const delaySec = Number(cfg.delay_seconds) || 0;
+      if (delaySec > 0) {
+        // Cap synchronous serverless delay to 25 seconds
+        const waitMs = Math.min(delaySec * 1000, 25000);
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+      }
+      await logEvent(db, run.id, "node_entered", node.node_key, {
+        node_type: "delay",
+        delay_seconds: delaySec,
+      });
+      currentKey = cfg.next_node_key || null;
+      continue;
+    }
     if (node.node_type === "send_media") {
       const cfg = node.config as unknown as SendMediaNodeConfig;
       await applyDeliveryDelay(cfg);
 
+      const mediaUrlToSend = interpolateVars(cfg.media_url, run.vars, contactRecord);
+
       if (run.contact_id) {
-        const floodCheck = checkAndRecordAutomatedSend(run.account_id, run.contact_id, cfg.media_url);
+        const floodCheck = checkAndRecordAutomatedSend(run.account_id, run.contact_id, mediaUrlToSend);
         if (!floodCheck.allowed) {
           console.warn(`[flows] Anti-Flood Guard suppressed media send to contact ${run.contact_id}: ${floodCheck.reason}`);
           await logEvent(db, run.id, "error", node.node_key, {
@@ -759,7 +854,7 @@ async function advanceFromNodeKey(
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
           kind: cfg.media_type,
-          link: cfg.media_url,
+          link: mediaUrlToSend,
           caption: cfg.caption
             ? interpolateVars(cfg.caption, run.vars, contactRecord)
             : undefined,
@@ -1085,6 +1180,12 @@ async function handleReplyForActiveRun(
     matched = matchReplyId(currentNode, message.reply_id);
   } else if (
     message.kind === "text" &&
+    (currentNode.node_type === "send_buttons" ||
+      currentNode.node_type === "send_list")
+  ) {
+    matched = matchInteractiveTextReply(currentNode, message.text);
+  } else if (
+    message.kind === "text" &&
     currentNode.node_type === "collect_input"
   ) {
     const cfg = currentNode.config as unknown as CollectInputNodeConfig;
@@ -1135,6 +1236,39 @@ async function handleReplyForActiveRun(
       flow_run_id: run.id,
       outcome: outcome.outcome,
     };
+  }
+
+  // If no match on current prompt, check if the customer is typing a trigger keyword
+  // for another flow (or resetting the conversation).
+  if (message.kind === "text" && run.account_id && run.contact_id) {
+    const altFlow = await findEntryFlow(
+      db,
+      run.account_id,
+      message,
+      false,
+    );
+    if (
+      altFlow &&
+      altFlow.entry_node_id &&
+      altFlow.id !== run.flow_id &&
+      run.conversation_id &&
+      run.contact_id
+    ) {
+      await endRun(db, run.id, "completed", "superseded_by_keyword_flow");
+      const altNodes = await loadAllNodes(db, altFlow.id);
+      return startNewRun(
+        db,
+        altFlow,
+        {
+          accountId: run.account_id,
+          userId: run.user_id,
+          conversationId: run.conversation_id,
+          contactId: run.contact_id,
+          message,
+        },
+        altNodes,
+      );
+    }
   }
 
   // No match → fallback. Apply the policy.

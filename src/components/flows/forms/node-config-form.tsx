@@ -140,6 +140,16 @@ export function NodeConfigForm({
         />
       );
 
+    case "delay":
+      return (
+        <DelayNodeForm
+          cfg={cfg as { delay_seconds?: number; next_node_key?: string }}
+          allNodes={allNodes}
+          currentKey={node.node_key}
+          onUpdateConfig={onUpdateConfig}
+        />
+      );
+
     case "collect_input":
       return (
         <div className="flex flex-col gap-3">
@@ -1491,6 +1501,80 @@ function StartNodeForm({
         currentKey={currentKey}
         onChange={(v) => onUpdateConfig({ next_node_key: v })}
         label={t("advancesTo")}
+      />
+    </div>
+  );
+}
+
+function DelayNodeForm({
+  cfg,
+  allNodes,
+  currentKey,
+  onUpdateConfig,
+}: {
+  cfg: { delay_seconds?: number; next_node_key?: string };
+  allNodes: BuilderNode[];
+  currentKey: string;
+  onUpdateConfig: (patch: Record<string, unknown>) => void;
+}) {
+  const currentSec = Number(cfg.delay_seconds) || 5;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="rounded-lg border border-border/60 bg-muted/30 p-3 space-y-3">
+        <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+          <Clock className="w-4 h-4 text-amber-400" />
+          <span>Delay Duration</span>
+        </div>
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          Pauses the flow execution before moving to the next node. Ideal for giving customers time to read messages or simulating human response timing.
+        </p>
+
+        <div>
+          <label className="mb-1 block text-xs font-medium text-muted-foreground">
+            Wait Time (Seconds)
+          </label>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={1}
+              max={60}
+              value={currentSec}
+              onChange={(e) => {
+                const val = Math.min(60, Math.max(1, parseInt(e.target.value) || 1));
+                onUpdateConfig({ delay_seconds: val });
+              }}
+              className="h-9 w-24 text-center font-mono text-sm bg-background"
+            />
+            <span className="text-xs text-muted-foreground">seconds</span>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-1.5 pt-1">
+          {[2, 3, 5, 10, 15, 30].map((preset) => (
+            <button
+              key={preset}
+              type="button"
+              onClick={() => onUpdateConfig({ delay_seconds: preset })}
+              className={cn(
+                "rounded px-2.5 py-1 text-xs transition-colors border",
+                currentSec === preset
+                  ? "border-primary bg-primary/10 text-primary font-medium"
+                  : "border-border/60 bg-background/50 hover:bg-muted text-muted-foreground"
+              )}
+            >
+              {preset}s
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <NextNodeRow
+        value={cfg.next_node_key ?? ""}
+        allNodes={allNodes}
+        currentKey={currentKey}
+        onChange={(v) => onUpdateConfig({ next_node_key: v })}
+        label="Advance to next step"
       />
     </div>
   );

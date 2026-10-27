@@ -307,6 +307,9 @@ describe("outgoingSlots", () => {
     expect(
       each({ node_key: "x", node_type: "collect_input", config: {} }),
     ).toEqual(["next"]);
+    expect(
+      each({ node_key: "x", node_type: "delay", config: {} }),
+    ).toEqual(["next"]);
     expect(each({ node_key: "x", node_type: "set_tag", config: {} })).toEqual([
       "next",
     ]);

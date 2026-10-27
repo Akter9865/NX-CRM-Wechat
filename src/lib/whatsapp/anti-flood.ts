@@ -25,14 +25,14 @@ const contactHistories = new Map<string, ContactHistory>();
 // Safety Configuration
 export const ANTI_FLOOD_CONFIG = {
   MAX_MESSAGES_BURST_WINDOW_MS: 15_000, // 15 seconds
-  MAX_MESSAGES_BURST_LIMIT: 3,          // Max 3 messages in 15 seconds
+  MAX_MESSAGES_BURST_LIMIT: 10,         // Max 10 messages in 15 seconds (allows multi-step flows)
 
   MAX_MESSAGES_MINUTE_WINDOW_MS: 60_000, // 60 seconds
-  MAX_MESSAGES_MINUTE_LIMIT: 6,          // Max 6 messages in 60 seconds
+  MAX_MESSAGES_MINUTE_LIMIT: 30,         // Max 30 messages in 60 seconds
 
-  DUPLICATE_SUPPRESSION_WINDOW_MS: 15_000, // 15 seconds duplicate guard
-  CIRCUIT_BREAKER_COOLDOWN_MS: 300_000,    // 5 minutes cooldown if tripped
-  MIN_NATURAL_SPACING_MS: 1_200,          // 1.2 seconds natural delay between consecutive bot messages
+  DUPLICATE_SUPPRESSION_WINDOW_MS: 3_000, // 3 seconds duplicate guard (stops tight infinite loops)
+  CIRCUIT_BREAKER_COOLDOWN_MS: 60_000,    // 1 minute cooldown if true runaway loop
+  MIN_NATURAL_SPACING_MS: 500,           // 0.5 seconds natural delay
 };
 
 export interface AntiFloodCheckResult {

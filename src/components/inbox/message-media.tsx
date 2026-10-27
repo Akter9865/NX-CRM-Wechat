@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, memo } from "react";
 import {
   Download,
   FileText,
@@ -180,7 +180,7 @@ export function MediaImageBubble({
   );
 }
 
-export function MediaVideoBubble({
+export const MediaVideoBubble = memo(function MediaVideoBubble({
   message,
   onOpen,
   t,
@@ -221,9 +221,15 @@ export function MediaVideoBubble({
       </div>
     </div>
   );
-}
+}, (prev, next) => {
+  return (
+    prev.message.id === next.message.id &&
+    prev.message.media_url === next.message.media_url &&
+    prev.message.status === next.message.status
+  );
+});
 
-export function MediaAudioBubble({
+export const MediaAudioBubble = memo(function MediaAudioBubble({
   message,
   t,
 }: {
@@ -234,7 +240,12 @@ export function MediaAudioBubble({
 
   return (
     <div className="flex items-center gap-2">
-      <audio src={message.media_url} controls className="max-w-60" />
+      <audio
+        src={message.media_url}
+        controls
+        preload="metadata"
+        className="max-w-60"
+      />
       <MediaActionButton
         icon={Download}
         label={t("download")}
@@ -243,7 +254,13 @@ export function MediaAudioBubble({
       />
     </div>
   );
-}
+}, (prev, next) => {
+  return (
+    prev.message.id === next.message.id &&
+    prev.message.media_url === next.message.media_url &&
+    prev.message.status === next.message.status
+  );
+});
 
 export function MediaDocumentBubble({
   message,

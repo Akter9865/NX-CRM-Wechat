@@ -472,7 +472,29 @@ function InboxPageInner() {
 
   const handleConversationsLoaded = useCallback(
     (loaded: Conversation[]) => {
-      setConversations(loaded);
+      setConversations((prev) => {
+        if (prev.length === loaded.length) {
+          let changed = false;
+          for (let i = 0; i < prev.length; i++) {
+            const a = prev[i];
+            const b = loaded[i];
+            if (
+              a.id !== b.id ||
+              a.status !== b.status ||
+              a.unread_count !== b.unread_count ||
+              a.last_message_at !== b.last_message_at ||
+              a.last_message_text !== b.last_message_text ||
+              a.assigned_agent_id !== b.assigned_agent_id ||
+              a.ai_autoreply_disabled !== b.ai_autoreply_disabled
+            ) {
+              changed = true;
+              break;
+            }
+          }
+          if (!changed) return prev;
+        }
+        return loaded;
+      });
       // Resolve a pending deep-link here rather than in an effect — this
       // is an event handler, so the setState calls below are allowed by
       // react-hooks/set-state-in-effect. Runs once per ?c=<id> URL value
@@ -573,7 +595,27 @@ function InboxPageInner() {
 
 
   const handleMessagesLoaded = useCallback((loaded: Message[]) => {
-    setMessages(loaded);
+    setMessages((prev) => {
+      if (prev.length === loaded.length) {
+        let changed = false;
+        for (let i = 0; i < prev.length; i++) {
+          const a = prev[i];
+          const b = loaded[i];
+          if (
+            a.id !== b.id ||
+            a.status !== b.status ||
+            a.content_text !== b.content_text ||
+            a.media_url !== b.media_url ||
+            a.created_at !== b.created_at
+          ) {
+            changed = true;
+            break;
+          }
+        }
+        if (!changed) return prev;
+      }
+      return loaded;
+    });
   }, []);
 
   const handleNewMessage = useCallback((msg: Message) => {
@@ -598,16 +640,18 @@ function InboxPageInner() {
 
   // Background fallback sync: when an active conversation is open, poll periodically
   // so any status transitions (e.g. sent -> delivered -> read) or inbound messages
-  // are refreshed even if Realtime drops packets.
+  // are refreshed even if Realtime drops packets. Uses a gentler interval when
+  // Realtime is already connected.
   useEffect(() => {
     if (!activeConversation?.id) return;
+    const intervalMs = isConnected ? 30000 : 12000;
     const interval = setInterval(() => {
       if (document.visibilityState === "visible") {
         setResyncToken((n) => n + 1);
       }
-    }, 8000);
+    }, intervalMs);
     return () => clearInterval(interval);
-  }, [activeConversation?.id]);
+  }, [activeConversation?.id, isConnected]);
 
   const handleStatusChange = useCallback(
     (conversationId: string, status: ConversationStatus) => {

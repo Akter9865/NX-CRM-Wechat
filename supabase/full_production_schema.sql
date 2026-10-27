@@ -1123,6 +1123,29 @@ CREATE TRIGGER account_integrations_updated_at
   BEFORE UPDATE ON public.account_integrations
   FOR EACH ROW EXECUTE FUNCTION public.update_account_integrations_updated_at();
 
+-- Safe update for flow_nodes node_type check constraint (includes 'delay')
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'flow_nodes') THEN
+    ALTER TABLE public.flow_nodes DROP CONSTRAINT IF EXISTS flow_nodes_node_type_check;
+    ALTER TABLE public.flow_nodes ADD CONSTRAINT flow_nodes_node_type_check
+      CHECK (node_type IN (
+        'start',
+        'send_buttons',
+        'send_list',
+        'send_message',
+        'send_media',
+        'delay',
+        'collect_input',
+        'condition',
+        'set_tag',
+        'handoff',
+        'http_fetch',
+        'end'
+      ));
+  END IF;
+END $$;
+
 -- ==============================================================================
 -- Schema consolidation complete.
 -- ==============================================================================

@@ -30,15 +30,15 @@ describe('WhatsApp Anti-Flood & Loop Protection Guard', () => {
   });
 
   it('suppresses messages when burst limit is exceeded', () => {
-    // Send 3 distinct messages (up to burst limit)
-    expect(checkAndRecordAutomatedSend('acc-1', 'contact-1', 'Message 1').allowed).toBe(true);
-    expect(checkAndRecordAutomatedSend('acc-1', 'contact-1', 'Message 2').allowed).toBe(true);
-    expect(checkAndRecordAutomatedSend('acc-1', 'contact-1', 'Message 3').allowed).toBe(true);
+    // Send distinct messages up to burst limit
+    for (let i = 1; i <= ANTI_FLOOD_CONFIG.MAX_MESSAGES_BURST_LIMIT; i++) {
+      expect(checkAndRecordAutomatedSend('acc-1', 'contact-1', `Message ${i}`).allowed).toBe(true);
+    }
 
-    // 4th message in same burst window should be blocked
-    const res4 = checkAndRecordAutomatedSend('acc-1', 'contact-1', 'Message 4');
-    expect(res4.allowed).toBe(false);
-    expect(res4.reason).toBe('burst_rate_exceeded');
+    // Next message in same burst window should be blocked
+    const overflow = checkAndRecordAutomatedSend('acc-1', 'contact-1', 'Message Overflow');
+    expect(overflow.allowed).toBe(false);
+    expect(overflow.reason).toBe('burst_rate_exceeded');
   });
 
   it('isolates different contacts and different accounts', () => {

@@ -291,34 +291,50 @@ export function MessageThread({
     [conversationId],
   );
 
+  const lastLoadedConvIdRef = useRef<string | null>(null);
+
   // Fetch messages whenever the selected conversation changes. Kept
   // separate from the unread-reset effect so that incoming messages
   // arriving while the thread is open don't trigger a full refetch —
   // they only flip hasUnread, which only the reset effect listens to.
   useEffect(() => {
-    if (!conversationId) return;
+    if (!conversationId) {
+      lastLoadedConvIdRef.current = null;
+      return;
+    }
 
+    const isNewConversation = lastLoadedConvIdRef.current !== conversationId;
     const supabase = createClient();
     let cancelled = false;
 
     (async () => {
-      setLoading(true);
-
-      const { data, error } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("conversation_id", conversationId)
-        .order("created_at", { ascending: true });
-
-      if (cancelled) return;
-
-      if (error) {
-        console.error("Failed to fetch messages:", error);
-      } else {
-        onMessagesLoadedRef.current(data ?? []);
+      // Only show spinner when switching to a different conversation,
+      // NEVER during background resync or polling — this keeps existing
+      // messages in the DOM so audio playback and scroll are not disrupted.
+      if (isNewConversation) {
+        setLoading(true);
       }
 
-      if (!cancelled) setLoading(false);
+      try {
+        const { data, error } = await supabase
+          .from("messages")
+          .select("*")
+          .eq("conversation_id", conversationId)
+          .order("created_at", { ascending: true });
+
+        if (cancelled) return;
+
+        if (error) {
+          console.error("Failed to fetch messages:", error);
+        } else {
+          lastLoadedConvIdRef.current = conversationId;
+          onMessagesLoadedRef.current(data ?? []);
+        }
+      } finally {
+        if (!cancelled && isNewConversation) {
+          setLoading(false);
+        }
+      }
     })();
 
     return () => {
@@ -352,7 +368,25 @@ export function MessageThread({
         console.error("Failed to fetch reactions:", error);
         return;
       }
-      setReactions((data as MessageReaction[]) ?? []);
+      setReactions((prev) => {
+        const next = (data as MessageReaction[]) ?? [];
+        if (prev.length === next.length) {
+          let same = true;
+          for (let i = 0; i < prev.length; i++) {
+            if (
+              prev[i].id !== next[i].id ||
+              prev[i].emoji !== next[i].emoji ||
+              prev[i].message_id !== next[i].message_id ||
+              prev[i].actor_id !== next[i].actor_id
+            ) {
+              same = false;
+              break;
+            }
+          }
+          if (same) return prev;
+        }
+        return next;
+      });
     })();
 
     return () => {
@@ -460,13 +494,35 @@ export function MessageThread({
       });
   }, [conversationId, hasUnread]);
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom on conversation change or when user is following chat
+  const prevMessagesCountRef = useRef(0);
+  const prevConvIdForScrollRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (scrollRef.current) {
-      const el = scrollRef.current;
+    if (!scrollRef.current) return;
+    const el = scrollRef.current;
+    const isNewConv = prevConvIdForScrollRef.current !== conversationId;
+    prevConvIdForScrollRef.current = conversationId ?? null;
+
+    // Check if the user is already near the bottom (within 150px)
+    const isNearBottom =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+
+    const hadZeroMessages =
+      prevMessagesCountRef.current === 0 && messages.length > 0;
+    const lastMsg = messages[messages.length - 1];
+    const isOwnOutbound =
+      lastMsg?.sender_type === "agent" || lastMsg?.sender_type === "bot";
+
+    // Only scroll to bottom if switching conversation, first load of messages,
+    // user is already near bottom following chat, or the latest message was outbound.
+    // If the user scrolled up to read text messages, preserve their scroll position!
+    if (isNewConv || hadZeroMessages || isNearBottom || isOwnOutbound) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [messages]);
+
+    prevMessagesCountRef.current = messages.length;
+  }, [messages, conversationId]);
 
   const handleSend = useCallback(
     async (text: string, replyToId?: string) => {

@@ -166,6 +166,11 @@ export function defaultConfigFor(type: NodeType): Record<string, unknown> {
         filename: "",
         next_node_key: "",
       };
+    case "delay":
+      return {
+        delay_seconds: 5,
+        next_node_key: "",
+      };
     case "collect_input":
       return {
         prompt_text: "",

@@ -175,6 +175,13 @@ export interface SetTagNodeConfig {
   next_node_key: string;
 }
 
+export interface DelayNodeConfig {
+  /** Delay duration in seconds (e.g. 5, 10, 30) */
+  delay_seconds: number;
+  /** Next node to advance to after the delay */
+  next_node_key?: string;
+}
+
 // Terminal nodes carry no config — they just stop the run.
 export type EndNodeConfig = Record<string, never>;
 
@@ -192,6 +199,7 @@ export type FlowNodeConfig =
   | { node_type: "send_buttons"; config: SendButtonsNodeConfig }
   | { node_type: "send_list"; config: SendListNodeConfig }
   | { node_type: "send_media"; config: SendMediaNodeConfig }
+  | { node_type: "delay"; config: DelayNodeConfig }
   | { node_type: "collect_input"; config: CollectInputNodeConfig }
   | { node_type: "condition"; config: ConditionNodeConfig }
   | { node_type: "set_tag"; config: SetTagNodeConfig }
