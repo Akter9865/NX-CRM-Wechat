@@ -498,21 +498,19 @@ export function BillingDashboard() {
               </Badge>
             </div>
             <p className="text-muted-foreground leading-relaxed max-w-2xl">
-              Online Razorpay checkout is disabled. All subscriptions and tier upgrades are processed manually via official WhatsApp Support ({siteConfig.phone}). Select your plan below to open WhatsApp with pre-filled details for instant activation upon UPI/transfer confirmation.
+              অনলাইন Razorpay গেটওয়ে বন্ধ রয়েছে। সকল প্ল্যান সাবস্ক্রিপশন ও আপগ্রেড পেমেন্ট ম্যানুয়ালি আমাদের অফিশিয়াল WhatsApp সাপোর্টে (<strong>+91 8653678794</strong>) গ্রহণ করা হয়। যেকোনো প্ল্যান সিলেক্ট করে সরাসরি WhatsApp-এ মেসেজ পাঠান।
             </p>
           </div>
         </div>
         <a
-          href={`https://wa.me/${siteConfig.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-            `Hi NX CRM Billing Support! I want to upgrade my subscription for workspace ${accountId || ''}.`
-          )}`}
+          href="https://wa.me/918653678794?text=Hi%20NX%20CRM%20Billing%20Support!%20I%20want%20to%20upgrade%20my%20subscription."
           target="_blank"
           rel="noopener noreferrer"
           className="shrink-0 sm:self-center"
         >
           <Button size="sm" className="bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs h-9 px-4 font-bold shadow-md shadow-emerald-600/20">
             <MessageCircle className="size-3.5 mr-1.5" />
-            <span>Chat with Billing Support</span>
+            <span>Chat: +91 8653678794</span>
           </Button>
         </a>
       </div>
@@ -521,11 +519,14 @@ export function BillingDashboard() {
       <div className="space-y-4 pt-2" id="pricing-plans-section">
         <div>
           <h3 className="text-sm font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Zap className="size-4 text-primary" />
+            <Zap className="size-4 text-emerald-500" />
             Upgrade Plan & Capacities
+            <Badge className="bg-emerald-600 text-white text-[10px] font-bold uppercase ml-1">
+              WhatsApp: +91 8653678794
+            </Badge>
           </h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Choose your tier to immediately expand your contacts, monthly messages, and WhatsApp numbers via WhatsApp Support.
+            Choose your tier to expand your contacts, monthly messages, and WhatsApp numbers. Upgrades are activated manually on WhatsApp (+91 8653678794).
           </p>
         </div>
 

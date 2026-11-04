@@ -187,8 +187,15 @@ export default async function PricingPage() {
                       </span>
                       <span className="text-xs font-semibold text-slate-500">/ month</span>
                     </div>
-                    <span className="text-[11px] text-slate-400 mt-1 block">
-                      {plan.price === 0 ? 'Forever free basic tier' : 'Manual activation via WhatsApp'}
+                    <span className="text-[11px] text-slate-500 mt-1 flex items-center gap-1 font-medium">
+                      {plan.price === 0 ? (
+                        'Forever free basic tier'
+                      ) : (
+                        <>
+                          <span className="size-1.5 rounded-full bg-emerald-500 inline-block animate-pulse shrink-0" />
+                          <span>WhatsApp Manual: +91 8653678794</span>
+                        </>
+                      )}
                     </span>
                   </div>
 

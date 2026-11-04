@@ -70,31 +70,22 @@ export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: Pricing
     }
   }, [searchParams, currentPlanId, plans]);
 
-  const cleanPhone = siteConfig.phone.replace(/[^0-9]/g, '');
+  const cleanPhone = '918653678794';
   const upiId = '8653678794@upi';
 
-  const handleSelectPlan = (plan: PlanConfig) => {
-    if (plan.id === 'free') {
-      return;
-    }
-
-    if (plan.id === currentPlanId) {
-      toast.info(`You are currently on the ${plan.name} plan.`);
-      return;
-    }
-
-    setManualPlanModal(plan);
-  };
-
   const generateWhatsAppMessage = (plan: PlanConfig) => {
-    return `Hi NX CRM Team! I want to activate/upgrade to the *${plan.name} Plan* (₹${plan.price.toLocaleString('en-IN')}/month).
+    const isRenew = plan.id === currentPlanId;
+    return `Hi NX CRM Team! I want to ${isRenew ? 'renew' : 'upgrade to'} the *${plan.name} Plan* (₹${plan.price.toLocaleString('en-IN')}/month).
 
 📋 Workspace Details:
 • Workspace: ${account?.name || 'My Workspace'}
 • Account ID: ${accountId || 'N/A'}
 • User Email: ${user?.email || profile?.email || 'N/A'}
 
-Please share UPI/Payment details to complete manual activation.`;
+WhatsApp Support: +91 8653678794
+UPI ID: 8653678794@upi
+
+Please share payment confirmation and activate my subscription.`;
   };
 
   const handleCopy = (text: string, label: string) => {
@@ -108,11 +99,56 @@ Please share UPI/Payment details to complete manual activation.`;
     const message = generateWhatsAppMessage(plan);
     const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
     window.open(waUrl, '_blank', 'noopener,noreferrer');
-    toast.success('Opening WhatsApp Support... Send your message to complete activation!');
+    toast.success('Opening WhatsApp Support (+91 8653678794)... Send your message to complete activation!');
+  };
+
+  const handleSelectPlan = (plan: PlanConfig) => {
+    if (plan.id === 'free') {
+      return;
+    }
+
+    // Automatically open WhatsApp and show the modal with details
+    handleOpenWhatsApp(plan);
+    setManualPlanModal(plan);
   };
 
   return (
-    <div className="space-y-10" id="pricing-plans-section">
+    <div className="space-y-8" id="pricing-plans-section">
+      {/* Top Banner: WhatsApp Manual Subscription Notice */}
+      <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-r from-emerald-500/15 via-emerald-500/10 to-card p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+        <div className="flex items-start gap-3.5">
+          <div className="size-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-600/20">
+            <MessageCircle className="size-5" />
+          </div>
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h4 className="font-bold text-foreground text-sm">
+                Manual Payment via WhatsApp Support
+              </h4>
+              <Badge className="bg-emerald-600 text-white text-[10px] uppercase font-bold px-2 py-0.5">
+                WA: +91 8653678794
+              </Badge>
+            </div>
+            <p className="text-muted-foreground text-xs leading-relaxed max-w-2xl">
+              অনলাইন Razorpay গেটওয়ে বন্ধ আছে। যেকোনো প্ল্যান সাবস্ক্রিপশন বা আপগ্রেড করতে সরাসরি আমাদের অফিশিয়াল WhatsApp সাপোর্টে (<strong>+91 8653678794</strong>) মেসেজ দিন। UPI ID: <strong>8653678794@upi</strong>
+            </p>
+          </div>
+        </div>
+        <a
+          href={`https://wa.me/${cleanPhone}?text=${encodeURIComponent(
+            `Hi NX CRM Team! I want to manually pay and activate my subscription for workspace ${accountId || ''}.`
+          )}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="shrink-0 sm:self-center"
+        >
+          <Button className="bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs h-10 px-4 font-bold shadow-md shadow-emerald-600/20 flex items-center gap-1.5">
+            <MessageCircle className="size-4" />
+            <span>Chat on WhatsApp (+91 8653678794)</span>
+          </Button>
+        </a>
+      </div>
+
       {/* Plan Grid */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4 items-stretch">
         {plans.map((plan) => {
@@ -174,8 +210,15 @@ Please share UPI/Payment details to complete manual activation.`;
                       / month
                     </span>
                   </div>
-                  <span className="text-[11px] text-muted-foreground mt-1 block">
-                    {plan.price === 0 ? 'Forever free basic tier' : 'Manual activation via WhatsApp'}
+                  <span className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1">
+                    {plan.price === 0 ? (
+                      'Forever free basic tier'
+                    ) : (
+                      <>
+                        <span className="size-1.5 rounded-full bg-emerald-500 inline-block animate-pulse shrink-0" />
+                        <span className="truncate">Manual on WhatsApp: +91 8653678794</span>
+                      </>
+                    )}
                   </span>
                 </div>
 
@@ -227,13 +270,24 @@ Please share UPI/Payment details to complete manual activation.`;
               {/* Action Button */}
               <div className="mt-8 pt-4">
                 {isCurrent ? (
-                  <Button
-                    disabled
-                    variant="outline"
-                    className="w-full h-11 rounded-2xl font-semibold text-xs border-border bg-muted/40 text-muted-foreground cursor-default"
-                  >
-                    Active Plan
-                  </Button>
+                  <div className="space-y-2">
+                    <Button
+                      disabled
+                      variant="outline"
+                      className="w-full h-10 rounded-2xl font-semibold text-xs border-emerald-500/30 bg-emerald-500/10 text-emerald-600 cursor-default"
+                    >
+                      Active Plan
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleSelectPlan(plan)}
+                      className="w-full h-8 text-[11px] text-muted-foreground hover:text-emerald-500 hover:bg-emerald-500/10 rounded-xl"
+                    >
+                      <MessageCircle className="size-3 mr-1 text-emerald-500" />
+                      <span>Renew via WhatsApp</span>
+                    </Button>
+                  </div>
                 ) : plan.id === 'free' ? (
                   <Button
                     disabled
@@ -246,15 +300,15 @@ Please share UPI/Payment details to complete manual activation.`;
                   <Button
                     onClick={() => handleSelectPlan(plan)}
                     className={cn(
-                      'w-full h-11 rounded-2xl font-semibold text-xs shadow-md transition-all flex items-center justify-center gap-1.5',
+                      'w-full h-11 rounded-2xl font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5',
                       isPopular
                         ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20'
                         : isEnterprise
                         ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-purple-500/20'
-                        : 'bg-card text-foreground border border-border hover:bg-muted'
+                        : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20'
                     )}
                   >
-                    <MessageCircle className="size-3.5 mr-1 text-emerald-400" />
+                    <MessageCircle className="size-4 mr-1 text-white" />
                     <span>Upgrade via WhatsApp</span>
                     <ArrowRight className="size-3.5 ml-1" />
                   </Button>
@@ -384,7 +438,7 @@ Please share UPI/Payment details to complete manual activation.`;
 
                 <div className="flex items-center justify-between rounded-xl bg-card/80 border border-emerald-500/20 px-3 py-2 font-mono text-xs text-foreground">
                   <span>UPI ID: <strong className="text-emerald-600 dark:text-emerald-400">{upiId}</strong></span>
-                  <span className="text-muted-foreground text-[10px]">{siteConfig.phone}</span>
+                  <span className="text-muted-foreground text-[10px]">+91 8653678794</span>
                 </div>
 
                 <div className="space-y-1.5 text-[11px] text-muted-foreground leading-relaxed">
@@ -456,9 +510,9 @@ Please share UPI/Payment details to complete manual activation.`;
           target="_blank"
           rel="noopener noreferrer"
         >
-          <Button variant="outline" className="rounded-xl text-xs h-10 px-5 border-border font-semibold shrink-0">
-            <Sparkles className="size-3.5 mr-1.5 text-purple-500" />
-            Contact Enterprise Sales
+          <Button variant="outline" className="rounded-xl text-xs h-10 px-5 border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-semibold shrink-0">
+            <MessageCircle className="size-3.5 mr-1.5 text-emerald-500" />
+            WhatsApp Sales (+91 8653678794)
           </Button>
         </a>
       </div>
