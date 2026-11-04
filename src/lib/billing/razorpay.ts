@@ -3,6 +3,12 @@ import crypto from 'crypto';
 import { PLANS, type PlanId } from './plans';
 import { getAdminSupabaseClient } from '@/lib/admin/admin-client';
 
+/**
+ * Flag indicating whether Razorpay online checkout is enabled.
+ * Subscriptions & payments are currently handled manually via WhatsApp Support.
+ */
+export const IS_RAZORPAY_GATEWAY_ENABLED = false;
+
 export interface RazorpayCredentials {
   keyId: string;
   keySecret: string;
@@ -124,6 +130,10 @@ export async function createOrderInstance({
   accountId: string;
   customerEmail?: string;
 }) {
+  if (!IS_RAZORPAY_GATEWAY_ENABLED) {
+    throw new Error('Razorpay gateway is disabled. Subscriptions are processed manually via WhatsApp Support.');
+  }
+
   const { client: razorpay, creds } = await getDynamicRazorpayClient();
   const config = PLANS[planId];
   if (!config || config.price <= 0) {
@@ -156,6 +166,10 @@ export async function createSubscriptionInstance({
   accountId: string;
   customerEmail?: string;
 }) {
+  if (!IS_RAZORPAY_GATEWAY_ENABLED) {
+    throw new Error('Razorpay gateway is disabled. Subscriptions are processed manually via WhatsApp Support.');
+  }
+
   const { client: razorpay, creds } = await getDynamicRazorpayClient();
   const rzpPlanId = await createOrFetchRazorpayPlan(planId);
 

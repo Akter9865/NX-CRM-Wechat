@@ -54,9 +54,9 @@ export function Footer() {
               <Zap className="size-5" />
             </div>
             <div>
-              <h4 className="text-xs font-bold text-slate-900">Instant Razorpay Activation</h4>
+              <h4 className="text-xs font-bold text-slate-900">Fast WhatsApp Activation</h4>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                Monthly transparent INR subscriptions with immediate entitlement.
+                Monthly transparent INR subscriptions activated manually via WhatsApp Support.
               </p>
             </div>
           </div>

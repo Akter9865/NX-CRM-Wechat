@@ -56,7 +56,7 @@ const SUPPORT_CATEGORIES = [
   },
   {
     title: 'Billing, Plans & Invoices',
-    desc: 'Managing Razorpay subscriptions, upgrades, cancellations, and monthly quotas.',
+    desc: 'Managing subscriptions, WhatsApp manual payment upgrades, and monthly quotas.',
     href: '/docs/billing',
     icon: CreditCard,
     color: 'text-purple-600',

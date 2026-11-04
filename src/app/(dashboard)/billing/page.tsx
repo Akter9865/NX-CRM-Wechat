@@ -11,7 +11,7 @@ export default function BillingPage() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">Billing & Subscription</h1>
         <p className="text-xs text-muted-foreground mt-1">
-          Monitor your contact capacity, monthly message usage, and active Razorpay subscription.
+          Monitor your contact capacity, monthly message usage, and active workspace subscription.
         </p>
       </div>
 

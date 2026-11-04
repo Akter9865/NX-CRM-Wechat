@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/account';
-import { getRazorpayClient } from '@/lib/billing/razorpay';
+import { getRazorpayClient, IS_RAZORPAY_GATEWAY_ENABLED } from '@/lib/billing/razorpay';
 
 export async function POST() {
   try {
@@ -16,8 +16,8 @@ export async function POST() {
       return NextResponse.json({ error: 'No active paid subscription to cancel.' }, { status: 400 });
     }
 
-    // If there is an active Razorpay subscription, request cancellation at cycle end
-    if (sub.razorpay_subscription_id) {
+    // If there is an active Razorpay subscription and gateway is enabled, request cancellation at cycle end
+    if (IS_RAZORPAY_GATEWAY_ENABLED && sub.razorpay_subscription_id) {
       try {
         const razorpay = getRazorpayClient();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

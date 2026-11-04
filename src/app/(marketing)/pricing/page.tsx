@@ -29,7 +29,7 @@ export const revalidate = 0;
 export const metadata = {
   title: 'Pricing & Plans — Transparent Monthly WhatsApp CRM Billing',
   description:
-    'Explore simple, transparent monthly pricing for NX CRM. Free forever tier, Pro at ₹499/mo, Business at ₹3,000/mo, and Enterprise at ₹8,999/mo. Powered by Razorpay.',
+    'Explore simple, transparent monthly pricing for NX CRM. Free forever tier, Pro at ₹499/mo, Business at ₹3,000/mo, and Enterprise at ₹8,999/mo. Manual payment via WhatsApp support.',
 };
 
 const COMPARISON_ROWS = [
@@ -59,7 +59,7 @@ const PRICING_FAQS = [
   },
   {
     q: 'How does payment and activation work?',
-    a: 'When you choose a paid tier, checkout is processed via Razorpay. Your subscription is activated immediately upon server verification of the payment signature.',
+    a: 'Subscriptions are processed manually via WhatsApp Support. Simply select your desired plan, connect with our support team on WhatsApp, complete the payment via UPI or Bank Transfer, and our team activates your workspace plan immediately.',
   },
   {
     q: 'Can I change my plan or cancel anytime?',
@@ -188,7 +188,7 @@ export default async function PricingPage() {
                       <span className="text-xs font-semibold text-slate-500">/ month</span>
                     </div>
                     <span className="text-[11px] text-slate-400 mt-1 block">
-                      {plan.price === 0 ? 'Forever free basic tier' : 'Billed monthly via Razorpay'}
+                      {plan.price === 0 ? 'Forever free basic tier' : 'Manual activation via WhatsApp'}
                     </span>
                   </div>
 

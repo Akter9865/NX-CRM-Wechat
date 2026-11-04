@@ -11,20 +11,29 @@ import {
   Zap,
   Shield,
   ArrowRight,
-  Loader2,
   Radio,
   Building,
   Users,
   MessageSquare,
+  MessageCircle,
+  Copy,
+  CheckCircle2,
+  ExternalLink,
+  QrCode,
+  ShieldCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-
-declare global {
-  interface Window {
-    Razorpay: any;
-  }
-}
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { useAuth } from '@/hooks/use-auth';
+import { siteConfig } from '@/lib/config/site';
 
 interface PricingCardsProps {
   currentPlanId?: PlanId;
@@ -34,8 +43,10 @@ interface PricingCardsProps {
 export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: PricingCardsProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { account, accountId, user, profile } = useAuth();
   const [plans, setPlans] = useState<PlanConfig[]>(PLAN_LIST);
-  const [loadingPlan, setLoadingPlan] = useState<PlanId | null>(null);
+  const [manualPlanModal, setManualPlanModal] = useState<PlanConfig | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/plans')
@@ -54,27 +65,15 @@ export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: Pricing
     if (autoPlanId && autoPlanId !== 'free' && autoPlanId !== currentPlanId) {
       const match = plans.find((p) => p.id === autoPlanId);
       if (match) {
-        handleSelectPlan(match);
+        setManualPlanModal(match);
       }
     }
   }, [searchParams, currentPlanId, plans]);
 
-  // Load Razorpay Checkout Script Dynamically
-  const loadRazorpayScript = (): Promise<boolean> => {
-    return new Promise((resolve) => {
-      if (typeof window !== 'undefined' && window.Razorpay) {
-        resolve(true);
-        return;
-      }
-      const script = document.createElement('script');
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
-    });
-  };
+  const cleanPhone = siteConfig.phone.replace(/[^0-9]/g, '');
+  const upiId = '8653678794@upi';
 
-  const handleSelectPlan = async (plan: PlanConfig) => {
+  const handleSelectPlan = (plan: PlanConfig) => {
     if (plan.id === 'free') {
       return;
     }
@@ -84,93 +83,32 @@ export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: Pricing
       return;
     }
 
-    try {
-      setLoadingPlan(plan.id);
+    setManualPlanModal(plan);
+  };
 
-      // Ensure SDK script is loaded
-      const isLoaded = await loadRazorpayScript();
-      if (!isLoaded) {
-        toast.error('Failed to load Razorpay payment gateway. Please check your internet connection.');
-        return;
-      }
+  const generateWhatsAppMessage = (plan: PlanConfig) => {
+    return `Hi NX CRM Team! I want to activate/upgrade to the *${plan.name} Plan* (₹${plan.price.toLocaleString('en-IN')}/month).
 
-      // 1. Create order on server
-      const res = await fetch('/api/billing/create-subscription', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planId: plan.id }),
-      });
+📋 Workspace Details:
+• Workspace: ${account?.name || 'My Workspace'}
+• Account ID: ${accountId || 'N/A'}
+• User Email: ${user?.email || profile?.email || 'N/A'}
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to initialize payment gateway');
-      }
+Please share UPI/Payment details to complete manual activation.`;
+  };
 
-      const { orderId, subscriptionId, keyId, amount, currency } = data;
+  const handleCopy = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(label);
+    toast.success(`${label} copied to clipboard!`);
+    setTimeout(() => setCopiedField(null), 2500);
+  };
 
-      // 2. Open Razorpay Checkout modal
-      const options: Record<string, unknown> = {
-        key: keyId,
-        amount: amount || plan.price * 100,
-        currency: currency || 'INR',
-        name: 'NX CRM Enterprise',
-        description: `${plan.name} Plan — 1 Month Access (₹${plan.price})`,
-        image: '/icon',
-        handler: async function (response: any) {
-          try {
-            // 3. Authoritative server-side verification
-            const verifyRes = await fetch('/api/billing/verify', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_order_id: response.razorpay_order_id || orderId,
-                razorpay_subscription_id: response.razorpay_subscription_id || subscriptionId,
-                razorpay_signature: response.razorpay_signature,
-                planId: plan.id,
-              }),
-            });
-
-            const verifyData = await verifyRes.json();
-            if (!verifyRes.ok) {
-              throw new Error(verifyData.error || 'Payment verification failed');
-            }
-
-            toast.success(`🎉 Payment verified! Successfully upgraded to ${plan.name} Plan.`);
-            onPlanUpgraded?.();
-            router.push('/billing');
-            router.refresh();
-          } catch (verifyErr: unknown) {
-            const errorMessage = verifyErr instanceof Error ? verifyErr.message : 'Payment confirmation failed';
-            console.error('Verification error:', verifyErr);
-            toast.error(errorMessage);
-          }
-        },
-        theme: {
-          color: '#10b981',
-        },
-        modal: {
-          ondismiss: function () {
-            setLoadingPlan(null);
-          },
-        },
-      };
-
-      if (orderId) {
-        options.order_id = orderId;
-      } else if (subscriptionId) {
-        options.subscription_id = subscriptionId;
-      }
-
-      const rzp = new window.Razorpay(options);
-      rzp.open();
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Could not initiate checkout';
-      console.error('Subscription error:', err);
-      toast.error(errorMessage);
-    } finally {
-      setLoadingPlan(null);
-    }
+  const handleOpenWhatsApp = (plan: PlanConfig) => {
+    const message = generateWhatsAppMessage(plan);
+    const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+    window.open(waUrl, '_blank', 'noopener,noreferrer');
+    toast.success('Opening WhatsApp Support... Send your message to complete activation!');
   };
 
   return (
@@ -181,7 +119,6 @@ export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: Pricing
           const isCurrent = plan.id === currentPlanId;
           const isPopular = plan.id === 'pro';
           const isEnterprise = plan.id === 'enterprise';
-          const isLoading = loadingPlan === plan.id;
 
           return (
             <div
@@ -189,7 +126,7 @@ export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: Pricing
               className={cn(
                 'relative flex flex-col justify-between rounded-3xl border bg-card p-6 shadow-sm transition-all duration-200 hover:shadow-md',
                 isPopular
-                  ? 'border-primary shadow-lg shadow-primary/10 ring-2 ring-primary/20 scale-[1.02] bg-gradient-to-b from-card via-card to-primary/5'
+                  ? 'border-emerald-500 shadow-lg shadow-emerald-500/10 ring-2 ring-emerald-500/20 scale-[1.02] bg-gradient-to-b from-card via-card to-emerald-500/5'
                   : isEnterprise
                   ? 'border-purple-500/40 bg-gradient-to-b from-card via-card to-purple-500/5'
                   : 'border-border/80'
@@ -197,7 +134,7 @@ export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: Pricing
             >
               {isPopular && (
                 <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                  <Badge className="bg-primary text-primary-foreground font-semibold px-3 py-0.5 text-[11px] shadow-sm tracking-wide uppercase">
+                  <Badge className="bg-emerald-600 text-white font-semibold px-3 py-0.5 text-[11px] shadow-sm tracking-wide uppercase">
                     ⭐ Most Popular
                   </Badge>
                 </div>
@@ -238,7 +175,7 @@ export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: Pricing
                     </span>
                   </div>
                   <span className="text-[11px] text-muted-foreground mt-1 block">
-                    {plan.price === 0 ? 'Forever free basic tier' : 'Billed monthly, cancel anytime'}
+                    {plan.price === 0 ? 'Forever free basic tier' : 'Manual activation via WhatsApp'}
                   </span>
                 </div>
 
@@ -308,28 +245,18 @@ export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: Pricing
                 ) : (
                   <Button
                     onClick={() => handleSelectPlan(plan)}
-                    disabled={isLoading}
                     className={cn(
-                      'w-full h-11 rounded-2xl font-semibold text-xs shadow-md transition-all',
+                      'w-full h-11 rounded-2xl font-semibold text-xs shadow-md transition-all flex items-center justify-center gap-1.5',
                       isPopular
-                        ? 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-primary/20'
+                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20'
                         : isEnterprise
                         ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-purple-500/20'
                         : 'bg-card text-foreground border border-border hover:bg-muted'
                     )}
                   >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="size-3.5 animate-spin mr-1.5" />
-                        <span>Initializing Checkout...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Zap className="size-3.5 mr-1.5" />
-                        <span>Upgrade to {plan.name}</span>
-                        <ArrowRight className="size-3.5 ml-1.5" />
-                      </>
-                    )}
+                    <MessageCircle className="size-3.5 mr-1 text-emerald-400" />
+                    <span>Upgrade via WhatsApp</span>
+                    <ArrowRight className="size-3.5 ml-1" />
                   </Button>
                 )}
               </div>
@@ -337,6 +264,179 @@ export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: Pricing
           );
         })}
       </div>
+
+      {/* Manual Subscription WhatsApp Dialog */}
+      <Dialog open={Boolean(manualPlanModal)} onOpenChange={(open) => !open && setManualPlanModal(null)}>
+        {manualPlanModal && (
+          <DialogContent className="sm:max-w-lg border-border bg-card text-foreground">
+            <DialogHeader className="space-y-2">
+              <div className="flex items-center gap-2.5">
+                <div className="size-10 rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0 border border-emerald-500/20">
+                  <MessageCircle className="size-5" />
+                </div>
+                <div>
+                  <DialogTitle className="text-lg font-bold">
+                    Upgrade to {manualPlanModal.name} Plan
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-muted-foreground">
+                    Manual subscription activation via WhatsApp Support
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2 text-xs">
+              {/* Selected Plan Summary */}
+              <div className="rounded-2xl border border-border/80 bg-muted/30 p-4 space-y-2.5">
+                <div className="flex items-baseline justify-between">
+                  <span className="font-bold text-sm text-foreground">{manualPlanModal.name} Monthly Plan</span>
+                  <span className="text-base font-extrabold text-emerald-600 dark:text-emerald-400">
+                    ₹{manualPlanModal.price.toLocaleString('en-IN')}{' '}
+                    <span className="text-[11px] font-normal text-muted-foreground">/ month</span>
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 pt-1 text-center">
+                  <div className="p-2 rounded-xl bg-card border border-border/60">
+                    <span className="text-[10px] text-muted-foreground block">Contacts</span>
+                    <span className="font-bold text-foreground">
+                      {manualPlanModal.contactLimit ? manualPlanModal.contactLimit.toLocaleString() : 'Unlimited'}
+                    </span>
+                  </div>
+                  <div className="p-2 rounded-xl bg-card border border-border/60">
+                    <span className="text-[10px] text-muted-foreground block">Monthly Msgs</span>
+                    <span className="font-bold text-foreground">
+                      {manualPlanModal.monthlyMessageLimit ? manualPlanModal.monthlyMessageLimit.toLocaleString() : 'Unlimited'}
+                    </span>
+                  </div>
+                  <div className="p-2 rounded-xl bg-card border border-border/60">
+                    <span className="text-[10px] text-muted-foreground block">WA Numbers</span>
+                    <span className="font-bold text-foreground">
+                      {manualPlanModal.whatsappConnectionLimit ?? 'Unlimited'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Workspace Details for Reference */}
+              <div className="rounded-2xl border border-border/80 bg-card p-4 space-y-2">
+                <div className="flex items-center justify-between pb-1 border-b border-border/60">
+                  <span className="font-semibold text-foreground text-xs flex items-center gap-1.5">
+                    <Building className="size-3.5 text-primary" />
+                    Your Workspace Details
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleCopy(accountId || '', 'Account ID')}
+                    className="h-6 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+                  >
+                    {copiedField === 'Account ID' ? (
+                      <CheckCircle2 className="size-3 text-emerald-500 mr-1" />
+                    ) : (
+                      <Copy className="size-3 mr-1" />
+                    )}
+                    {copiedField === 'Account ID' ? 'Copied' : 'Copy ID'}
+                  </Button>
+                </div>
+                <div className="space-y-1.5 font-mono text-[11px]">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Workspace:</span>
+                    <span className="font-bold text-foreground truncate max-w-[200px]">
+                      {account?.name || 'My Workspace'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Account ID:</span>
+                    <span className="text-foreground truncate max-w-[200px]">
+                      {accountId || 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Email:</span>
+                    <span className="text-foreground truncate max-w-[200px]">
+                      {user?.email || profile?.email || 'N/A'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment Details & Steps */}
+              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <QrCode className="size-4 text-emerald-500" />
+                    <span className="font-bold text-foreground text-xs">Direct UPI & Payment Support</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleCopy(upiId, 'UPI ID')}
+                    className="h-6 px-2 text-[10px] text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+                  >
+                    {copiedField === 'UPI ID' ? (
+                      <CheckCircle2 className="size-3 text-emerald-500 mr-1" />
+                    ) : (
+                      <Copy className="size-3 mr-1" />
+                    )}
+                    {copiedField === 'UPI ID' ? 'Copied UPI' : 'Copy UPI ID'}
+                  </Button>
+                </div>
+
+                <div className="flex items-center justify-between rounded-xl bg-card/80 border border-emerald-500/20 px-3 py-2 font-mono text-xs text-foreground">
+                  <span>UPI ID: <strong className="text-emerald-600 dark:text-emerald-400">{upiId}</strong></span>
+                  <span className="text-muted-foreground text-[10px]">{siteConfig.phone}</span>
+                </div>
+
+                <div className="space-y-1.5 text-[11px] text-muted-foreground leading-relaxed">
+                  <p className="flex items-start gap-1.5">
+                    <span className="font-bold text-emerald-600 shrink-0">1.</span>
+                    <span>Tap <strong>&ldquo;Chat on WhatsApp Support&rdquo;</strong> to automatically send your workspace and plan details.</span>
+                  </p>
+                  <p className="flex items-start gap-1.5">
+                    <span className="font-bold text-emerald-600 shrink-0">2.</span>
+                    <span>Complete payment via UPI (GPay, PhonePe, Paytm) or Bank Transfer.</span>
+                  </p>
+                  <p className="flex items-start gap-1.5">
+                    <span className="font-bold text-emerald-600 shrink-0">3.</span>
+                    <span>Send the payment screenshot in chat. Our team activates your workspace plan immediately.</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="flex-col sm:flex-row gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  handleCopy(
+                    generateWhatsAppMessage(manualPlanModal),
+                    'Message Details'
+                  )
+                }
+                className="text-xs h-10 rounded-xl border-border sm:w-auto w-full"
+              >
+                {copiedField === 'Message Details' ? (
+                  <CheckCircle2 className="size-3.5 text-emerald-500 mr-1.5" />
+                ) : (
+                  <Copy className="size-3.5 mr-1.5" />
+                )}
+                <span>{copiedField === 'Message Details' ? 'Message Copied' : 'Copy Message Text'}</span>
+              </Button>
+
+              <Button
+                size="sm"
+                onClick={() => handleOpenWhatsApp(manualPlanModal)}
+                className="text-xs h-10 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold flex-1 shadow-md shadow-emerald-600/20"
+              >
+                <MessageCircle className="size-4 mr-1.5" />
+                <span>Chat on WhatsApp to Pay</span>
+                <ExternalLink className="size-3.5 ml-1.5" />
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
 
       {/* Enterprise Custom Note */}
       <div className="rounded-3xl border border-border/80 bg-gradient-to-r from-card via-muted/30 to-card p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-sm">
@@ -351,10 +451,14 @@ export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: Pricing
             </p>
           </div>
         </div>
-        <a href="mailto:sales@wacrm.io?subject=Enterprise%20Inquiry%20-%20NX%20CRM">
+        <a
+          href={`https://wa.me/${cleanPhone}?text=${encodeURIComponent('Hi NX CRM Sales! I would like to inquire about Enterprise Custom Plans, dedicated WhatsApp throughput, and custom SLA.')}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           <Button variant="outline" className="rounded-xl text-xs h-10 px-5 border-border font-semibold shrink-0">
             <Sparkles className="size-3.5 mr-1.5 text-purple-500" />
-            Contact Sales
+            Contact Enterprise Sales
           </Button>
         </a>
       </div>
@@ -372,8 +476,8 @@ export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: Pricing
         <div className="flex items-center gap-3 rounded-2xl border border-border/60 bg-card/40 p-4">
           <Zap className="size-5 text-amber-500 shrink-0" />
           <div>
-            <h5 className="text-xs font-bold text-foreground">Instant Plan Activation</h5>
-            <p className="text-[11px] text-muted-foreground">Upgrades take effect immediately upon payment confirmation.</p>
+            <h5 className="text-xs font-bold text-foreground">Fast WhatsApp Activation</h5>
+            <p className="text-[11px] text-muted-foreground">Direct support activation immediately upon transfer confirmation.</p>
           </div>
         </div>
 

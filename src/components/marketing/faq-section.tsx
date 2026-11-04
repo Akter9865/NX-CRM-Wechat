@@ -49,7 +49,7 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     question: 'How does billing work in NX CRM?',
     answer:
-      'Billing is handled through Razorpay with transparent monthly pricing in Indian Rupees (₹). We offer a Free tier (₹0/mo), Pro (₹499/mo), Business (₹3,000/mo), and Enterprise (₹8,999/mo). Upgrades take effect immediately upon server-side payment verification.',
+      'Billing is handled manually through WhatsApp Support with transparent monthly pricing in Indian Rupees (₹). We offer a Free tier (₹0/mo), Pro (₹499/mo), Business (₹3,000/mo), and Enterprise (₹8,999/mo). Upgrades take effect immediately upon payment confirmation via WhatsApp.',
   },
   {
     question: 'What happens when a plan expires or payment fails?',

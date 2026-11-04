@@ -99,7 +99,7 @@ export default function AdminPaymentsPage() {
             Payment Records & Invoices
           </h2>
           <p className="text-xs text-muted-foreground mt-1">
-            Audit verified Razorpay payment IDs, orders, amounts, statuses, and receipt records.
+            Audit payment records, transaction IDs, statuses, and receipts across WhatsApp manual & online payments.
           </p>
         </div>
 
@@ -120,7 +120,7 @@ export default function AdminPaymentsPage() {
         <div className="relative flex-1 w-full">
           <Search className="size-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
           <Input
-            placeholder="Search by Razorpay Payment ID, Order ID, client name, or email..."
+            placeholder="Search by Payment ID, Order ID, client name, or email..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="h-10 pl-9 rounded-xl border-border bg-card text-xs focus-visible:border-emerald-500"
@@ -147,7 +147,7 @@ export default function AdminPaymentsPage() {
           <Table>
             <TableHeader className="bg-muted/40">
               <TableRow className="border-border">
-                <TableHead className="text-xs font-bold text-foreground">Razorpay Payment ID</TableHead>
+                <TableHead className="text-xs font-bold text-foreground">Payment / Ref ID</TableHead>
                 <TableHead className="text-xs font-bold text-foreground">Client Account</TableHead>
                 <TableHead className="text-xs font-bold text-foreground">Amount</TableHead>
                 <TableHead className="text-xs font-bold text-foreground">Status</TableHead>

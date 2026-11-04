@@ -62,8 +62,8 @@ export async function GET() {
           require_email_verification: false,
           default_trial_days: 14,
         },
-        payment_gateway: settingsMap.payment_gateway || {
-          active_gateway: 'razorpay',
+        payment_gateway: {
+          active_gateway: 'manual_whatsapp',
           mode: 'test',
           currency: 'INR',
           razorpay_key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '',
@@ -73,6 +73,11 @@ export async function GET() {
           upi_business_name: 'NX CRM / Nexora Spark Agency',
           manual_qr_enabled: true,
           auto_activate_on_payment: true,
+          ...((settingsMap.payment_gateway as Record<string, unknown>) || {}),
+          // Override if was razorpay to manual_whatsapp
+          ...((settingsMap.payment_gateway as Record<string, unknown>)?.active_gateway === 'razorpay'
+            ? { active_gateway: 'manual_whatsapp' }
+            : {}),
         },
       },
     });

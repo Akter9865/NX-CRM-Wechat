@@ -132,7 +132,8 @@ export default function AdminSettingsPage() {
           setInvoicePrefix(billing.invoice_prefix || 'NX-INV');
         }
         if (payment_gateway) {
-          setActiveGateway(payment_gateway.active_gateway || 'razorpay');
+          const gw = payment_gateway.active_gateway;
+          setActiveGateway(gw === 'razorpay' ? 'manual_whatsapp' : (gw || 'manual_whatsapp'));
           setGatewayMode(payment_gateway.mode || 'test');
           setRazorpayKeyId(payment_gateway.razorpay_key_id || '');
           setRazorpayKeySecret(payment_gateway.razorpay_key_secret || '');
@@ -618,17 +619,24 @@ export default function AdminSettingsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold text-foreground">Active Payment Gateway</Label>
-                <Select value={activeGateway} onValueChange={(val) => setActiveGateway(val || 'razorpay')}>
+                <Select value={activeGateway} onValueChange={(val) => setActiveGateway(val || 'manual_whatsapp')}>
                   <SelectTrigger className="h-10 rounded-xl border-border bg-card">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="razorpay">Razorpay (India - UPI, Cards, Netbanking)</SelectItem>
-                    <SelectItem value="cashfree">Cashfree Payments (India)</SelectItem>
-                    <SelectItem value="stripe">Stripe (International)</SelectItem>
+                    <SelectItem value="manual_whatsapp">Manual WhatsApp Support (Recommended / Active)</SelectItem>
                     <SelectItem value="manual_upi">Manual UPI / QR Bank Transfer Only</SelectItem>
+                    <SelectItem value="razorpay">Razorpay (Disabled)</SelectItem>
+                    <SelectItem value="cashfree">Cashfree Payments (Disabled)</SelectItem>
+                    <SelectItem value="stripe">Stripe (Disabled)</SelectItem>
                   </SelectContent>
                 </Select>
+                {activeGateway === 'manual_whatsapp' && (
+                  <p className="text-[11px] text-emerald-500 font-medium flex items-center gap-1.5 mt-1">
+                    <CheckCircle2 className="size-3.5 shrink-0" />
+                    <span>Razorpay gateway is disabled. Subscriptions are routed to WhatsApp support.</span>
+                  </p>
+                )}
               </div>
 
               <div className="space-y-1.5">

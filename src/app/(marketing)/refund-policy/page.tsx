@@ -5,7 +5,7 @@ import { CreditCard } from 'lucide-react';
 export const metadata = {
   title: 'Refund & Cancellation Policy — NX CRM',
   description:
-    'Official Refund and Cancellation Policy for NX CRM Razorpay subscription billing. Rules for cancellations, renewals, duplicate transactions, and disputes.',
+    'Official Refund and Cancellation Policy for NX CRM subscription billing. Subscriptions are processed manually via WhatsApp Support (UPI/Bank Transfer). Rules for cancellations, renewals, and refunds.',
 };
 
 export default function RefundPolicyPage() {
@@ -26,7 +26,7 @@ export default function RefundPolicyPage() {
             <span>•</span>
             <span>Entity: {siteConfig.legalCompanyName}</span>
             <span>•</span>
-            <span>Payment Gateway: Razorpay</span>
+            <span>Payment Mode: WhatsApp Support / Manual UPI & Transfer</span>
           </div>
         </div>
 
@@ -51,10 +51,10 @@ export default function RefundPolicyPage() {
             </p>
             <div className="space-y-2 pt-1">
               <p>
-                <strong className="text-slate-900">Duplicate Payments:</strong> In the event that a technical glitch or network error results in duplicate charges for the same subscription period, the duplicated transaction will be refunded in full.
+                <strong className="text-slate-900">Duplicate Payments:</strong> In the event that duplicate UPI or bank transfers occur for the same subscription period, the duplicated transaction will be refunded in full.
               </p>
               <p>
-                <strong className="text-slate-900">Payment Debited but Not Credited / Activated:</strong> If funds were deducted from your bank account or card via Razorpay, but our server verification was unable to activate your workspace entitlement due to a gateway timeout, we will promptly reconcile and activate your plan or issue a full refund upon verification.
+                <strong className="text-slate-900">Payment Transferred but Not Activated:</strong> If funds were transferred via UPI or bank transfer, but our support team was unable to activate your workspace entitlement due to a reconciliation issue, we will promptly reconcile and activate your plan or issue a full refund upon verification.
               </p>
               <p>
                 <strong className="text-slate-900">Accidental Plan Upgrade:</strong> If you accidentally upgraded to an incorrect tier and notify our billing department within 48 hours without exceeding free tier messaging thresholds, a prorated refund or tier adjustment may be processed at our discretion.
@@ -74,18 +74,18 @@ export default function RefundPolicyPage() {
           <section className="space-y-3">
             <h2 className="text-lg font-bold text-slate-900">4. Refund Processing Timeline</h2>
             <p>
-              Approved refund requests are submitted to Razorpay within 2 business days. Depending on your issuing bank and original payment method (UPI, Debit Card, Credit Card, Netbanking), the funds will reflect in your account within 5 to 7 business days pursuant to standard banking settlement schedules.
+              Approved refund requests are processed within 2 business days via original UPI ID or direct bank transfer. The funds will reflect in your account within 1 to 3 business days pursuant to standard banking settlement schedules.
             </p>
           </section>
 
           <section className="space-y-3">
             <h2 className="text-lg font-bold text-slate-900">5. How to Request a Refund or Billing Review</h2>
             <p>
-              To report a billing discrepancy or request a refund, please email{' '}
+              To report a billing discrepancy or request a refund, please message our WhatsApp Support ({siteConfig.phone}) or email{' '}
               <a href={`mailto:${siteConfig.billingEmail}`} className="text-emerald-700 font-semibold underline">
                 {siteConfig.billingEmail}
               </a>{' '}
-              with your Razorpay Payment ID, account email, and workspace name.
+              with your transaction/UTR reference ID, account email, and workspace name.
             </p>
           </section>
         </div>

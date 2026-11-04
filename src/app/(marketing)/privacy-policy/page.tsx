@@ -63,7 +63,7 @@ export default function PrivacyPolicyPage() {
               <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50 space-y-1.5">
                 <h3 className="font-bold text-slate-900 text-xs">D. Payment & Subscription Data</h3>
                 <p className="text-[11px] text-slate-500">
-                  Subscription IDs, invoice history, and transaction statuses via Razorpay. We never store raw debit/credit card numbers or UPI PINs.
+                  Subscription status, plan records, and payment verification records via WhatsApp Support. We never store raw debit/credit card numbers or UPI PINs.
                 </p>
               </div>
             </div>

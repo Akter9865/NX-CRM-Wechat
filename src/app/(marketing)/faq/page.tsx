@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 export const metadata = {
   title: 'Frequently Asked Questions — NX CRM Help & Policies',
   description:
-    'Clear answers to common questions about NX CRM, WhatsApp Cloud API connection, team inboxes, automated flows, Razorpay billing, and GDPR compliance.',
+    'Clear answers to common questions about NX CRM, WhatsApp Cloud API connection, team inboxes, automated flows, WhatsApp billing support, and GDPR compliance.',
 };
 
 export default function DedicatedFaqPage() {

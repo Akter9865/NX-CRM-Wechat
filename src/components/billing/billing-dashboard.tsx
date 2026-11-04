@@ -21,9 +21,11 @@ import {
   Calendar,
   RefreshCw,
   ShieldAlert,
+  MessageCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { siteConfig } from '@/lib/config/site';
 import {
   Dialog,
   DialogContent,
@@ -250,6 +252,23 @@ export function BillingDashboard() {
 
           {/* Action CTAs */}
           <div className="flex flex-wrap items-center gap-3 shrink-0">
+            <a
+              href={`https://wa.me/${siteConfig.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                `Hi NX CRM Support! I need billing and subscription support for workspace: ${accountId || 'N/A'}.`
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 rounded-xl text-xs h-10 px-3.5"
+              >
+                <MessageCircle className="size-3.5 mr-1.5" />
+                <span>WhatsApp Billing Support</span>
+              </Button>
+            </a>
+
             <Button
               variant="outline"
               size="sm"
@@ -463,6 +482,41 @@ export function BillingDashboard() {
         </div>
       </div>
 
+      {/* WhatsApp Support Manual Billing Notice */}
+      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs shadow-sm">
+        <div className="flex items-start gap-3">
+          <div className="size-9 rounded-xl bg-emerald-500/20 text-emerald-500 flex items-center justify-center shrink-0 mt-0.5">
+            <MessageCircle className="size-4.5" />
+          </div>
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <h4 className="font-bold text-foreground text-sm">
+                Manual Payment & Activation via WhatsApp Support
+              </h4>
+              <Badge className="bg-emerald-600 text-white text-[10px] uppercase font-bold px-2 py-0.5">
+                Active
+              </Badge>
+            </div>
+            <p className="text-muted-foreground leading-relaxed max-w-2xl">
+              Online Razorpay checkout is disabled. All subscriptions and tier upgrades are processed manually via official WhatsApp Support ({siteConfig.phone}). Select your plan below to open WhatsApp with pre-filled details for instant activation upon UPI/transfer confirmation.
+            </p>
+          </div>
+        </div>
+        <a
+          href={`https://wa.me/${siteConfig.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+            `Hi NX CRM Billing Support! I want to upgrade my subscription for workspace ${accountId || ''}.`
+          )}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="shrink-0 sm:self-center"
+        >
+          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs h-9 px-4 font-bold shadow-md shadow-emerald-600/20">
+            <MessageCircle className="size-3.5 mr-1.5" />
+            <span>Chat with Billing Support</span>
+          </Button>
+        </a>
+      </div>
+
       {/* Available Plans & Instant Upgrade */}
       <div className="space-y-4 pt-2" id="pricing-plans-section">
         <div>
@@ -471,7 +525,7 @@ export function BillingDashboard() {
             Upgrade Plan & Capacities
           </h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Choose your tier to immediately expand your contacts, monthly messages, and WhatsApp numbers via Razorpay.
+            Choose your tier to immediately expand your contacts, monthly messages, and WhatsApp numbers via WhatsApp Support.
           </p>
         </div>
 
@@ -487,7 +541,7 @@ export function BillingDashboard() {
               Billing History & Transactions
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Verified Razorpay payment records and renewal receipts.
+              Verified payment records and renewal receipts.
             </p>
           </div>
         </div>
@@ -495,7 +549,7 @@ export function BillingDashboard() {
         {payments.length === 0 ? (
           <div className="py-12 text-center text-xs text-muted-foreground space-y-1">
             <p className="font-medium text-foreground">No transactions recorded yet</p>
-            <p className="text-[11px]">When you upgrade or renew a subscription via Razorpay, your payment history will appear here.</p>
+            <p className="text-[11px]">When you upgrade or renew a subscription via WhatsApp Support or manual verification, your payment history will appear here.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -533,7 +587,7 @@ export function BillingDashboard() {
                       </Badge>
                     </td>
                     <td className="px-5 py-3.5 text-muted-foreground uppercase text-[10px]">
-                      {tx.payment_method || 'Razorpay'}
+                      {tx.payment_method || 'WhatsApp / UPI'}
                     </td>
                     <td className="px-6 py-3.5 text-muted-foreground text-right">
                       {new Date(tx.created_at).toLocaleDateString(undefined, {

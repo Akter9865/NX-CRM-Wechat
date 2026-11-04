@@ -65,7 +65,7 @@ export default function CookiePolicyPage() {
           <section className="space-y-3">
             <h2 className="text-lg font-bold text-slate-900">3. Third-Party Cookies</h2>
             <p>
-              When you initiate subscription checkout, the Razorpay Checkout SDK may place essential security cookies to prevent card fraud and authenticate UPI sessions. We do not use intrusive third-party cross-site advertising tracking cookies.
+              Subscription upgrades and billing are processed manually via WhatsApp Support (UPI / Bank Transfer), and no external payment gateway tracking cookies are loaded during plan checkout. We do not use intrusive third-party cross-site advertising tracking cookies.
             </p>
           </section>
 

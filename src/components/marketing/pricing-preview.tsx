@@ -35,7 +35,7 @@ export async function PricingPreview({ customPlans }: { customPlans?: PlanConfig
           </h2>
 
           <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
-            Start for ₹0 today with no credit card required. Upgrade anytime with instant Razorpay subscription activation and clear contact capacity.
+            Start for ₹0 today with no credit card required. Upgrade anytime via WhatsApp support with instant manual activation and clear contact capacity.
           </p>
         </div>
 
@@ -111,7 +111,7 @@ export async function PricingPreview({ customPlans }: { customPlans?: PlanConfig
                       <span className="text-xs font-semibold text-slate-500">/ month</span>
                     </div>
                     <span className="text-[11px] text-slate-400 mt-1 block">
-                      {plan.price === 0 ? 'Forever free basic tier' : 'Billed monthly via Razorpay'}
+                      {plan.price === 0 ? 'Forever free basic tier' : 'Manual activation via WhatsApp'}
                     </span>
                   </div>
 

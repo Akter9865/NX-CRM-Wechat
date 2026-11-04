@@ -103,10 +103,10 @@ export default function TermsPage() {
           <section className="space-y-3">
             <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
               <span className="flex size-6 items-center justify-center rounded-md bg-emerald-100 text-emerald-800 text-xs font-bold">5</span>
-              Subscriptions, Invoicing & Razorpay Billing
+              Subscriptions, Invoicing & Manual WhatsApp Billing
             </h2>
             <p>
-              Paid plans are billed on a recurring monthly subscription cycle through Razorpay in Indian Rupees (₹). Plan entitlements (contact capacity, WhatsApp connections, visual automations) activate immediately upon successful server-side payment verification. All subscriptions renew automatically unless cancelled prior to the subsequent billing anniversary.
+              Paid plans are billed on a monthly subscription cycle in Indian Rupees (₹) processed manually via WhatsApp Support (UPI / Bank Transfer). Plan entitlements (contact capacity, WhatsApp connections, visual automations) activate immediately upon verification of payment.
             </p>
           </section>
 
