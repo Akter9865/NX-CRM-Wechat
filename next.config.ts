@@ -106,11 +106,13 @@ const nextConfig: NextConfig = {
    * deploy does one clean reload on its next navigation instead of
    * failing to load chunks mid-session.
    */
-  deploymentId:
-    process.env.DEPLOYMENT_VERSION ||
-    process.env.VERCEL_GIT_COMMIT_SHA ||
-    process.env.SOURCE_COMMIT ||
-    undefined,
+  //
+  // On Vercel this is left undefined: the platform injects its own
+  // deployment id for its built-in skew protection, and overriding it
+  // conflicts with that.
+  deploymentId: process.env.VERCEL
+    ? undefined
+    : process.env.DEPLOYMENT_VERSION || process.env.SOURCE_COMMIT || undefined,
 
   // Smaller client bundles: rewrite barrel imports of these packages to
   // per-module imports so the dashboard doesn't ship every icon/chart.
