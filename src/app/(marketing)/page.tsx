@@ -1,5 +1,4 @@
 import { HeroSection } from '@/components/marketing/hero-section';
-import { TrustPoints } from '@/components/marketing/trust-points';
 import { WhyNxCrm } from '@/components/marketing/why-nxcrm';
 import { WhatsAppCrmSection } from '@/components/marketing/whatsapp-crm-section';
 import { SharedInboxSection } from '@/components/marketing/shared-inbox-section';
@@ -19,7 +18,6 @@ export default function HomePage() {
   return (
     <>
       <HeroSection />
-      <TrustPoints />
       <WhyNxCrm />
       <WhatsAppCrmSection />
       <SharedInboxSection />

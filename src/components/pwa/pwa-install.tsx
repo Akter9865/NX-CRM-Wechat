@@ -291,7 +291,7 @@ export function PwaInstallButton({
           className
         )}
       >
-        <Download className="size-3.5 shrink-0 animate-bounce text-emerald-500" />
+        <Download className="size-3.5 shrink-0 text-primary" />
         {showLabel && <span>{label}</span>}
       </Button>
 
@@ -310,7 +310,23 @@ export function PwaInstallBanner({ className }: { className?: string }) {
     showAndroidGuide,
     setShowAndroidGuide,
   } = usePwaInstall();
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(true);
+  useEffect(() => {
+    try {
+      const until = Number(localStorage.getItem('nxcrm.pwaBanner.dismissedUntil') || 0);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- read persisted dismissal after mount
+      setDismissed(Date.now() < until);
+    } catch {
+      setDismissed(false);
+    }
+  }, []);
+  const dismiss = () => {
+    setDismissed(true);
+    try {
+      // Snooze for 14 days instead of nagging on every dashboard visit.
+      localStorage.setItem('nxcrm.pwaBanner.dismissedUntil', String(Date.now() + 14 * 864e5));
+    } catch {}
+  };
 
   if (isStandalone || dismissed) {
     return null;
@@ -352,7 +368,7 @@ export function PwaInstallBanner({ className }: { className?: string }) {
           </Button>
           <button
             type="button"
-            onClick={() => setDismissed(true)}
+            onClick={dismiss}
             aria-label="Dismiss banner"
             className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
           >

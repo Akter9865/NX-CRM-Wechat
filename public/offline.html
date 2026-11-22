@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0b1411" />
+<title>Offline — NX CRM</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f6f8f7; --fg:#0f1a16; --muted:#5b6b64; --card:#fff; --border:#e3e9e6; --primary:#16a34a; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0b1411; --fg:#e8efec; --muted:#8fa39a; --card:#111c18; --border:#1f2d28; } }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100dvh; display:grid; place-items:center; padding:24px 16px;
+         background:var(--bg); color:var(--fg); font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  .card { width:100%; max-width:380px; text-align:center; background:var(--card); border:1px solid var(--border);
+          border-radius:20px; padding:32px 24px; }
+  .icon { width:56px; height:56px; margin:0 auto 16px; border-radius:16px; display:grid; place-items:center;
+          background:color-mix(in srgb, var(--primary) 14%, transparent); color:var(--primary); }
+  h1 { font-size:20px; margin:0 0 6px; }
+  p { margin:0 0 20px; color:var(--muted); }
+  button { appearance:none; border:0; border-radius:12px; padding:11px 20px; font-weight:600; font-size:14px;
+           background:var(--primary); color:#fff; cursor:pointer; }
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="icon" aria-hidden="true">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h.01"/><path d="M8.5 16.43a5 5 0 0 1 7 0"/><path d="M5 12.86a10 10 0 0 1 5.17-2.69"/><path d="M19 12.86a10 10 0 0 0-2-1.49"/><path d="M2 8.82a15 15 0 0 1 4.17-2.65"/><path d="M10.66 5c4.01-.36 8.14.9 11.34 3.76"/><path d="m2 2 20 20"/></svg>
+    </div>
+    <h1>You're offline</h1>
+    <p>NX CRM needs an internet connection to sync your WhatsApp inbox. We'll reconnect as soon as you're back online.</p>
+    <button type="button" onclick="location.reload()">Try again</button>
+  </main>
+  <script>window.addEventListener('online', function () { location.reload(); });</script>
+</body>
+</html>

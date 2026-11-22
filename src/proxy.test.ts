@@ -31,6 +31,10 @@ vi.mock("@supabase/ssr", () => ({
         if (refreshedCookies.length) opts.cookies.setAll(refreshedCookies);
         return { data: { user: mockUser } };
       },
+      getClaims: async () => {
+        if (refreshedCookies.length) opts.cookies.setAll(refreshedCookies);
+        return { data: mockUser ? { claims: { sub: mockUser.id } } : null, error: null };
+      },
     },
   }),
 }));
@@ -119,6 +123,29 @@ describe("proxy — refreshed auth cookies survive redirects", () => {
       new NextRequest("https://app.test/flows"),
     );
 
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toContain("/login");
+  });
+});
+
+describe("proxy — session-less fast paths", () => {
+  it("does not touch Supabase auth for the Meta webhook", async () => {
+    mockUser = null;
+    refreshedCookies = [ROTATED];
+    const res = await proxy(new NextRequest("https://app.test/api/whatsapp/webhook", { method: "POST" }));
+    expect(res.status).toBe(200);
+    expect(res.cookies.get(ROTATED.name)).toBeUndefined();
+  });
+
+  it("does not touch Supabase auth for marketing pages", async () => {
+    refreshedCookies = [ROTATED];
+    const res = await proxy(new NextRequest("https://app.test/pricing"));
+    expect(res.cookies.get(ROTATED.name)).toBeUndefined();
+  });
+
+  it("still redirects signed-out users away from app routes", async () => {
+    mockUser = null;
+    const res = await proxy(new NextRequest("https://app.test/inbox"));
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toContain("/login");
   });

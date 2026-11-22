@@ -45,7 +45,7 @@ export const CUSTOM_COLOR_KEY = 'wacrm.custom_color';
 
 export const MODES = ['light', 'dark'] as const;
 export type Mode = (typeof MODES)[number];
-export const DEFAULT_MODE: Mode = 'dark';
+export const DEFAULT_MODE: Mode = 'light';
 export const MODE_STORAGE_KEY = 'wacrm.mode';
 
 export function isMode(value: unknown): value is Mode {

@@ -147,13 +147,9 @@ export default function DashboardPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">
+            <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
               {greeting}{userName ? `, ${userName}` : ''} 👋
-            </h1>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-0.5 text-xs font-semibold text-emerald-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Live Workspace
-            </span>
+            </h2>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             {account?.name ? `${account.name} CRM overview & real-time analytics` : t('description')}
@@ -169,10 +165,10 @@ export default function DashboardPage() {
               setSeriesLoading(true)
               loadAll()
             }}
-            className="h-9 gap-1.5 text-xs font-semibold rounded-xl border-border/80 hover:border-primary/40 bg-card/80 hover:bg-card shadow-sm transition-all"
+            className="h-9 gap-1.5 rounded-lg text-xs font-semibold shadow-elev-1"
           >
             <RefreshCw className={metricsLoading ? 'size-3.5 animate-spin text-primary' : 'size-3.5'} />
-            <span>Refresh Stats</span>
+            <span>Refresh</span>
           </Button>
         </div>
       </div>
@@ -187,7 +183,7 @@ export default function DashboardPage() {
       <PlanQuotaStrip />
 
       {/* Metric cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         {metricsLoading || !metrics ? (
           Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
         ) : (
