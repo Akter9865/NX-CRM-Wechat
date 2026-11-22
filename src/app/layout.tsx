@@ -65,6 +65,9 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   viewportFit: "cover",
+  // Android: shrink the layout viewport when the keyboard opens so the
+  // inbox composer stays visible above it (iOS already behaves this way).
+  interactiveWidget: "resizes-content",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#f6f8f7" },
     { media: "(prefers-color-scheme: dark)", color: "#111b21" },

@@ -105,10 +105,21 @@ function InboxPageInner() {
   const [filter, setFilter] = useState<InboxFilter>("all");
   const [search, setSearch] = useState("");
   const [soundEnabled, handleToggleSound] = useStoredBool(SOUND_STORAGE_KEY, true);
-  const [contactPanelOpen, handleToggleContactPanel] = useStoredBool(
+  const [contactPanelOpen, handleToggleDesktopContactPanel] = useStoredBool(
     CONTACT_PANEL_STORAGE_KEY,
     true,
   );
+  // Below xl the contact panel is a slide-over that starts closed every
+  // time (the persisted desktop preference would otherwise cover the
+  // chat on phones).
+  const [mobileContactOpen, setMobileContactOpen] = useState(false);
+  const handleToggleContactPanel = useCallback(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(min-width: 1280px)").matches) {
+      handleToggleDesktopContactPanel();
+    } else {
+      setMobileContactOpen((v) => !v);
+    }
+  }, [handleToggleDesktopContactPanel]);
   const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(null);
 
   const soundRef = useRef(soundEnabled);
@@ -263,6 +274,20 @@ function InboxPageInner() {
         {contactPanelOpen && hasActive && (
           <div className="hidden h-full xl:block">
             <ContactSidebar contact={activeContact} />
+          </div>
+        )}
+
+        {mobileContactOpen && hasActive && (
+          <div className="fixed inset-0 z-50 xl:hidden" role="dialog" aria-modal="true" aria-label="Contact details">
+            <button
+              type="button"
+              aria-label="Close contact details"
+              onClick={() => setMobileContactOpen(false)}
+              className="absolute inset-0 bg-black/40"
+            />
+            <div className="absolute inset-y-0 right-0 flex w-full max-w-sm flex-col overflow-hidden border-l border-border bg-background pt-safe pb-safe shadow-elev-3 animate-in slide-in-from-right duration-200">
+              <ContactSidebar contact={activeContact} />
+            </div>
           </div>
         )}
       </div>

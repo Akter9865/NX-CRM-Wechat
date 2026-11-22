@@ -955,7 +955,7 @@ const ThreadHeader = memo(function ThreadHeader({
             title={contactPanelOpen ? t("hideContact") : t("showContact")}
             aria-pressed={contactPanelOpen}
             className={cn(
-              "hidden h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-muted hover:text-foreground xl:inline-flex",
+              "inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-muted hover:text-foreground",
               contactPanelOpen ? "text-primary" : "text-muted-foreground",
             )}
           >
