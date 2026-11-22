@@ -85,6 +85,7 @@ import {
   type SendRequest,
 } from "@/lib/inbox/send";
 import { useNow } from "@/lib/inbox/use-now";
+import { isRealtimeHealthy } from "@/hooks/use-realtime";
 
 interface ReplyDraft {
   id: string;
@@ -119,7 +120,11 @@ const STATUS_OPTIONS: { value: ConversationStatus; labelKey: string; dot: string
 /** WhatsApp-style doodle wallpaper behind the thread and its empty state. */
 const DOODLE_BG_CLASSES = "bg-background bg-[url('/inbox-doodle.svg')] bg-repeat";
 
-export function MessageThread({
+/**
+ * Memoised: the page re-renders on every conversation-list event; the open
+ * thread only needs to when its own conversation (or a callback) changes.
+ */
+export const MessageThread = memo(function MessageThread({
   conversation,
   contact,
   onPatchConversation,
@@ -611,7 +616,7 @@ export function MessageThread({
   }
 
   const displayName = contact?.name || contact?.phone || "Unknown";
-  const live = isLiveConnected && thread.status === "connected";
+  const live = isLiveConnected && isRealtimeHealthy(thread.status);
 
   return (
     // `min-w-0` (issue #257): a long unbroken URL must not widen the thread
@@ -703,7 +708,7 @@ export function MessageThread({
       />
     </div>
   );
-}
+});
 
 // ============================================================================
 // Header
@@ -1129,7 +1134,7 @@ interface ThreadMessagesProps {
   onDiscard: (key: string) => void;
 }
 
-function ThreadMessages({
+const ThreadMessages = memo(function ThreadMessages({
   messages,
   reactions,
   loading,
@@ -1287,7 +1292,10 @@ function ThreadMessages({
       prevRef.current.top = el.scrollTop;
       prevRef.current.height = el.scrollHeight;
       setFollow((f) => {
-        const seenKey = atBottom ? lastKeyRef.current : f.seenKey;
+        // At the bottom (or just leaving it) the agent has seen everything
+        // up to the current last message; count unseen from there.
+        const seenKey =
+          atBottom || f.atBottom ? lastKeyRef.current : f.seenKey;
         return f.atBottom === atBottom && f.seenKey === seenKey ? f : { atBottom, seenKey };
       });
       if (el.scrollTop < LOAD_OLDER_PX) onLoadOlderRef.current();
@@ -1307,13 +1315,13 @@ function ThreadMessages({
   }, [follow, messages]);
 
   return (
-    <div className="relative min-h-0 flex-1">
+    <div className="relative flex min-h-0 flex-1 flex-col">
       <div
         ref={scrollRef}
         onScroll={handleScroll}
         // We restore scroll positions ourselves; browser scroll anchoring
         // would double-apply the offset on prepend (and Safari lacks it).
-        className="h-full overflow-y-auto overscroll-contain px-3 py-3 [overflow-anchor:none] sm:px-6"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 [overflow-anchor:none] sm:px-6"
       >
         <div ref={contentRef} className="mx-auto flex max-w-3xl flex-col">
           {hasOlder && (
@@ -1402,7 +1410,7 @@ function ThreadMessages({
       )}
     </div>
   );
-}
+});
 
 function ThreadSkeleton() {
   return (

@@ -65,6 +65,8 @@ export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: Pricing
     if (autoPlanId && autoPlanId !== 'free' && autoPlanId !== currentPlanId) {
       const match = plans.find((p) => p.id === autoPlanId);
       if (match) {
+        // Deep-link (?upgrade=plan) opens the payment modal once plans load.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setManualPlanModal(match);
       }
     }

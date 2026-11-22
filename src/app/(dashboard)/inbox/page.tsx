@@ -13,6 +13,7 @@ import { useTranslations } from "next-intl";
 import { WifiOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { isRealtimeHealthy } from "@/hooks/use-realtime";
 import {
   useConversationList,
   type InboxFilter,
@@ -115,10 +116,15 @@ function InboxPageInner() {
     soundRef.current = soundEnabled;
   });
 
+  const lastChimeRef = useRef(0);
   const handleInbound = useCallback((_conv: InboxConversation, isActive: boolean) => {
     if (!soundRef.current) return;
     // Don't chime for the chat the agent is looking at right now.
     if (isActive && document.visibilityState === "visible") return;
+    // A burst of messages (or a resync) plays one chime, not a cascade.
+    const now = performance.now();
+    if (now - lastChimeRef.current < 1500) return;
+    lastChimeRef.current = now;
     playIncomingChime();
   }, []);
 
@@ -175,7 +181,9 @@ function InboxPageInner() {
 
   const syncUrl = useCallback((id: string | null) => {
     const url = id ? `/inbox?c=${encodeURIComponent(id)}` : "/inbox";
-    window.history.replaceState(window.history.state, "", url);
+    // `null` per the Next docs: Next patches replaceState to keep its own
+    // router state and to sync useSearchParams with the new URL.
+    window.history.replaceState(null, "", url);
   }, []);
 
   const handleSelect = useCallback(
@@ -192,7 +200,7 @@ function InboxPageInner() {
   }, [syncUrl]);
 
   const hasActive = !!activeId;
-  const live = list.status === "connected";
+  const live = isRealtimeHealthy(list.status);
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">

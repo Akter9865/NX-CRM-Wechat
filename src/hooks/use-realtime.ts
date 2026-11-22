@@ -43,6 +43,11 @@ export interface UseRealtimeChannelOptions {
   onResync?: () => void;
 }
 
+/** "connecting" (first subscribe) counts as healthy — no alarming flash on load. */
+export function isRealtimeHealthy(status: RealtimeConnectionStatus): boolean {
+  return status === "connected" || status === "connecting";
+}
+
 const MAX_BACKOFF_MS = 30_000;
 /** Visibility/online can fire in bursts; don't refetch more often than this. */
 const RESYNC_THROTTLE_MS = 3_000;
@@ -121,7 +126,8 @@ export function useRealtimeChannel({
         retryTimer = null;
       }
       teardown();
-      setStatus("connecting");
+      // Status stays "error"/"disconnected" until the retry succeeds, so
+      // the UI only reports "connecting" for the very first subscribe.
       const delay = immediate
         ? 0
         : Math.min(MAX_BACKOFF_MS, 1000 * 2 ** attempt) + Math.random() * 500;

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  memo,
   useState,
   useRef,
   useCallback,
@@ -147,7 +148,8 @@ function formatDuration(seconds: number): string {
  *  Meta-accepted format means no server ffmpeg / transcode step. */
 const OPUS_ENCODER_PATH = "/opus/encoderWorker.min.js";
 
-export function MessageComposer({
+/** Memoised so thread-level re-renders (clock ticks, list events) skip it. */
+export const MessageComposer = memo(function MessageComposer({
   conversationId,
   sessionExpired,
   onSend,
@@ -828,7 +830,6 @@ export function MessageComposer({
             disabled={sessionExpired || readOnly}
             rows={1}
             title={readOnly ? t("readOnlyTitle") : undefined}
-            enterKeyHint="send"
             // 16px on phones: iOS Safari zooms the page on focus for any
             // input under 16px, which shoves the composer around.
             className={cn(
@@ -920,7 +921,7 @@ export function MessageComposer({
       />
     </div>
   );
-}
+});
 
 /**
  * Staged-attachment preview with caption + send/discard. Declared at

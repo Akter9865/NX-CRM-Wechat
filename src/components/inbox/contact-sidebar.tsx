@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { memo, useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { addContactTag, deleteContactTag } from "@/lib/contacts/tag-api";
@@ -47,7 +47,7 @@ const TAG_PALETTE = [
   "#f97316",
 ];
 
-export function ContactSidebar({ contact, onTagsUpdated }: ContactSidebarProps) {
+export const ContactSidebar = memo(function ContactSidebar({ contact, onTagsUpdated }: ContactSidebarProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
 
@@ -587,4 +587,4 @@ export function ContactSidebar({ contact, onTagsUpdated }: ContactSidebarProps) 
       </ScrollArea>
     </div>
   );
-}
+});

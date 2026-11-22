@@ -57,9 +57,15 @@ create index if not exists idx_conversations_account_last_message
 create index if not exists idx_messages_created_at
   on public.messages (created_at);
 
--- Webhook delivery-status updates look messages up by WhatsApp id.
-create index if not exists idx_messages_wamid
-  on public.messages (wamid) where wamid is not null;
+-- Some deployed databases carry a `messages.wamid` column that predates
+-- the tracked migrations; index it only where it exists.
+do $$
+begin
+  if exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'messages' and column_name = 'wamid') then
+    execute 'create index if not exists idx_messages_wamid on public.messages (wamid) where wamid is not null';
+  end if;
+end $$;
 
 -- ---------------------------------------------------------------------
 -- 3. Duplicate index
@@ -69,62 +75,67 @@ drop index if exists public.idx_whatsapp_config_account_id;
 -- ---------------------------------------------------------------------
 -- 4. RLS initplan (identical predicates, evaluated once per query)
 -- ---------------------------------------------------------------------
-alter policy notifications_select on public.notifications
-  using ((select auth.uid()) = user_id);
-alter policy notifications_update on public.notifications
-  using ((select auth.uid()) = user_id)
-  with check ((select auth.uid()) = user_id);
+-- Each ALTER runs only if that policy exists, so the migration also
+-- applies cleanly to databases that never received the hand-applied
+-- policies (fresh installs / CI).
+create or replace function pg_temp.alter_policy_if_exists(p_table text, p_policy text, p_sql text)
+returns void language plpgsql as $f$
+begin
+  if exists (select 1 from pg_policies where schemaname = 'public' and tablename = p_table and policyname = p_policy) then
+    execute p_sql;
+  end if;
+end $f$;
 
-alter policy "Users can update own profile" on public.profiles
-  using ((select auth.uid()) = user_id);
-alter policy profiles_insert on public.profiles
-  with check ((select auth.uid()) = user_id);
-alter policy profiles_select on public.profiles
-  using (((select auth.uid()) = user_id) or is_account_member(account_id));
-alter policy profiles_update on public.profiles
+select pg_temp.alter_policy_if_exists('notifications', 'notifications_select', $q$alter policy notifications_select on public.notifications
+  using ((select auth.uid()) = user_id)$q$);
+select pg_temp.alter_policy_if_exists('notifications', 'notifications_update', $q$alter policy notifications_update on public.notifications
   using ((select auth.uid()) = user_id)
-  with check ((select auth.uid()) = user_id);
-
-alter policy "Admins can view audit logs" on public.audit_logs
+  with check ((select auth.uid()) = user_id)$q$);
+select pg_temp.alter_policy_if_exists('profiles', 'Users can update own profile', $q$alter policy "Users can update own profile" on public.profiles
+  using ((select auth.uid()) = user_id)$q$);
+select pg_temp.alter_policy_if_exists('profiles', 'profiles_insert', $q$alter policy profiles_insert on public.profiles
+  with check ((select auth.uid()) = user_id)$q$);
+select pg_temp.alter_policy_if_exists('profiles', 'profiles_select', $q$alter policy profiles_select on public.profiles
+  using (((select auth.uid()) = user_id) or is_account_member(account_id))$q$);
+select pg_temp.alter_policy_if_exists('profiles', 'profiles_update', $q$alter policy profiles_update on public.profiles
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id)$q$);
+select pg_temp.alter_policy_if_exists('audit_logs', 'Admins can view audit logs', $q$alter policy "Admins can view audit logs" on public.audit_logs
   using (account_id in (
     select p.account_id from public.profiles p
     where p.user_id = (select auth.uid())
-      and p.account_role = any (array['owner'::account_role_enum, 'admin'::account_role_enum])));
-alter policy "Service role and admins can insert audit logs" on public.audit_logs
+      and p.account_role = any (array['owner'::account_role_enum, 'admin'::account_role_enum])))$q$);
+select pg_temp.alter_policy_if_exists('audit_logs', 'Service role and admins can insert audit logs', $q$alter policy "Service role and admins can insert audit logs" on public.audit_logs
   with check (account_id in (
-    select p.account_id from public.profiles p where p.user_id = (select auth.uid())));
-
-alter policy "Account members can view channel connections" on public.channel_connections
+    select p.account_id from public.profiles p where p.user_id = (select auth.uid())))$q$);
+select pg_temp.alter_policy_if_exists('channel_connections', 'Account members can view channel connections', $q$alter policy "Account members can view channel connections" on public.channel_connections
   using ((account_id in (
     select p.account_id from public.profiles p where p.user_id = (select auth.uid())))
-    and is_archived = false);
-alter policy "Admins can manage channel connections" on public.channel_connections
+    and is_archived = false)$q$);
+select pg_temp.alter_policy_if_exists('channel_connections', 'Admins can manage channel connections', $q$alter policy "Admins can manage channel connections" on public.channel_connections
   using (account_id in (
     select p.account_id from public.profiles p
     where p.user_id = (select auth.uid())
-      and p.account_role = any (array['owner'::account_role_enum, 'admin'::account_role_enum])));
-
-alter policy "Allow service role full access on contact_inquiries" on public.contact_inquiries
-  using (((select auth.jwt()) ->> 'role') = 'service_role');
-
-alter policy "Admins can manage team whatsapp permissions" on public.team_whatsapp_permissions
+      and p.account_role = any (array['owner'::account_role_enum, 'admin'::account_role_enum])))$q$);
+select pg_temp.alter_policy_if_exists('contact_inquiries', 'Allow service role full access on contact_inquiries', $q$alter policy "Allow service role full access on contact_inquiries" on public.contact_inquiries
+  using (((select auth.jwt()) ->> 'role') = 'service_role')$q$);
+select pg_temp.alter_policy_if_exists('team_whatsapp_permissions', 'Admins can manage team whatsapp permissions', $q$alter policy "Admins can manage team whatsapp permissions" on public.team_whatsapp_permissions
   using (account_id in (
     select p.account_id from public.profiles p
     where p.user_id = (select auth.uid())
-      and p.account_role = any (array['owner'::account_role_enum, 'admin'::account_role_enum])));
-alter policy "Users can view their team whatsapp permissions" on public.team_whatsapp_permissions
+      and p.account_role = any (array['owner'::account_role_enum, 'admin'::account_role_enum])))$q$);
+select pg_temp.alter_policy_if_exists('team_whatsapp_permissions', 'Users can view their team whatsapp permissions', $q$alter policy "Users can view their team whatsapp permissions" on public.team_whatsapp_permissions
   using (account_id in (
-    select p.account_id from public.profiles p where p.user_id = (select auth.uid())));
-
-alter policy "Account members can view non-archived connections" on public.whatsapp_config
+    select p.account_id from public.profiles p where p.user_id = (select auth.uid())))$q$);
+select pg_temp.alter_policy_if_exists('whatsapp_config', 'Account members can view non-archived connections', $q$alter policy "Account members can view non-archived connections" on public.whatsapp_config
   using ((account_id in (
     select p.account_id from public.profiles p where p.user_id = (select auth.uid())))
-    and is_archived = false);
-alter policy "Admins can manage whatsapp connections" on public.whatsapp_config
+    and is_archived = false)$q$);
+select pg_temp.alter_policy_if_exists('whatsapp_config', 'Admins can manage whatsapp connections', $q$alter policy "Admins can manage whatsapp connections" on public.whatsapp_config
   using (account_id in (
     select p.account_id from public.profiles p
     where p.user_id = (select auth.uid())
-      and p.account_role = any (array['owner'::account_role_enum, 'admin'::account_role_enum])));
+      and p.account_role = any (array['owner'::account_role_enum, 'admin'::account_role_enum])))$q$);
 
 -- ---------------------------------------------------------------------
 -- 5. search_path hardening
