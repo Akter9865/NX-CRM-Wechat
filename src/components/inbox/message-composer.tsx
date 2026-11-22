@@ -22,6 +22,7 @@ import {
   Plus,
   MessageSquareDashed,
   Zap,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GatedButton } from "@/components/ui/gated-button";
@@ -64,6 +65,21 @@ export const CHAT_MEDIA_BUCKET = "chat-media";
 
 /** Meta caps media captions at 1024 chars. Enforced here and in the send route. */
 export const MEDIA_CAPTION_MAX = 1024;
+
+/**
+ * Unsent text per conversation, kept for the life of the tab so switching
+ * threads (or a remount) never throws away what the agent was typing.
+ */
+const textDrafts = new Map<string, string>();
+
+/** Touch devices: Enter inserts a newline (like WhatsApp mobile); the send button sends. */
+function isCoarsePointer(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(pointer: coarse)").matches
+  );
+}
 
 /** Hard cap on a single voice recording so it can't blow the upload/
  *  transcode limits — auto-stops the recorder when reached. */
@@ -143,10 +159,26 @@ export function MessageComposer({
 }: MessageComposerProps) {
   const t = useTranslations("Inbox.composer");
 
-  const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
+  // Text lives here (not in the thread) so a keystroke re-renders only the
+  // composer. The parent keys this component by conversation id, so the
+  // initializer restores that conversation's unsent draft.
+  const [text, setTextState] = useState(() => textDrafts.get(conversationId) ?? "");
+  const textRef = useRef(text);
+  const setText = useCallback(
+    (next: string | ((prev: string) => string)) => {
+      const value = typeof next === "function" ? next(textRef.current) : next;
+      textRef.current = value;
+      if (value) textDrafts.set(conversationId, value);
+      else textDrafts.delete(conversationId);
+      setTextState(value);
+    },
+    [conversationId],
+  );
   const [drafting, setDrafting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Guards against a double Enter / double click firing two sends before
+  // React has re-rendered with the cleared input.
+  const sendLockRef = useRef(false);
 
   // Interactive-message builder dialog + quick-reply picker.
   const [interactiveOpen, setInteractiveOpen] = useState(false);
@@ -216,32 +248,48 @@ export function MessageComposer({
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    // Max 4 lines (~96px)
-    el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
+    // Max ~5 lines
+    el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
   }, []);
 
-  const handleSend = useCallback(async () => {
-    const trimmed = text.trim();
-    if (!trimmed || sending || sessionExpired) return;
+  // Restore the textarea height for a restored draft.
+  useEffect(() => {
+    if (textRef.current) adjustHeight();
+  }, [adjustHeight]);
 
-    setSending(true);
+  const handleSend = useCallback(() => {
+    const trimmed = textRef.current.trim();
+    if (!trimmed || sendLockRef.current || inputsDisabled) return;
+    sendLockRef.current = true;
     try {
+      // The thread renders an optimistic bubble synchronously and owns
+      // retry, so the input can be cleared at once — the text is never
+      // lost: on failure it stays in the bubble with a Retry action.
       onSend(trimmed, replyTo?.id);
       setText("");
-      if (textareaRef.current) {
-        textareaRef.current.style.height = "auto";
+      const el = textareaRef.current;
+      if (el) {
+        el.style.height = "auto";
+        // Keep the keyboard up / focus in place for rapid replies.
+        el.focus();
       }
     } finally {
-      setSending(false);
+      // Release on the next frame: a second Enter in the same tick sees the lock.
+      requestAnimationFrame(() => {
+        sendLockRef.current = false;
+      });
     }
-  }, [text, sending, sessionExpired, onSend, replyTo?.id]);
+  }, [inputsDisabled, onSend, replyTo?.id, setText]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        handleSend();
-      }
+      if (e.key !== "Enter" || e.shiftKey) return;
+      // IME composition (Chinese/Japanese/Korean input): Enter confirms the
+      // candidate, it must not send a half-typed message.
+      if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+      if (isCoarsePointer()) return;
+      e.preventDefault();
+      handleSend();
     },
     [handleSend]
   );
@@ -251,7 +299,7 @@ export function MessageComposer({
       setText(e.target.value);
       adjustHeight();
     },
-    [adjustHeight]
+    [adjustHeight, setText]
   );
 
   // Ask the AI assistant for a suggested reply and drop it into the
@@ -296,7 +344,7 @@ export function MessageComposer({
     } finally {
       setDrafting(false);
     }
-  }, [drafting, conversationId, adjustHeight]);
+  }, [drafting, conversationId, adjustHeight, setText]);
 
   // ---- Interactive message + quick replies --------------------------
 
@@ -378,7 +426,7 @@ export function MessageComposer({
         }
       });
     },
-    [openInteractiveBuilder, adjustHeight],
+    [openInteractiveBuilder, adjustHeight, setText],
   );
 
   // Upload a captured file to chat-media and stage it as a draft.
@@ -536,7 +584,7 @@ export function MessageComposer({
   // ---- Render --------------------------------------------------------
 
   return (
-    <div className="border-t border-border bg-card p-3">
+    <div className="shrink-0 border-t border-border bg-card px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-3 sm:pt-3 sm:pb-3">
       {replyTo && (
         <div className="mb-2">
           <ReplyQuote
@@ -546,19 +594,25 @@ export function MessageComposer({
           />
         </div>
       )}
-      {sessionExpired && (
-        <div className="mb-2 flex items-center justify-between rounded-lg bg-amber-500/10 px-3 py-2">
-          <p className="text-xs text-amber-400">
-            {t("sessionExpiredHint")}
+      {sessionExpired && !readOnly && (
+        <div
+          role="status"
+          className="mb-2 flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2"
+        >
+          <Clock className="h-4 w-4 shrink-0 text-amber-500" />
+          <p className="min-w-0 flex-1 text-xs leading-snug text-foreground">
+            <span className="font-semibold">24-hour reply window closed.</span>{" "}
+            <span className="text-muted-foreground">
+              WhatsApp only allows approved templates until the customer writes again.
+            </span>
           </p>
           <Button
-            variant="ghost"
             size="sm"
-            className="h-7 text-xs text-amber-400 hover:text-amber-300"
+            className="h-8 shrink-0 gap-1 text-xs"
             onClick={onOpenTemplates}
           >
-            <LayoutTemplate className="mr-1 h-3 w-3" />
-            {t("templates")}
+            <LayoutTemplate className="h-3.5 w-3.5" />
+            {t("sendTemplate")}
           </Button>
         </div>
       )}
@@ -774,8 +828,11 @@ export function MessageComposer({
             disabled={sessionExpired || readOnly}
             rows={1}
             title={readOnly ? t("readOnlyTitle") : undefined}
+            enterKeyHint="send"
+            // 16px on phones: iOS Safari zooms the page on focus for any
+            // input under 16px, which shoves the composer around.
             className={cn(
-              "flex-1 min-w-0 resize-none rounded-xl border border-border bg-muted px-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50",
+              "max-h-32 min-h-10 flex-1 min-w-0 resize-none rounded-2xl border border-border bg-muted px-3.5 py-2 text-base leading-6 text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary/50 sm:text-sm",
               (sessionExpired || readOnly) && "cursor-not-allowed opacity-50"
             )}
           />
@@ -802,9 +859,12 @@ export function MessageComposer({
             size="sm"
             canAct={!readOnly}
             gateReason="send messages"
-            disabled={!text.trim() || sessionExpired || sending}
+            disabled={!text.trim() || sessionExpired}
             onClick={handleSend}
-            className="h-9 w-9 shrink-0 rounded-xl bg-primary p-0 hover:bg-primary/90 disabled:opacity-40 shadow-xs"
+            // Keep focus (and the mobile keyboard) on the textarea.
+            onMouseDown={(e) => e.preventDefault()}
+            aria-label={t("send")}
+            className="h-10 w-10 shrink-0 rounded-full bg-primary p-0 hover:bg-primary/90 disabled:opacity-40 shadow-xs"
           >
             <Send className="h-4 w-4" />
           </GatedButton>

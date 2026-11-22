@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import {
@@ -87,7 +87,10 @@ export async function POST(request: Request) {
       })
     } catch (err) {
       if (err instanceof SendMessageError) {
-        return NextResponse.json({ error: err.message }, { status: err.status })
+        return NextResponse.json(
+          { error: err.message, code: err.code },
+          { status: err.status }
+        )
       }
       throw err
     }
@@ -156,7 +159,10 @@ export async function POST(request: Request) {
     const canSend = await checkCanSendMessage(accountId, supabase)
     if (!canSend.allowed) {
       return NextResponse.json(
-        { error: canSend.message || 'Monthly message limit reached. Please upgrade to continue messaging.' },
+        {
+          error: canSend.message || 'Monthly message limit reached. Please upgrade to continue messaging.',
+          code: 'plan_limit',
+        },
         { status: 403 }
       )
     }
@@ -180,8 +186,12 @@ export async function POST(request: Request) {
         replyToMessageId: reply_to_message_id,
       })
 
-      // Track usage in monthly usage records
-      await trackOutboundMessage(accountId, 1, supabase)
+      // Track usage in monthly usage records. The message is already
+      // delivered and persisted, so this must neither delay the response
+      // (two extra DB round-trips on every send) nor turn a successful send
+      // into a 500 that the inbox would show as "failed" and the agent
+      // would retry — double-sending to the customer.
+      scheduleAfterResponse(() => trackOutboundMessage(accountId, 1, supabase))
 
       return NextResponse.json({
         success: true,
@@ -190,8 +200,10 @@ export async function POST(request: Request) {
       })
     } catch (err) {
       if (err instanceof SendMessageError) {
+        // `code` lets the inbox react to specific failures (e.g. steer
+        // `window_expired` to the template picker) instead of string-matching.
         return NextResponse.json(
-          { error: err.message },
+          { error: err.message, code: err.code },
           { status: err.status }
         )
       }
@@ -206,6 +218,23 @@ export async function POST(request: Request) {
 }
 
 type SendSupabase = Awaited<ReturnType<typeof createClient>>
+
+/**
+ * Run best-effort bookkeeping after the response is sent. `after` throws
+ * outside a request scope (e.g. unit tests calling POST directly); fall
+ * back to a detached promise there. Never throws.
+ */
+function scheduleAfterResponse(task: () => Promise<unknown>) {
+  const safe = () =>
+    task().catch((err) => {
+      console.error('[whatsapp/send] post-response task failed:', err)
+    })
+  try {
+    after(safe)
+  } catch {
+    void safe()
+  }
+}
 
 /**
  * Return the contact's conversation id in this account, creating one if

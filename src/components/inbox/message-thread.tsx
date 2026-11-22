@@ -1,6 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { usePresence } from "@/hooks/use-presence";
@@ -9,31 +17,33 @@ import { PresenceDot } from "@/components/presence/presence-dot";
 import { presenceLabel } from "@/lib/presence";
 import { cn } from "@/lib/utils";
 import type {
-  Conversation,
-  Message,
-  MessageReaction,
   Contact,
   ConversationStatus,
+  InteractiveMessagePayload,
+  MessageReaction,
   MessageTemplate,
   Profile,
-  InteractiveMessagePayload,
 } from "@/types";
 import {
-  MessageSquare,
-  ChevronDown,
-  UserPlus,
-  Check,
-  Clock,
+  ArrowDown,
   ArrowLeft,
-  RefreshCw,
-  PanelRightOpen,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  Clock,
+  Loader2,
+  MessageSquare,
   PanelRightClose,
+  PanelRightOpen,
+  RefreshCw,
+  RotateCcw,
   Send,
   Smartphone,
+  UserPlus,
 } from "lucide-react";
-import { format, isToday, isYesterday, differenceInHours } from "date-fns";
+import { format, isToday, isYesterday } from "date-fns";
 import { useTranslations } from "next-intl";
-import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -55,7 +65,26 @@ import { TemplatePicker } from "./template-picker";
 import { AiThreadBanner } from "./ai-thread-banner";
 import { buildReplyPreview } from "./reply-quote";
 import { renderTemplateBody } from "@/lib/whatsapp/template-body";
-import { toast } from "sonner";
+import { useThreadMessages } from "@/lib/inbox/use-thread-messages";
+import {
+  isTempId,
+  messageKey,
+  newTempId,
+  type ThreadMessage,
+} from "@/lib/inbox/messages";
+import {
+  channelHasCustomerWindow,
+  customerWindowState,
+  lastCustomerMessageAt,
+  type InboxConversation,
+} from "@/lib/inbox/session-window";
+import {
+  isWindowExpiredError,
+  postSend,
+  sendEndpointFor,
+  type SendRequest,
+} from "@/lib/inbox/send";
+import { useNow } from "@/lib/inbox/use-now";
 
 interface ReplyDraft {
   id: string;
@@ -63,726 +92,284 @@ interface ReplyDraft {
   preview: string;
 }
 
-interface MessageThreadProps {
-  conversation: Conversation | null;
+export interface MessageThreadProps {
+  conversation: InboxConversation | null;
   contact: Contact | null;
-  messages: Message[];
-  onMessagesLoaded: (messages: Message[]) => void;
-  onNewMessage: (message: Message) => void;
-  onUpdateMessage: (id: string, updates: Partial<Message>) => void;
-  onStatusChange: (conversationId: string, status: ConversationStatus) => void;
-  onAssignChange: (
-    conversationId: string,
-    assignedAgentId: string | null,
-  ) => void;
   /**
-   * On mobile, the thread is shown full-screen with the conversation list
-   * hidden. This callback lets the page deselect the active conversation
-   * and reveal the list again. Rendered as a back-arrow in the header on
-   * mobile only.
+   * Optimistic patch of the page's conversation store (status, assignee,
+   * bot flag). The realtime UPDATE converges it afterwards.
    */
+  onPatchConversation: (id: string, patch: Partial<InboxConversation>) => void;
+  /** Mobile back-to-list. Rendered below `lg` only. */
   onBack?: () => void;
-  /**
-   * Increment to force the messages + reactions fetch effects to refire.
-   * Parent bumps this on realtime reconnect / tab visibility → visible
-   * so the open thread catches up on any events sent while the WS was
-   * disconnected or the tab was throttled. Optional so existing callers
-   * keep working.
-   */
-  resyncToken?: number;
-  /**
-   * Fired by the manual-refresh button in the thread header. The parent
-   * typically bumps the same `resyncToken` it controls — this gives the
-   * user a way to force a refetch when they suspect realtime missed an
-   * event (or they're impatient). Optional so existing callers keep
-   * working; the button is only rendered when this is provided.
-   */
+  /** Refetch the conversation list too (thread refetches itself). */
   onRefresh?: () => void;
-  /**
-   * Desktop-only contact-panel toggle. The page owns the open/closed
-   * state (it's the one that renders the sidebar), so the thread just
-   * reflects it and asks the page to flip it. Both optional so existing
-   * callers keep working; the toggle button only renders when
-   * `onToggleContactPanel` is wired up.
-   */
   contactPanelOpen?: boolean;
   onToggleContactPanel?: () => void;
+  /** Conversation-list channel status; combined with the thread's own. */
   isLiveConnected?: boolean;
 }
 
-function formatDateSeparator(dateStr: string, t: ReturnType<typeof useTranslations>): string {
-  const date = new Date(dateStr);
-  if (isToday(date)) return t("today");
-  if (isYesterday(date)) return t("yesterday");
-  return format(date, "MMMM d, yyyy");
-}
-
-function groupMessagesByDate(messages: Message[]) {
-  const groups: { date: string; messages: Message[] }[] = [];
-  let currentDate = "";
-
-  for (const msg of messages) {
-    const day = format(new Date(msg.created_at), "yyyy-MM-dd");
-    if (day !== currentDate) {
-      currentDate = day;
-      groups.push({ date: msg.created_at, messages: [msg] });
-    } else {
-      groups[groups.length - 1].messages.push(msg);
-    }
-  }
-
-  return groups;
-}
-
-const STATUS_OPTIONS: { label: string; value: ConversationStatus; color: string }[] = [
-  { label: "Open", value: "open", color: "text-primary" },
-  { label: "Pending", value: "pending", color: "text-amber-400" },
-  { label: "Closed", value: "closed", color: "text-muted-foreground" },
+const STATUS_OPTIONS: { value: ConversationStatus; labelKey: string; dot: string }[] = [
+  { value: "open", labelKey: "statusOpen", dot: "bg-primary" },
+  { value: "pending", labelKey: "statusPending", dot: "bg-amber-500" },
+  { value: "closed", labelKey: "statusClosed", dot: "bg-muted-foreground" },
 ];
 
-/**
- * WhatsApp-style doodle background applied to the chat area (both the
- * active thread and the empty state). The SVG tile lives at
- * `/public/inbox-doodle.svg`; the slate-950 colour sits underneath so
- * the doodles read as a subtle pattern rather than a stark grid.
- *
- * Defined once at module scope so the two render paths can't drift —
- * if we ever switch the asset, both spots update together.
- */
-const DOODLE_BG_CLASSES =
-  "bg-background bg-[url('/inbox-doodle.svg')] bg-repeat";
+/** WhatsApp-style doodle wallpaper behind the thread and its empty state. */
+const DOODLE_BG_CLASSES = "bg-background bg-[url('/inbox-doodle.svg')] bg-repeat";
 
 export function MessageThread({
   conversation,
   contact,
-  messages,
-  onMessagesLoaded,
-  onNewMessage,
-  onUpdateMessage,
-  onStatusChange,
-  onAssignChange,
+  onPatchConversation,
   onBack,
-  resyncToken = 0,
   onRefresh,
   contactPanelOpen,
   onToggleContactPanel,
   isLiveConnected = true,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
-  const tTimer = useTranslations("Inbox.sessionTimer");
   const tQuote = useTranslations("Inbox.replyQuote");
-
   const { user } = useAuth();
+  const userId = user?.id ?? null;
   const { isGlobalBotPaused } = useWhatsAppStatus();
-  const { getPresence, getRow, now } = usePresence();
-  const [loading, setLoading] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const conversationId = conversation?.id ?? null;
+  const thread = useThreadMessages(conversationId);
+  const {
+    messages,
+    reactions,
+    addOptimistic,
+    confirm,
+    fail,
+    patchMessage,
+    discard,
+    setReactions,
+  } = thread;
+
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [reactions, setReactions] = useState<MessageReaction[]>([]);
-  // Purely visual spin state for the manual-refresh button. The actual
-  // refetch is fire-and-forget through `onRefresh` (which bumps the
-  // parent's resyncToken); the 700ms spin is just feedback so the click
-  // doesn't feel like a no-op. Cleared via the timer ref on unmount.
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [replyState, setReplyState] = useState<{ convId: string; draft: ReplyDraft } | null>(null);
+  // A quote picked in conversation A never bleeds into B.
+  const replyTo = replyState && replyState.convId === conversationId ? replyState.draft : null;
+  const clearReply = useCallback(() => setReplyState(null), []);
+
+  const [openMedia, setOpenMedia] = useState<{ conversationId: string; messageId: string } | null>(null);
+  const mediaMessageId =
+    openMedia && openMedia.conversationId === conversationId ? openMedia.messageId : null;
+
+  // Latest values for stable callbacks (bubbles are memoised, so handler
+  // identities must not change on every render).
+  const latest = useRef({ conversation, userId, messages });
   useEffect(() => {
-    return () => {
-      if (refreshTimerRef.current !== null) {
-        clearTimeout(refreshTimerRef.current);
-      }
-    };
-  }, []);
-  const handleRefreshClick = useCallback(() => {
-    if (isRefreshing || !onRefresh) return;
-    setIsRefreshing(true);
-    onRefresh();
-    refreshTimerRef.current = setTimeout(() => {
-      setIsRefreshing(false);
-      refreshTimerRef.current = null;
-    }, 700);
-  }, [isRefreshing, onRefresh]);
-  const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
-  // Which attachment the media viewer is showing. Lives here rather than in
-  // the bubble so the viewer can page through every image/video in the
-  // thread (issue #373). Paired with the conversation it belongs to and read
-  // back through that check below, so switching threads closes the viewer
-  // without an effect racing the messages refetch.
-  const [openMedia, setOpenMedia] = useState<{
-    conversationId: string;
-    messageId: string;
-  } | null>(null);
-
-  // Profiles are bounded by RLS to rows the current user is allowed to
-  // see — today that's just the current user, but the dropdown keeps the
-  // shape ready for shared-team workspaces without a refactor.
-  useEffect(() => {
-    let cancelled = false;
-    const supabase = createClient();
-    supabase
-      .from("profiles")
-      .select("*")
-      .order("full_name")
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) {
-          console.error("Failed to fetch profiles:", error);
-          return;
-        }
-        setProfiles((data as Profile[]) ?? []);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // 24-hour session timer
-  const sessionInfo = useMemo(() => {
-    if (!messages.length) return { expired: false, remaining: "" };
-
-    // Find last customer message
-    const lastCustomerMsg = [...messages]
-      .reverse()
-      .find((m) => m.sender_type === "customer");
-
-    if (!lastCustomerMsg) return { expired: true, remaining: "No customer messages" };
-
-    const hoursSince = differenceInHours(new Date(), new Date(lastCustomerMsg.created_at));
-    const expired = hoursSince >= 24;
-
-    if (expired) {
-      return { expired: true, remaining: tTimer("expired") };
-    }
-
-    const hoursLeft = 24 - hoursSince;
-    const remaining =
-      hoursLeft >= 1
-        ? tTimer("xhRemaining", { hours: Math.floor(hoursLeft) })
-        : tTimer("xmRemaining", { minutes: Math.floor(hoursLeft * 60) });
-
-    return { expired, remaining };
-  }, [messages, tTimer]);
-
-  // Store latest callback in a ref so fetchMessages doesn't need to
-  // depend on `onMessagesLoaded` — otherwise parent re-renders cause
-  // fetchMessages to change → useEffect re-fires → refetch → realtime
-  // UPDATE on conversations.unread_count → parent re-renders → LOOP.
-  // The ref is written inside an effect so the mutation doesn't happen
-  // during render (React 19 refs rule); consumers only read `.current`
-  // inside the async fetch completion, which runs after the render.
-  const onMessagesLoadedRef = useRef(onMessagesLoaded);
-  useEffect(() => {
-    onMessagesLoadedRef.current = onMessagesLoaded;
+    latest.current = { conversation, userId, messages };
   });
 
-  const conversationId = conversation?.id;
-  const hasUnread = (conversation?.unread_count ?? 0) > 0;
+  // ---- 24h customer service window ---------------------------------------
+  const now = useNow();
+  const lastCustomerAt = useMemo(
+    () => lastCustomerMessageAt(conversation, messages),
+    [conversation, messages],
+  );
+  const hasWindowRule = channelHasCustomerWindow(conversation?.channel_type);
+  const windowState = useMemo(
+    () =>
+      customerWindowState(
+        lastCustomerAt,
+        now,
+        thread.loading ? false : !thread.hasOlder,
+      ),
+    [lastCustomerAt, now, thread.loading, thread.hasOlder],
+  );
+  const sessionExpired = hasWindowRule && !thread.loading && windowState.expired;
 
-  const mediaMessageId =
-    openMedia && openMedia.conversationId === conversationId
-      ? openMedia.messageId
-      : null;
-  const handleMediaChange = useCallback(
-    (messageId: string | null) => {
-      setOpenMedia(
-        messageId && conversationId ? { conversationId, messageId } : null,
-      );
-    },
-    [conversationId],
+  // ---- sending -------------------------------------------------------------
+  /** Request bodies of unconfirmed sends, for Retry. */
+  const sendRequests = useRef(
+    new Map<string, { req: SendRequest; mediaPath?: string }>(),
   );
 
-  const lastLoadedConvIdRef = useRef<string | null>(null);
-
-  // Fetch messages whenever the selected conversation changes. Kept
-  // separate from the unread-reset effect so that incoming messages
-  // arriving while the thread is open don't trigger a full refetch —
-  // they only flip hasUnread, which only the reset effect listens to.
-  useEffect(() => {
-    if (!conversationId) {
-      lastLoadedConvIdRef.current = null;
-      return;
-    }
-
-    const isNewConversation = lastLoadedConvIdRef.current !== conversationId;
-    const supabase = createClient();
-    let cancelled = false;
-
-    (async () => {
-      // Only show spinner when switching to a different conversation,
-      // NEVER during background resync or polling — this keeps existing
-      // messages in the DOM so audio playback and scroll are not disrupted.
-      if (isNewConversation) {
-        setLoading(true);
-      }
-
-      try {
-        const { data, error } = await supabase
-          .from("messages")
-          .select("*")
-          .eq("conversation_id", conversationId)
-          .order("created_at", { ascending: true });
-
-        if (cancelled) return;
-
-        if (error) {
-          console.error("Failed to fetch messages:", error);
-        } else {
-          lastLoadedConvIdRef.current = conversationId;
-          onMessagesLoadedRef.current(data ?? []);
-        }
-      } finally {
-        if (!cancelled && isNewConversation) {
-          setLoading(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-    // `resyncToken` is included so the parent can force a refetch when
-    // the realtime channel reconnects or the tab regains focus —
-    // realtime is best-effort and any message events sent while the WS
-    // was disconnected or throttled are otherwise lost.
-  }, [conversationId, resyncToken]);
-
-  // Reactions fetch — pulls the current state from the DB. Kept separate
-  // from the channel subscription below so a `resyncToken` bump just
-  // refetches the rows without also tearing down and rebuilding the
-  // realtime channel.
-  useEffect(() => {
-    if (!conversationId) {
-      setReactions([]);
-      return;
-    }
-    const supabase = createClient();
-    let cancelled = false;
-
-    (async () => {
-      const { data, error } = await supabase
-        .from("message_reactions")
-        .select("*")
-        .eq("conversation_id", conversationId);
-      if (cancelled) return;
-      if (error) {
-        console.error("Failed to fetch reactions:", error);
+  const dispatch = useCallback(
+    async (key: string) => {
+      const entry = sendRequests.current.get(key);
+      if (!entry) return;
+      const result = await postSend(entry.req);
+      if (result.ok) {
+        sendRequests.current.delete(key);
+        confirm(key, { id: result.id, message_id: result.messageId });
         return;
       }
-      setReactions((prev) => {
-        const next = (data as MessageReaction[]) ?? [];
-        if (prev.length === next.length) {
-          let same = true;
-          for (let i = 0; i < prev.length; i++) {
-            if (
-              prev[i].id !== next[i].id ||
-              prev[i].emoji !== next[i].emoji ||
-              prev[i].message_id !== next[i].message_id ||
-              prev[i].actor_id !== next[i].actor_id
-            ) {
-              same = false;
-              break;
-            }
-          }
-          if (same) return prev;
-        }
-        return next;
-      });
-    })();
+      fail(key, result.error);
+      if (isWindowExpiredError(result.code, result.error)) {
+        toast.error("24-hour window closed — send a template instead", {
+          description: result.error,
+          action: { label: "Templates", onClick: () => setTemplateModalOpen(true) },
+        });
+      } else {
+        toast.error("Message not sent", { description: result.error });
+      }
+    },
+    [confirm, fail],
+  );
 
-    return () => {
-      cancelled = true;
-    };
-  }, [conversationId, resyncToken]);
-
-  // Reactions realtime subscription per conversation. Subscribing here
-  // (not at the page level) keeps the channel scoped to the visible
-  // conversation and avoids cross-conversation chatter on a busy inbox.
-  useEffect(() => {
-    if (!conversationId) return;
-    const supabase = createClient();
-
-    const channel = supabase
-      .channel(`reactions:${conversationId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "message_reactions",
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        (payload) => {
-          const row = payload.new as MessageReaction;
-          setReactions((prev) => {
-            if (prev.some((r) => r.id === row.id)) return prev;
-            // Swap any matching optimistic temp row for the real one so
-            // the pill doesn't double up after a successful POST.
-            const tempIdx = prev.findIndex(
-              (r) =>
-                r.id.startsWith("temp-") &&
-                r.message_id === row.message_id &&
-                r.actor_type === row.actor_type &&
-                r.actor_id === row.actor_id,
-            );
-            if (tempIdx >= 0) {
-              const copy = prev.slice();
-              copy[tempIdx] = row;
-              return copy;
-            }
-            return [...prev, row];
-          });
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "message_reactions",
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        (payload) => {
-          const row = payload.new as MessageReaction;
-          setReactions((prev) => prev.map((r) => (r.id === row.id ? row : r)));
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "message_reactions",
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        (payload) => {
-          const old = payload.old as Partial<MessageReaction>;
-          if (!old?.id) return;
-          setReactions((prev) => prev.filter((r) => r.id !== old.id));
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [conversationId]);
-
-  // Clear any in-progress reply draft when the active conversation changes —
-  // a quote pulled from conversation A shouldn't bleed into conversation B.
-  useEffect(() => {
-    setReplyTo(null);
-  }, [conversationId]);
-
-  // Reset the server-side unread_count to 0 whenever an unread count
-  // surfaces on the active conversation — covers both (a) opening a
-  // conversation that had unread messages and (b) new messages arriving
-  // while the user is already viewing the thread (webhook server-bumps
-  // unread_count to N+1; the realtime UPDATE propagates it into the
-  // client, which re-runs this effect and flips it back to 0).
-  //
-  // Guarding on hasUnread prevents the eq-update loop: once unread_count
-  // is 0 the condition is false, so no further UPDATE is issued.
-  useEffect(() => {
-    if (!conversationId || !hasUnread) return;
-    const supabase = createClient();
-    supabase
-      .from("conversations")
-      .update({ unread_count: 0 })
-      .eq("id", conversationId)
-      .then(({ error }) => {
-        if (error) console.error("Failed to reset unread_count:", error);
-      });
-  }, [conversationId, hasUnread]);
-
-  // Auto-scroll to bottom on conversation change or when user is following chat
-  const prevMessagesCountRef = useRef(0);
-  const prevConvIdForScrollRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!scrollRef.current) return;
-    const el = scrollRef.current;
-    const isNewConv = prevConvIdForScrollRef.current !== conversationId;
-    prevConvIdForScrollRef.current = conversationId ?? null;
-
-    // Check if the user is already near the bottom (within 150px)
-    const isNearBottom =
-      el.scrollHeight - el.scrollTop - el.clientHeight < 150;
-
-    const hadZeroMessages =
-      prevMessagesCountRef.current === 0 && messages.length > 0;
-    const lastMsg = messages[messages.length - 1];
-    const isOwnOutbound =
-      lastMsg?.sender_type === "agent" || lastMsg?.sender_type === "bot";
-
-    // Only scroll to bottom if switching conversation, first load of messages,
-    // user is already near bottom following chat, or the latest message was outbound.
-    // If the user scrolled up to read text messages, preserve their scroll position!
-    if (isNewConv || hadZeroMessages || isNearBottom || isOwnOutbound) {
-      el.scrollTop = el.scrollHeight;
-    }
-
-    prevMessagesCountRef.current = messages.length;
-  }, [messages, conversationId]);
-
-  const handleSend = useCallback(
-    async (text: string, replyToId?: string) => {
-      if (!conversation) return;
-
-      const tempId = `temp-${Date.now()}`;
-
-      // Optimistic update — shows the message immediately with "sending" status
-      const optimisticMsg: Message = {
-        id: tempId,
-        conversation_id: conversation.id,
-        sender_type: "agent",
-        content_type: "text",
-        content_text: text,
+  const sendOptimistic = useCallback(
+    (msg: Omit<ThreadMessage, "id" | "status" | "created_at" | "client_key">, req: SendRequest, mediaPath?: string) => {
+      const key = newTempId();
+      addOptimistic({
+        ...msg,
+        id: key,
+        client_key: key,
         status: "sending",
         created_at: new Date().toISOString(),
-        reply_to_message_id: replyToId,
-      };
-      onNewMessage(optimisticMsg);
-      setReplyTo(null);
+      } as ThreadMessage);
+      sendRequests.current.set(key, { req, mediaPath });
+      void dispatch(key);
+    },
+    [addOptimistic, dispatch],
+  );
 
-      try {
-        const endpoint =
-          conversation.channel_type === 'telegram' || conversation.channel_type === 'whatsapp_web'
-            ? '/api/channels/send'
-            : '/api/whatsapp/send';
+  const handleRetry = useCallback(
+    (key: string) => {
+      if (!sendRequests.current.has(key)) {
+        toast.error("This message can't be retried — copy it and send again.");
+        return;
+      }
+      patchMessage(key, { status: "sending", error_message: null });
+      void dispatch(key);
+    },
+    [dispatch, patchMessage],
+  );
 
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            conversation_id: conversation.id,
+  const handleDiscard = useCallback(
+    (key: string) => {
+      const entry = sendRequests.current.get(key);
+      sendRequests.current.delete(key);
+      // A media upload that was never delivered is garbage — GC it now.
+      if (entry?.mediaPath) {
+        void deleteAccountMedia(CHAT_MEDIA_BUCKET, entry.mediaPath).catch(() => {});
+      }
+      discard(key);
+    },
+    [discard],
+  );
+
+  const handleSend = useCallback(
+    (text: string, replyToId?: string) => {
+      const conv = latest.current.conversation;
+      if (!conv) return;
+      sendOptimistic(
+        {
+          conversation_id: conv.id,
+          sender_type: "agent",
+          sender_id: latest.current.userId ?? undefined,
+          content_type: "text",
+          content_text: text,
+          reply_to_message_id: replyToId,
+        },
+        {
+          endpoint: sendEndpointFor(conv.channel_type),
+          body: {
+            conversation_id: conv.id,
             message_type: "text",
             content_text: text,
             reply_to_message_id: replyToId,
-          }),
-        });
-
-        const payload = await res.json().catch(() => ({}));
-
-        if (!res.ok) {
-          const reason = payload?.error || `HTTP ${res.status}`;
-          console.error("Failed to send message:", reason);
-          toast.error(`Failed to send: ${reason}`);
-          // Mark the optimistic bubble as failed so the user sees what happened
-          onUpdateMessage(tempId, { status: "failed" });
-          return;
-        }
-
-        // Success — immediately attach real DB UUID and Meta WhatsApp / channel message ID
-        onUpdateMessage(tempId, {
-          id: payload.message_id || tempId,
-          message_id: payload.whatsapp_message_id || payload.externalMessageId || undefined,
-          status: "sent",
-        });
-      } catch (err) {
-        console.error("Failed to send message:", err);
-        const reason = err instanceof Error ? err.message : "network error";
-        toast.error(`Failed to send: ${reason}`);
-        onUpdateMessage(tempId, { status: "failed" });
-      }
+          },
+        },
+      );
+      setReplyState(null);
     },
-    [conversation, onNewMessage, onUpdateMessage]
+    [sendOptimistic],
   );
 
   const handleSendMedia = useCallback(
-    async (payload: SendMediaPayload) => {
-      if (!conversation) return;
-
-      // Documents show their filename in our own bubble (and to the
-      // recipient as the Meta caption when no caption was typed); other
-      // kinds use the caption as-is. Audio carries no caption.
+    (payload: SendMediaPayload) => {
+      const conv = latest.current.conversation;
+      if (!conv) return;
+      // Documents show their filename in our bubble (and to the recipient as
+      // the caption when none was typed); audio carries no caption.
       const contentText =
         payload.kind === "document"
           ? payload.caption || payload.filename || "Document"
           : payload.caption;
-
-      const tempId = `temp-${Date.now()}`;
-      const optimisticMsg: Message = {
-        id: tempId,
-        conversation_id: conversation.id,
-        sender_type: "agent",
-        content_type: payload.kind,
-        content_text: contentText,
-        media_url: payload.mediaUrl,
-        status: "sending",
-        created_at: new Date().toISOString(),
-        reply_to_message_id: payload.replyToId,
-      };
-      onNewMessage(optimisticMsg);
-      setReplyTo(null);
-
-      try {
-        const endpoint =
-          conversation.channel_type === 'telegram' || conversation.channel_type === 'whatsapp_web'
-            ? '/api/channels/send'
-            : '/api/whatsapp/send';
-
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            conversation_id: conversation.id,
+      sendOptimistic(
+        {
+          conversation_id: conv.id,
+          sender_type: "agent",
+          content_type: payload.kind,
+          content_text: contentText,
+          media_url: payload.mediaUrl,
+          reply_to_message_id: payload.replyToId,
+        },
+        {
+          endpoint: sendEndpointFor(conv.channel_type),
+          body: {
+            conversation_id: conv.id,
             message_type: payload.kind,
             media_url: payload.mediaUrl,
             content_text: contentText,
             filename: payload.filename,
             reply_to_message_id: payload.replyToId,
-          }),
-        });
-
-        const data = await res.json().catch(() => ({}));
-
-        if (!res.ok) {
-          const reason = data?.error || `HTTP ${res.status}`;
-          console.error("Failed to send media:", reason);
-          toast.error(`Failed to send: ${reason}`);
-          onUpdateMessage(tempId, { status: "failed" });
-          // The upload never reached the recipient — GC the orphaned
-          // object rather than leaving it in the public bucket forever.
-          void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
-          return;
-        }
-
-        onUpdateMessage(tempId, {
-          id: data.message_id || tempId,
-          message_id: data.whatsapp_message_id || data.externalMessageId || undefined,
-          status: "sent",
-        });
-      } catch (err) {
-        console.error("Failed to send media:", err);
-        const reason = err instanceof Error ? err.message : "network error";
-        toast.error(`Failed to send: ${reason}`);
-        onUpdateMessage(tempId, { status: "failed" });
-        void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
-      }
+          },
+        },
+        payload.path,
+      );
+      setReplyState(null);
     },
-    [conversation, onNewMessage, onUpdateMessage],
+    [sendOptimistic],
   );
 
   const handleSendInteractive = useCallback(
-    async (payload: InteractiveMessagePayload, replyToId?: string) => {
-      if (!conversation) return;
-
-      const tempId = `temp-${Date.now()}`;
-      // Optimistic bubble — renders the buttons/list immediately via the
-      // interactive_payload, same as the persisted row will.
-      const optimisticMsg: Message = {
-        id: tempId,
-        conversation_id: conversation.id,
-        sender_type: "agent",
-        content_type: "interactive",
-        content_text: payload.body,
-        interactive_payload: payload,
-        status: "sending",
-        created_at: new Date().toISOString(),
-        reply_to_message_id: replyToId,
-      };
-      onNewMessage(optimisticMsg);
-
-      try {
-        const endpoint =
-          conversation.channel_type === 'telegram' || conversation.channel_type === 'whatsapp_web'
-            ? '/api/channels/send'
-            : '/api/whatsapp/send';
-
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            conversation_id: conversation.id,
+    (payload: InteractiveMessagePayload, replyToId?: string) => {
+      const conv = latest.current.conversation;
+      if (!conv) return;
+      sendOptimistic(
+        {
+          conversation_id: conv.id,
+          sender_type: "agent",
+          content_type: "interactive",
+          content_text: payload.body,
+          interactive_payload: payload,
+          reply_to_message_id: replyToId,
+        },
+        {
+          endpoint: sendEndpointFor(conv.channel_type),
+          body: {
+            conversation_id: conv.id,
             message_type: "interactive",
             interactive_payload: payload,
             reply_to_message_id: replyToId,
-          }),
-        });
-
-        const data = await res.json().catch(() => ({}));
-
-        if (!res.ok) {
-          const reason = data?.error || `HTTP ${res.status}`;
-          console.error("Failed to send interactive message:", reason);
-          toast.error(`Failed to send: ${reason}`);
-          onUpdateMessage(tempId, { status: "failed" });
-          return;
-        }
-
-        onUpdateMessage(tempId, {
-          id: data.message_id || tempId,
-          message_id: data.whatsapp_message_id || data.externalMessageId || undefined,
-          status: "sent",
-        });
-      } catch (err) {
-        console.error("Failed to send interactive message:", err);
-        const reason = err instanceof Error ? err.message : "network error";
-        toast.error(`Failed to send: ${reason}`);
-        onUpdateMessage(tempId, { status: "failed" });
-      }
+          },
+        },
+      );
     },
-    [conversation, onNewMessage, onUpdateMessage],
+    [sendOptimistic],
   );
-
-  const handleStatusChange = useCallback(
-    async (status: ConversationStatus) => {
-      if (!conversation) return;
-
-      const supabase = createClient();
-      await supabase
-        .from("conversations")
-        .update({ status })
-        .eq("id", conversation.id);
-
-      onStatusChange(conversation.id, status);
-    },
-    [conversation, onStatusChange]
-  );
-
-  const handleOpenTemplates = useCallback(() => {
-    setTemplateModalOpen(true);
-  }, []);
 
   const handleSendTemplate = useCallback(
-    async (
+    (
       template: MessageTemplate,
-      values: {
-        body: string[];
-        headerText?: string;
-        buttonParams?: Record<number, string>;
-      },
+      values: { body: string[]; headerText?: string; buttonParams?: Record<number, string> },
     ) => {
-      if (!conversation) return;
-
+      const conv = latest.current.conversation;
+      if (!conv) return;
       const renderedBody = renderTemplateBody(template.body_text, values.body);
-      const tempId = `temp-${Date.now()}`;
-
-      const optimisticMsg: Message = {
-        id: tempId,
-        conversation_id: conversation.id,
-        sender_type: "agent",
-        content_type: "template",
-        content_text: renderedBody,
-        template_name: template.name,
-        status: "sending",
-        created_at: new Date().toISOString(),
-      };
-      onNewMessage(optimisticMsg);
-
-      try {
-        const res = await fetch("/api/whatsapp/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            conversation_id: conversation.id,
+      sendOptimistic(
+        {
+          conversation_id: conv.id,
+          sender_type: "agent",
+          content_type: "template",
+          content_text: renderedBody,
+          template_name: template.name,
+        },
+        {
+          endpoint: "/api/whatsapp/send",
+          body: {
+            conversation_id: conv.id,
             message_type: "template",
             template_name: template.name,
             template_language: template.language,
-            // Structured params drive the new send-builder path
-            // (header media + URL button substitution). Body values
-            // are mirrored under both shapes so the route can fall
-            // back if the template row isn't found locally.
+            // Structured params drive the send-builder (header media + URL
+            // buttons); body values are mirrored for the legacy fallback.
             template_message_params: {
               body: values.body,
               headerText: values.headerText,
@@ -790,126 +377,69 @@ export function MessageThread({
             },
             template_params: values.body,
             content_text: renderedBody,
-          }),
-        });
-
-        const payload = await res.json().catch(() => ({}));
-
-        if (!res.ok) {
-          const reason = payload?.error || `HTTP ${res.status}`;
-          console.error("Failed to send template:", reason);
-          toast.error(`Failed to send template: ${reason}`);
-          onUpdateMessage(tempId, { status: "failed" });
-          return;
-        }
-
-        onUpdateMessage(tempId, {
-          id: payload.message_id || tempId,
-          message_id: payload.whatsapp_message_id || undefined,
-          status: "sent",
-        });
-      } catch (err) {
-        console.error("Failed to send template:", err);
-        const reason = err instanceof Error ? err.message : "network error";
-        toast.error(`Failed to send template: ${reason}`);
-        onUpdateMessage(tempId, { status: "failed" });
-      }
+          },
+        },
+      );
     },
-    [conversation, onNewMessage, onUpdateMessage],
+    [sendOptimistic],
   );
 
-  // Build a quick id → Message map so reply quotes can be rendered without
-  // an extra fetch — the thread already holds the full conversation.
-  const messagesById = useMemo(() => {
-    const map = new Map<string, Message>();
-    for (const m of messages) map.set(m.id, m);
-    return map;
-  }, [messages]);
+  const handleOpenTemplates = useCallback(() => setTemplateModalOpen(true), []);
 
-  // Images + videos in the thread, in order — the set the media viewer
-  // pages through with ← / →.
-  const mediaGallery = useMemo(() => collectMediaGallery(messages), [messages]);
-
-  // Bucket reactions by their target message_id for O(1) per-bubble lookup.
-  const reactionsByMessageId = useMemo(() => {
-    const map = new Map<string, MessageReaction[]>();
-    for (const r of reactions) {
-      const bucket = map.get(r.message_id);
-      if (bucket) bucket.push(r);
-      else map.set(r.message_id, [r]);
-    }
-    return map;
-  }, [reactions]);
-
+  // ---- replies + reactions ---------------------------------------------------
   const contactDisplayName = contact?.name || contact?.phone || "Customer";
-
-  // Author label for a quoted message: "You" when we sent the parent,
-  // contact name when the customer sent it.
-  const authorLabelFor = useCallback(
-    (m: Message): string => {
-      const isAgentMsg =
-        m.sender_type === "agent" || m.sender_type === "bot";
-      return isAgentMsg ? "You" : contactDisplayName;
-    },
-    [contactDisplayName],
-  );
+  const meLabel = "You";
 
   const handleStartReply = useCallback(
-    (msg: Message) => {
-      setReplyTo({
-        id: msg.id,
-        authorLabel: authorLabelFor(msg),
-        preview: buildReplyPreview(msg, tQuote),
-      });
-    },
-    [authorLabelFor, tQuote],
-  );
-
-  // Single reaction-set primitive. emoji === "" removes; otherwise adds/swaps.
-  // The "toggle" semantic (pill click) is computed at the call site where the
-  // current reactions for the bubble are already in scope — keeps this
-  // function dependency-free w.r.t. the reaction list.
-  const postReaction = useCallback(
-    async (messageId: string, emoji: string) => {
-      if (!user?.id || !conversation) {
-        console.warn("[reactions] missing user or conversation");
-        return;
-      }
-      if (messageId.startsWith("temp-")) {
+    (msg: ThreadMessage) => {
+      const convId = latest.current.conversation?.id;
+      if (!convId) return;
+      if (isTempId(msg.id)) {
         toast.error("Wait for the message to finish sending");
         return;
       }
+      const isAgentMsg = msg.sender_type === "agent" || msg.sender_type === "bot";
+      setReplyState({
+        convId,
+        draft: {
+          id: msg.id,
+          authorLabel: isAgentMsg ? meLabel : contactDisplayName,
+          preview: buildReplyPreview(msg, tQuote),
+        },
+      });
+    },
+    [contactDisplayName, tQuote],
+  );
 
-      const convId = conversation.id;
-      const userId = user.id;
+  const postReaction = useCallback(
+    async (messageId: string, emoji: string) => {
+      const { conversation: conv, userId: uid } = latest.current;
+      if (!uid || !conv) return;
+      if (isTempId(messageId)) {
+        toast.error("Wait for the message to finish sending");
+        return;
+      }
       let snapshot: MessageReaction[] = [];
-
-      // Functional updater — captures the freshest reactions list, never a
-      // stale closure. Snapshot stored for rollback on POST failure.
       setReactions((prev) => {
         snapshot = prev;
         const own = prev.find(
-          (r) =>
-            r.message_id === messageId &&
-            r.actor_type === "agent" &&
-            r.actor_id === userId,
+          (r) => r.message_id === messageId && r.actor_type === "agent" && r.actor_id === uid,
         );
         if (emoji === "") return own ? prev.filter((r) => r !== own) : prev;
         if (own) return prev.map((r) => (r === own ? { ...own, emoji } : r));
         return [
           ...prev,
           {
-            id: `temp-${Date.now()}`,
+            id: newTempId(),
             message_id: messageId,
-            conversation_id: convId,
+            conversation_id: conv.id,
             actor_type: "agent",
-            actor_id: userId,
+            actor_id: uid,
             emoji,
             created_at: new Date().toISOString(),
           },
         ];
       });
-
       try {
         const res = await fetch("/api/whatsapp/react", {
           method: "POST",
@@ -921,58 +451,94 @@ export function MessageThread({
           throw new Error(payload?.error || `HTTP ${res.status}`);
         }
       } catch (err) {
-        const reason = err instanceof Error ? err.message : "network error";
-        toast.error(`Reaction failed: ${reason}`);
-        setReactions(snapshot);
+        toast.error(`Reaction failed: ${err instanceof Error ? err.message : "network error"}`);
+        setReactions(() => snapshot);
       }
     },
-    [conversation, user?.id],
+    [setReactions],
+  );
+
+  const reactionsRef = useRef(reactions);
+  useEffect(() => {
+    reactionsRef.current = reactions;
+  });
+  const handleToggleReaction = useCallback(
+    (messageId: string, emoji: string) => {
+      const uid = latest.current.userId;
+      const own = reactionsRef.current.find(
+        (r) => r.message_id === messageId && r.actor_type === "agent" && r.actor_id === uid,
+      );
+      void postReaction(messageId, own?.emoji === emoji ? "" : emoji);
+    },
+    [postReaction],
+  );
+
+  const handleMediaChange = useCallback(
+    (messageId: string | null) => {
+      const convId = latest.current.conversation?.id;
+      setOpenMedia(messageId && convId ? { conversationId: convId, messageId } : null);
+    },
+    [],
+  );
+
+  // ---- conversation actions ----------------------------------------------------
+  const updateConversation = useCallback(
+    async (patch: Partial<InboxConversation>, failMessage: string) => {
+      const conv = latest.current.conversation;
+      if (!conv) return;
+      const rollback: Partial<InboxConversation> = {};
+      for (const k of Object.keys(patch) as (keyof InboxConversation)[]) {
+        (rollback as Record<string, unknown>)[k] = conv[k] ?? null;
+      }
+      onPatchConversation(conv.id, patch);
+      const { error } = await createClient()
+        .from("conversations")
+        .update(patch)
+        .eq("id", conv.id);
+      if (error) {
+        console.error(failMessage, error);
+        toast.error(failMessage, { description: error.message });
+        onPatchConversation(conv.id, rollback);
+      }
+    },
+    [onPatchConversation],
+  );
+
+  const handleStatusChange = useCallback(
+    (status: ConversationStatus) => {
+      void updateConversation({ status }, "Failed to update status");
+    },
+    [updateConversation],
   );
 
   const handleAssignChange = useCallback(
-    async (agentId: string | null) => {
-      if (!conversation) return;
-
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("conversations")
-        .update({ assigned_agent_id: agentId })
-        .eq("id", conversation.id);
-
-      if (error) {
-        console.error("Failed to update assignment:", error);
-        toast.error("Failed to update assignment");
-        return;
-      }
-
-      onAssignChange(conversation.id, agentId);
+    (agentId: string | null) => {
+      // `null` (not undefined) so "Unassign" actually reaches the DB —
+      // JSON drops undefined keys, which made the update a silent no-op.
+      void updateConversation(
+        { assigned_agent_id: agentId } as unknown as Partial<InboxConversation>,
+        "Failed to update assignment",
+      );
     },
-    [conversation, onAssignChange],
+    [updateConversation],
   );
 
   const [botToggling, setBotToggling] = useState(false);
   const isBotPaused = Boolean(conversation?.ai_autoreply_disabled);
-
   const handleToggleBotAutomation = useCallback(async () => {
-    if (!conversation) return;
+    const conv = latest.current.conversation;
+    if (!conv) return;
     if (isGlobalBotPaused) {
       toast.info(
-        "Global Bot Reply is OFF (100% Human Agent Mode). Activate Bot Reply in the sidebar to enable automated replies.",
-        {
-          action: {
-            label: "Bot Reply",
-            onClick: () => {
-              window.location.href = "/bot-reply";
-            },
-          },
-        }
+        "Global Bot Reply is OFF (100% Human Agent Mode). Turn it on from Bot Reply settings.",
+        { action: { label: "Bot Reply", onClick: () => { window.location.href = "/bot-reply"; } } },
       );
       return;
     }
     setBotToggling(true);
-    const nextPaused = !isBotPaused;
+    const nextPaused = !conv.ai_autoreply_disabled;
     try {
-      const res = await fetch(`/api/ai/autoreply/${conversation.id}`, {
+      const res = await fetch(`/api/ai/autoreply/${conv.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paused: nextPaused, assign_to_me: nextPaused }),
@@ -982,413 +548,145 @@ export function MessageThread({
         toast.error(j?.error ?? "Failed to toggle bot");
         return;
       }
-      if (nextPaused) {
-        if (user?.id) onAssignChange(conversation.id, user.id);
-        toast.success("Bot paused for this conversation (Human Agent Mode)");
-      } else {
-        onAssignChange(conversation.id, null);
-        toast.success("Bot & flow automations resumed");
-      }
+      // Patch BOTH fields locally — previously only the assignee was
+      // patched, so the header kept saying "Bot: Active" until (or unless)
+      // the realtime UPDATE arrived.
+      onPatchConversation(conv.id, {
+        ai_autoreply_disabled: nextPaused,
+        assigned_agent_id: (nextPaused
+          ? (latest.current.userId ?? conv.assigned_agent_id ?? null)
+          : null) as string | undefined,
+      });
+      toast.success(nextPaused ? "Bot paused — you're handling this chat" : "Bot & automations resumed");
     } catch {
       toast.error("Network error while toggling bot");
     } finally {
       setBotToggling(false);
     }
-  }, [conversation, isBotPaused, isGlobalBotPaused, user?.id, onAssignChange]);
+  }, [isGlobalBotPaused, onPatchConversation]);
 
-  // Empty state — same WhatsApp-style doodle background as the active
-  // thread below, so swapping between empty/selected doesn't change the
-  // pattern under the user's eye.
-  if (!conversation || !contact) {
+  const handleBannerChange = useCallback(
+    (patch: { ai_autoreply_disabled: boolean; assigned_agent_id?: string | null }) => {
+      const conv = latest.current.conversation;
+      if (!conv) return;
+      onPatchConversation(conv.id, {
+        ai_autoreply_disabled: patch.ai_autoreply_disabled,
+        ...("assigned_agent_id" in patch
+          ? { assigned_agent_id: (patch.assigned_agent_id ?? null) as string | undefined }
+          : {}),
+      });
+    },
+    [onPatchConversation],
+  );
+
+  const threadResync = thread.resync;
+  const handleRefresh = useCallback(() => {
+    threadResync();
+    onRefresh?.();
+  }, [threadResync, onRefresh]);
+
+  const mediaGallery = useMemo(() => collectMediaGallery(messages), [messages]);
+
+  // ---- render ---------------------------------------------------------------------
+  if (!conversation) {
     return (
-      <div className={cn("flex flex-1 flex-col items-center justify-center", DOODLE_BG_CLASSES)}>
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-          <MessageSquare className="h-8 w-8 text-muted-foreground" />
+      <div className={cn("relative flex flex-1 flex-col items-center justify-center px-6 text-center", DOODLE_BG_CLASSES)}>
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label={t("backToConversations")}
+            className="absolute left-2 top-2 flex h-9 w-9 items-center justify-center rounded-full bg-card text-muted-foreground shadow-xs hover:text-foreground lg:hidden"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+        )}
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-card shadow-xs">
+          <MessageSquare className="h-7 w-7 text-primary" />
         </div>
-        <h3 className="mt-4 text-sm font-medium text-muted-foreground">
-          {t("selectConversation")}
-        </h3>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {t("selectConversationHint")}
-        </p>
+        <h3 className="mt-4 text-sm font-semibold text-foreground">{t("selectConversation")}</h3>
+        <p className="mt-1 max-w-xs text-xs text-muted-foreground">{t("selectConversationHint")}</p>
       </div>
     );
   }
 
-  const displayName = contact.name || contact.phone;
-  const messageGroups = groupMessagesByDate(messages);
-  const currentStatus = STATUS_OPTIONS.find(
-    (s) => s.value === conversation.status
-  );
-  const assignedAgentId = conversation.assigned_agent_id ?? null;
-  const currentAssignee = profiles.find((p) => p.user_id === assignedAgentId);
-  const assignLabel = assignedAgentId
-    ? (currentAssignee?.full_name ?? t("assigned"))
-    : t("assign");
+  const displayName = contact?.name || contact?.phone || "Unknown";
+  const live = isLiveConnected && thread.status === "connected";
 
   return (
-    // `min-w-0` is load-bearing: the page already puts min-w-0 on the
-    // thread's flex *wrapper* (issue #165), but this root keeps the
-    // default `min-width: auto`, so a single wide message (long unbroken
-    // URL/word) expands the whole thread past its flex share and the chat
-    // paints on top of the contact sidebar at lg+ — outgoing bubbles get
-    // clipped and the hover toolbar overlaps the Tags panel. Letting the
-    // root shrink lets the bubbles' break-words / max-w caps apply.
-    // Issue #257.
-    <div className={cn("flex min-w-0 flex-1 flex-col", DOODLE_BG_CLASSES)}>
-      {/* Header — solid card surface sits on top of the doodle so the
-          name/avatar/dropdowns stay legible. */}
-      <div className="flex items-center justify-between gap-1.5 sm:gap-2 border-b border-border bg-card px-2.5 py-2.5 sm:px-4 shrink-0">
-        <div className="flex min-w-0 items-center gap-1.5 sm:gap-3 flex-1">
-          {/* Back-to-list button — mobile only. Hidden on lg+ where the
-              conversation list is always visible next to the thread. */}
-          {onBack && (
-            <button
-              type="button"
-              onClick={onBack}
-              aria-label={t("backToConversations")}
-              className="flex h-8 w-8 sm:h-9 sm:w-9 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-          )}
-          <div className="flex h-8 w-8 sm:h-9 sm:w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-xs sm:text-sm font-medium text-foreground">
-            {displayName.charAt(0).toUpperCase()}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <h2 className="truncate text-xs sm:text-sm font-semibold text-foreground">{displayName}</h2>
-              {conversation.channel_type === 'telegram' ? (
-                <Badge variant="outline" className="hidden xs:inline-flex border-sky-500/30 bg-sky-500/10 text-sky-400 text-[10px] gap-1 font-medium shrink-0">
-                  <Send className="size-2.5" />
-                  <span className="hidden sm:inline">Telegram</span>
-                </Badge>
-              ) : conversation.channel_type === 'whatsapp_web' ? (
-                <Badge variant="outline" className="hidden xs:inline-flex border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-[10px] gap-1 font-medium shrink-0">
-                  <Smartphone className="size-2.5" />
-                  <span className="hidden sm:inline">WhatsApp Web</span>
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="hidden xs:inline-flex border-green-500/30 bg-green-500/10 text-green-400 text-[10px] gap-1 font-medium shrink-0">
-                  <MessageSquare className="size-2.5" />
-                  <span className="hidden sm:inline">WhatsApp API</span>
-                </Badge>
-              )}
-            </div>
-            <p className="truncate text-[11px] sm:text-xs text-muted-foreground">{contact.phone}</p>
-          </div>
-          {/* Session timer badge — hidden on the narrowest phones so
-              the name + back arrow keep their room. */}
-          <Badge
-            variant="outline"
-            className={cn(
-              "ml-1 hidden gap-1 border-border text-[10px] sm:inline-flex sm:ml-2 shrink-0",
-              sessionInfo.expired ? "text-red-400" : "text-primary"
-            )}
-          >
-            <Clock className="h-3 w-3" />
-            {sessionInfo.remaining}
-          </Badge>
+    // `min-w-0` (issue #257): a long unbroken URL must not widen the thread
+    // past its flex share and paint over the contact sidebar.
+    <div className={cn("relative flex h-full min-w-0 flex-1 flex-col", DOODLE_BG_CLASSES)}>
+      <ThreadHeader
+        t={t}
+        conversation={conversation}
+        displayName={displayName}
+        subtitle={contact?.phone ?? ""}
+        avatarUrl={contact?.avatar_url}
+        onBack={onBack}
+        hasWindowRule={hasWindowRule}
+        windowExpired={sessionExpired}
+        windowExpiresAt={windowState.expiresAt}
+        windowLoading={thread.loading}
+        now={now}
+        live={live}
+        isGlobalBotPaused={isGlobalBotPaused}
+        isBotPaused={isBotPaused}
+        botToggling={botToggling}
+        onToggleBot={handleToggleBotAutomation}
+        onStatusChange={handleStatusChange}
+        onAssignChange={handleAssignChange}
+        currentUserId={userId}
+        onRefresh={handleRefresh}
+        contactPanelOpen={contactPanelOpen}
+        onToggleContactPanel={onToggleContactPanel}
+      />
 
-          {/* Real-time Live Stream Indicator */}
-          <div
-            title={isLiveConnected ? "Real-time Live WebSocket Active" : "Reconnecting to live stream..."}
-            className={cn(
-              "ml-1 hidden items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide border sm:inline-flex shrink-0",
-              isLiveConnected
-                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                : "border-amber-500/30 bg-amber-500/10 text-amber-500 animate-pulse"
-            )}
-          >
-            <span
-              className={cn(
-                "size-1.5 rounded-full shrink-0",
-                isLiveConnected ? "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]" : "bg-amber-500"
-              )}
-            />
-            <span>{isLiveConnected ? "Live" : "Syncing"}</span>
-          </div>
-        </div>
+      {/* Keyed by conversation: scroll position, "new messages" pill and
+          pagination anchors reset cleanly on every switch. */}
+      <ThreadMessages
+        key={conversation.id}
+        messages={messages}
+        reactions={reactions}
+        loading={thread.loading}
+        error={thread.error}
+        hasOlder={thread.hasOlder}
+        loadingOlder={thread.loadingOlder}
+        onLoadOlder={thread.loadOlder}
+        onRetryLoad={thread.resync}
+        userId={userId}
+        contactLabel={contactDisplayName}
+        meLabel={meLabel}
+        tQuote={tQuote}
+        t={t}
+        onReply={handleStartReply}
+        onReact={postReaction}
+        onToggleReaction={handleToggleReaction}
+        onOpenMedia={handleMediaChange}
+        onRetry={handleRetry}
+        onDiscard={handleDiscard}
+      />
 
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          {/* Bot / Flow Automation Header Toggle — hidden on mobile since AiThreadBanner is visible right above composer */}
-          <button
-            type="button"
-            onClick={handleToggleBotAutomation}
-            disabled={botToggling}
-            title={
-              isGlobalBotPaused
-                ? "Global Bot is turned OFF (100% Human Agent Mode). Click to view Bot Reply settings."
-                : isBotPaused
-                  ? "Bot is paused for this conversation. Click to resume bot & automations."
-                  : "Bot is active for this conversation. Click to pause bot & take over."
-            }
-            className={cn(
-              "hidden sm:inline-flex items-center gap-1.5 h-7 px-2.5 text-xs font-semibold rounded-md border transition-all cursor-pointer shrink-0",
-              isGlobalBotPaused || isBotPaused
-                ? "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20"
-                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
-            )}
-          >
-            <span
-              className={cn(
-                "size-2 rounded-full shrink-0",
-                isGlobalBotPaused || isBotPaused ? "bg-amber-500 animate-pulse" : "bg-emerald-500"
-              )}
-            />
-            <span>
-              {isGlobalBotPaused
-                ? "Global Bot: Off"
-                : isBotPaused
-                  ? "Bot: Paused"
-                  : "Bot: Active"}
-            </span>
-          </button>
-
-          {/* Contact-panel toggle — desktop only. The contact sidebar
-              eats a chunk of horizontal width that crowds the thread on
-              smaller laptops; this lets agents reclaim it when they just
-              want to read and reply. Hidden on mobile, where the sidebar
-              never renders as a permanent panel anyway. Issue #258. */}
-          {onToggleContactPanel && (
-            <button
-              type="button"
-              onClick={onToggleContactPanel}
-              aria-label={
-                contactPanelOpen ? t("hideContactPanel") : t("showContactPanel")
-              }
-              title={contactPanelOpen ? t("hideContact") : t("showContact")}
-              aria-pressed={contactPanelOpen}
-              className={cn(
-                "hidden h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground lg:inline-flex",
-                contactPanelOpen ? "text-primary" : "text-muted-foreground",
-              )}
-            >
-              {contactPanelOpen ? (
-                <PanelRightClose className="h-4 w-4" />
-              ) : (
-                <PanelRightOpen className="h-4 w-4" />
-              )}
-            </button>
-          )}
-
-          {/* Manual refresh — forces a refetch of the messages + the
-              conversation list (the parent bumps its resyncToken). Useful
-              when realtime missed an event or the agent just wants to be
-              sure nothing's stale. Only rendered when the parent wires
-              up `onRefresh`. */}
-          {onRefresh && (
-            <button
-              type="button"
-              onClick={handleRefreshClick}
-              disabled={isRefreshing}
-              aria-label={t("refreshConversation")}
-              title={t("refresh")}
-              className={cn(
-                "inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60",
-              )}
-            >
-              <RefreshCw
-                className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")}
-              />
-            </button>
-          )}
-
-          {/* Status dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger className={cn(
-                  "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
-                  currentStatus?.color ?? "text-muted-foreground"
-                )}>
-                {currentStatus ? t(`status${currentStatus.label}`) : t("status")}
-                <ChevronDown className="h-3 w-3" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="border-border bg-popover"
-            >
-              {STATUS_OPTIONS.map((opt) => (
-                <DropdownMenuItem
-                  key={opt.value}
-                  onClick={() => handleStatusChange(opt.value)}
-                  className={cn("text-sm", opt.color)}
-                >
-                  {t(`status${opt.label}`)}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Assign dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              className={cn(
-                "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
-                assignedAgentId ? "text-primary" : "text-muted-foreground"
-              )}
-            >
-              <UserPlus className="h-3 w-3" />
-              <span className="hidden sm:inline">{assignLabel}</span>
-              <ChevronDown className="h-3 w-3" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="border-border bg-popover"
-            >
-              {profiles.length === 0 ? (
-                <DropdownMenuItem disabled className="text-sm text-muted-foreground">
-                  {t("noTeammates")}
-                </DropdownMenuItem>
-              ) : (
-                profiles.map((p) => {
-                  const isSelected = p.user_id === assignedAgentId;
-                  const presence = getPresence(p.user_id);
-                  return (
-                    <DropdownMenuItem
-                      key={p.id}
-                      onClick={() => handleAssignChange(p.user_id)}
-                      className={cn(
-                        "text-sm",
-                        isSelected ? "text-primary" : "text-popover-foreground"
-                      )}
-                    >
-                      <PresenceDot
-                        status={presence}
-                        label={presenceLabel(
-                          presence,
-                          getRow(p.user_id)?.last_seen_at ?? null,
-                          now
-                        )}
-                        className="mr-2"
-                      />
-                      <span className="flex-1">
-                        {p.full_name}
-                        {p.user_id === user?.id ? t("me") : ""}
-                      </span>
-                      {isSelected && <Check className="ml-2 h-3 w-3" />}
-                    </DropdownMenuItem>
-                  );
-                })
-              )}
-              {assignedAgentId && (
-                <>
-                  <DropdownMenuSeparator className="bg-border" />
-                  <DropdownMenuItem
-                    onClick={() => handleAssignChange(null)}
-                    className="text-sm text-muted-foreground"
-                  >
-                    {t("unassign")}
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-
-      {/* Messages Area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          </div>
-        ) : messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12">
-            <p className="text-sm text-muted-foreground">{t("noMessagesYet")}</p>
-            <p className="text-xs text-muted-foreground">
-              {t("sendTemplateHint")}
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {messageGroups.map((group) => (
-              <div key={group.date}>
-                {/* Date separator */}
-                <div className="mb-4 flex items-center justify-center">
-                  <span className="rounded-full bg-muted px-3 py-1 text-[10px] font-medium text-muted-foreground">
-                    {formatDateSeparator(group.date, t)}
-                  </span>
-                </div>
-                {/* Messages */}
-                <div className="space-y-2">
-                  {group.messages.map((msg) => {
-                    const parent = msg.reply_to_message_id
-                      ? messagesById.get(msg.reply_to_message_id)
-                      : null;
-                    const reply = parent
-                      ? {
-                          authorLabel:
-                            parent.sender_type === "agent" || parent.sender_type === "bot"
-                              ? t("me") 
-                              : contact?.name || contact?.phone || "Unknown",
-                          preview: buildReplyPreview(parent, tQuote),
-                        }
-                      : null;
-                    const msgReactions = reactionsByMessageId.get(msg.id);
-                    // Toggle is computed at the call site — `msgReactions`
-                    // and `user?.id` are already in scope, no extra hook.
-                    const handlePillToggle = (emoji: string) => {
-                      const own = msgReactions?.find(
-                        (r) =>
-                          r.actor_type === "agent" &&
-                          r.actor_id === user?.id,
-                      );
-                      const next = own?.emoji === emoji ? "" : emoji;
-                      void postReaction(msg.id, next);
-                    };
-                    return (
-                      <MessageActions
-                        key={msg.id}
-                        message={msg}
-                        onReply={() => handleStartReply(msg)}
-                        onReact={(emoji) => {
-                          if (emoji) void postReaction(msg.id, emoji);
-                        }}
-                      >
-                        <MessageBubble
-                          message={msg}
-                          reply={reply}
-                          reactions={msgReactions}
-                          currentUserId={user?.id}
-                          onToggleReaction={handlePillToggle}
-                          onOpenMedia={handleMediaChange}
-                        />
-                      </MessageActions>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* AI auto-reply banner — take over an active bot, or resume it
-          after a handoff. Renders nothing unless the account has
-          auto-reply configured. */}
       <AiThreadBanner
         conversationId={conversation.id}
         disabled={conversation.ai_autoreply_disabled ?? false}
         handoffSummary={conversation.ai_handoff_summary}
-        assignedAgentId={assignedAgentId}
-        currentUserId={user?.id}
-        onChange={(patch) => {
-          if ("assigned_agent_id" in patch) {
-            onAssignChange(conversation.id, patch.assigned_agent_id ?? null);
-          }
-        }}
+        assignedAgentId={conversation.assigned_agent_id ?? null}
+        currentUserId={userId}
+        onChange={handleBannerChange}
+        isGlobalBotPaused={isGlobalBotPaused}
       />
 
-      {/* Composer */}
       <MessageComposer
+        key={conversation.id}
         conversationId={conversation.id}
-        sessionExpired={sessionInfo.expired}
+        sessionExpired={sessionExpired}
         onSend={handleSend}
         onSendMedia={handleSendMedia}
         onSendInteractive={handleSendInteractive}
         onOpenTemplates={handleOpenTemplates}
         replyTo={replyTo}
-        onClearReply={() => setReplyTo(null)}
+        onClearReply={clearReply}
       />
 
       <TemplatePicker
@@ -1397,8 +695,6 @@ export function MessageThread({
         onSelect={handleSendTemplate}
       />
 
-      {/* Full-size viewer for the thread's images/videos. Renders nothing
-          until a bubble opens it. */}
       <MediaLightbox
         items={mediaGallery}
         activeId={mediaMessageId}
@@ -1408,3 +704,794 @@ export function MessageThread({
     </div>
   );
 }
+
+// ============================================================================
+// Header
+// ============================================================================
+
+type Translator = ReturnType<typeof useTranslations>;
+
+function formatRemaining(ms: number): string {
+  if (ms <= 0) return "Closed";
+  const h = Math.floor(ms / 3_600_000);
+  if (h >= 1) return `${h}h left`;
+  return `${Math.max(1, Math.floor(ms / 60_000))}m left`;
+}
+
+interface ThreadHeaderProps {
+  t: Translator;
+  conversation: InboxConversation;
+  displayName: string;
+  subtitle: string;
+  avatarUrl?: string;
+  onBack?: () => void;
+  hasWindowRule: boolean;
+  windowExpired: boolean;
+  windowExpiresAt: number | null;
+  windowLoading: boolean;
+  now: number;
+  live: boolean;
+  isGlobalBotPaused: boolean;
+  isBotPaused: boolean;
+  botToggling: boolean;
+  onToggleBot: () => void;
+  onStatusChange: (status: ConversationStatus) => void;
+  onAssignChange: (agentId: string | null) => void;
+  currentUserId: string | null;
+  onRefresh: () => void;
+  contactPanelOpen?: boolean;
+  onToggleContactPanel?: () => void;
+}
+
+const ThreadHeader = memo(function ThreadHeader({
+  t,
+  conversation,
+  displayName,
+  subtitle,
+  avatarUrl,
+  onBack,
+  hasWindowRule,
+  windowExpired,
+  windowExpiresAt,
+  windowLoading,
+  now,
+  live,
+  isGlobalBotPaused,
+  isBotPaused,
+  botToggling,
+  onToggleBot,
+  onStatusChange,
+  onAssignChange,
+  currentUserId,
+  onRefresh,
+  contactPanelOpen,
+  onToggleContactPanel,
+}: ThreadHeaderProps) {
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    },
+    [],
+  );
+  const handleRefresh = () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    onRefresh();
+    refreshTimer.current = setTimeout(() => setRefreshing(false), 700);
+  };
+
+  const status = conversation.status;
+  const currentStatus = STATUS_OPTIONS.find((s) => s.value === status);
+  const resolved = status === "closed";
+  const channel = conversation.channel_type;
+
+  return (
+    <div className="flex shrink-0 items-center gap-1.5 border-b border-border bg-card px-2 py-2 sm:gap-2 sm:px-4">
+      {onBack && (
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label={t("backToConversations")}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+      )}
+
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-soft-2 text-sm font-semibold text-primary">
+        {avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={avatarUrl} alt="" className="h-9 w-9 object-cover" />
+        ) : (
+          displayName.charAt(0).toUpperCase()
+        )}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
+          {channel === "telegram" ? (
+            <Send className="h-3 w-3 shrink-0 text-sky-500" aria-label="Telegram" />
+          ) : channel === "whatsapp_web" ? (
+            <Smartphone className="h-3 w-3 shrink-0 text-emerald-500" aria-label="WhatsApp Web" />
+          ) : null}
+        </div>
+        <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+          <span className="truncate">{subtitle}</span>
+          {hasWindowRule && !windowLoading && (
+            <span
+              title={
+                windowExpired
+                  ? "24-hour customer service window closed — only templates can be sent"
+                  : "Time left in the 24-hour customer service window"
+              }
+              className={cn(
+                "inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-px font-medium",
+                windowExpired
+                  ? "bg-destructive/10 text-destructive"
+                  : "bg-primary-soft text-primary",
+              )}
+            >
+              <Clock className="h-2.5 w-2.5" />
+              {windowExpired
+                ? "Window closed"
+                : windowExpiresAt
+                  ? formatRemaining(windowExpiresAt - now)
+                  : "Open"}
+            </span>
+          )}
+          {!live && (
+            <span className="inline-flex shrink-0 items-center gap-1 text-amber-600 dark:text-amber-400">
+              <span className="size-1.5 animate-pulse rounded-full bg-amber-500" />
+              <span className="hidden sm:inline">Reconnecting…</span>
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+        <button
+          type="button"
+          onClick={onToggleBot}
+          disabled={botToggling}
+          title={
+            isGlobalBotPaused
+              ? "Global bot is off (100% human agent mode)"
+              : isBotPaused
+                ? "Bot paused here — click to resume automations"
+                : "Bot active here — click to pause and take over"
+          }
+          className={cn(
+            "hidden h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors md:inline-flex",
+            isGlobalBotPaused || isBotPaused
+              ? "border-amber-500/30 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 dark:text-amber-400"
+              : "border-border bg-muted/60 text-foreground hover:bg-muted",
+          )}
+        >
+          {botToggling ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <span
+              className={cn(
+                "size-2 rounded-full",
+                isGlobalBotPaused || isBotPaused ? "bg-amber-500" : "bg-primary",
+              )}
+            />
+          )}
+          {isGlobalBotPaused ? "Bot off" : isBotPaused ? "Bot paused" : "Bot on"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onStatusChange(resolved ? "open" : "closed")}
+          title={resolved ? "Reopen conversation" : "Mark as resolved"}
+          className={cn(
+            "inline-flex h-8 items-center gap-1 rounded-full px-2 text-xs font-medium transition-colors sm:px-2.5",
+            resolved
+              ? "text-muted-foreground hover:bg-muted hover:text-foreground"
+              : "bg-primary text-primary-foreground hover:bg-primary/90",
+          )}
+        >
+          {resolved ? <RotateCcw className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+          <span className="hidden sm:inline">{resolved ? "Reopen" : "Resolve"}</span>
+        </button>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            aria-label={t("status")}
+            className="inline-flex h-8 items-center gap-1 rounded-full px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <span className={cn("size-2 rounded-full", currentStatus?.dot ?? "bg-muted-foreground")} />
+            <span className="hidden sm:inline">
+              {currentStatus ? t(currentStatus.labelKey) : t("status")}
+            </span>
+            <ChevronDown className="h-3 w-3" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="border-border bg-popover">
+            {STATUS_OPTIONS.map((opt) => (
+              <DropdownMenuItem
+                key={opt.value}
+                onClick={() => onStatusChange(opt.value)}
+                className="gap-2 text-sm"
+              >
+                <span className={cn("size-2 rounded-full", opt.dot)} />
+                <span className="flex-1">{t(opt.labelKey)}</span>
+                {opt.value === status && <Check className="h-3 w-3 text-primary" />}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <AssignMenu
+          t={t}
+          assignedAgentId={conversation.assigned_agent_id ?? null}
+          currentUserId={currentUserId}
+          onAssignChange={onAssignChange}
+        />
+
+        <button
+          type="button"
+          onClick={handleRefresh}
+          disabled={refreshing}
+          aria-label={t("refreshConversation")}
+          title={t("refresh")}
+          className="hidden h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60 sm:inline-flex"
+        >
+          <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
+        </button>
+
+        {onToggleContactPanel && (
+          <button
+            type="button"
+            onClick={onToggleContactPanel}
+            aria-label={contactPanelOpen ? t("hideContactPanel") : t("showContactPanel")}
+            title={contactPanelOpen ? t("hideContact") : t("showContact")}
+            aria-pressed={contactPanelOpen}
+            className={cn(
+              "hidden h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-muted hover:text-foreground xl:inline-flex",
+              contactPanelOpen ? "text-primary" : "text-muted-foreground",
+            )}
+          >
+            {contactPanelOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+});
+
+// Teammates rarely change during a session; fetch once per page load.
+let profilesPromise: Promise<Profile[]> | null = null;
+function loadProfiles(): Promise<Profile[]> {
+  profilesPromise ??= (async () => {
+    const { data, error } = await createClient()
+      .from("profiles")
+      .select("*")
+      .order("full_name");
+    if (error) {
+      profilesPromise = null;
+      throw error;
+    }
+    return (data as Profile[]) ?? [];
+  })();
+  return profilesPromise;
+}
+
+/**
+ * Assignee picker. Owns the presence subscription so its 15-second
+ * re-derive tick re-renders only this menu — previously `usePresence` lived
+ * in the thread and re-rendered every bubble four times a minute. Presence
+ * is only subscribed while the menu is open.
+ */
+function AssignMenu({
+  t,
+  assignedAgentId,
+  currentUserId,
+  onAssignChange,
+}: {
+  t: Translator;
+  assignedAgentId: string | null;
+  currentUserId: string | null;
+  onAssignChange: (agentId: string | null) => void;
+}) {
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [open, setOpen] = useState(false);
+  const { getPresence, getRow, now } = usePresence(open);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadProfiles()
+      .then((rows) => {
+        if (!cancelled) setProfiles(rows);
+      })
+      .catch((err) => console.error("Failed to fetch profiles:", err));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const currentAssignee = profiles.find((p) => p.user_id === assignedAgentId);
+  const label = assignedAgentId
+    ? assignedAgentId === currentUserId
+      ? "You"
+      : (currentAssignee?.full_name ?? t("assigned"))
+    : t("assign");
+
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger
+        title={assignedAgentId ? `Assigned to ${label}` : t("assign")}
+        className={cn(
+          "inline-flex h-8 items-center gap-1 rounded-full px-2 text-xs hover:bg-muted",
+          assignedAgentId ? "text-primary" : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        <UserPlus className="h-3.5 w-3.5" />
+        <span className="hidden max-w-24 truncate sm:inline">{label}</span>
+        <ChevronDown className="hidden h-3 w-3 sm:block" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56 border-border bg-popover">
+        {currentUserId && assignedAgentId !== currentUserId && (
+          <>
+            <DropdownMenuItem onClick={() => onAssignChange(currentUserId)} className="text-sm font-medium">
+              Assign to me
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="bg-border" />
+          </>
+        )}
+        {profiles.length === 0 ? (
+          <DropdownMenuItem disabled className="text-sm text-muted-foreground">
+            {t("noTeammates")}
+          </DropdownMenuItem>
+        ) : (
+          profiles.map((p) => {
+            const selected = p.user_id === assignedAgentId;
+            const presence = getPresence(p.user_id);
+            return (
+              <DropdownMenuItem
+                key={p.id}
+                onClick={() => onAssignChange(p.user_id)}
+                className={cn("text-sm", selected ? "text-primary" : "text-popover-foreground")}
+              >
+                <PresenceDot
+                  status={presence}
+                  label={presenceLabel(presence, getRow(p.user_id)?.last_seen_at ?? null, now)}
+                  className="mr-2"
+                />
+                <span className="flex-1 truncate">
+                  {p.full_name}
+                  {p.user_id === currentUserId ? t("me") : ""}
+                </span>
+                {selected && <Check className="ml-2 h-3 w-3" />}
+              </DropdownMenuItem>
+            );
+          })
+        )}
+        {assignedAgentId && (
+          <>
+            <DropdownMenuSeparator className="bg-border" />
+            <DropdownMenuItem onClick={() => onAssignChange(null)} className="text-sm text-muted-foreground">
+              {t("unassign")}
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+// ============================================================================
+// Message list
+// ============================================================================
+
+function dayKey(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function formatDateSeparator(iso: string, t: Translator): string {
+  const date = new Date(iso);
+  if (isToday(date)) return t("today");
+  if (isYesterday(date)) return t("yesterday");
+  return format(date, "EEEE, MMMM d, yyyy");
+}
+
+/** Distance from the bottom (px) still treated as "following the chat". */
+const NEAR_BOTTOM_PX = 120;
+/** Start fetching older history this close to the top. */
+const LOAD_OLDER_PX = 300;
+
+type ThreadItem =
+  | { kind: "day"; key: string; label: string }
+  | { kind: "msg"; key: string; message: ThreadMessage; firstInGroup: boolean };
+
+interface ThreadMessagesProps {
+  messages: ThreadMessage[];
+  reactions: MessageReaction[];
+  loading: boolean;
+  error: boolean;
+  hasOlder: boolean;
+  loadingOlder: boolean;
+  onLoadOlder: () => void;
+  onRetryLoad: () => void;
+  userId: string | null;
+  contactLabel: string;
+  meLabel: string;
+  t: Translator;
+  tQuote: Translator;
+  onReply: (msg: ThreadMessage) => void;
+  onReact: (messageId: string, emoji: string) => void;
+  onToggleReaction: (messageId: string, emoji: string) => void;
+  onOpenMedia: (messageId: string | null) => void;
+  onRetry: (key: string) => void;
+  onDiscard: (key: string) => void;
+}
+
+function ThreadMessages({
+  messages,
+  reactions,
+  loading,
+  error,
+  hasOlder,
+  loadingOlder,
+  onLoadOlder,
+  onRetryLoad,
+  userId,
+  contactLabel,
+  meLabel,
+  t,
+  tQuote,
+  onReply,
+  onReact,
+  onToggleReaction,
+  onOpenMedia,
+  onRetry,
+  onDiscard,
+}: ThreadMessagesProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // Scroll bookkeeping lives in refs (read in layout effects / handlers);
+  // only the pill needs state, and it only changes on real transitions.
+  const atBottomRef = useRef(true);
+  const [follow, setFollow] = useState<{ atBottom: boolean; seenKey: string | null }>({
+    atBottom: true,
+    seenKey: null,
+  });
+
+  const items = useMemo<ThreadItem[]>(() => {
+    const out: ThreadItem[] = [];
+    let lastDay = "";
+    let prev: ThreadMessage | null = null;
+    for (const m of messages) {
+      const day = dayKey(m.created_at);
+      if (day !== lastDay) {
+        out.push({ kind: "day", key: `day-${day}`, label: formatDateSeparator(m.created_at, t) });
+        lastDay = day;
+        prev = null;
+      }
+      const sameSide =
+        prev &&
+        (prev.sender_type === "customer") === (m.sender_type === "customer");
+      out.push({ kind: "msg", key: messageKey(m), message: m, firstInGroup: !sameSide });
+      prev = m;
+    }
+    return out;
+  }, [messages, t]);
+
+  const byId = useMemo(() => {
+    const map = new Map<string, ThreadMessage>();
+    for (const m of messages) map.set(m.id, m);
+    return map;
+  }, [messages]);
+
+  const reactionsByMessage = useMemo(() => {
+    const map = new Map<string, MessageReaction[]>();
+    for (const r of reactions) {
+      const bucket = map.get(r.message_id);
+      if (bucket) bucket.push(r);
+      else map.set(r.message_id, [r]);
+    }
+    return map;
+  }, [reactions]);
+
+  const lastKey = messages.length ? messageKey(messages[messages.length - 1]) : null;
+  const firstKey = messages.length ? messageKey(messages[0]) : null;
+
+  // ---- scroll management (runs before paint, so no visible jumps) ----------
+  const prevRef = useRef<{ firstKey: string | null; lastKey: string | null; height: number; top: number }>({
+    firstKey: null,
+    lastKey: null,
+    height: 0,
+    top: 0,
+  });
+
+  const scrollToBottom = useCallback((smooth = false) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    atBottomRef.current = true;
+    if (smooth) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    else el.scrollTop = el.scrollHeight;
+  }, []);
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const prev = prevRef.current;
+
+    if (prev.lastKey === null && lastKey !== null) {
+      // First paint of this conversation: start at the newest message.
+      el.scrollTop = el.scrollHeight;
+      atBottomRef.current = true;
+    } else if (prev.firstKey !== null && firstKey !== prev.firstKey && prev.lastKey === lastKey) {
+      // Older history was prepended: keep the same message under the eye.
+      el.scrollTop = prev.top + (el.scrollHeight - prev.height);
+    } else if (lastKey !== prev.lastKey && lastKey !== null) {
+      const last = messages[messages.length - 1];
+      const ownJustSent = !!last.client_key && last.status === "sending";
+      if (atBottomRef.current || ownJustSent) {
+        el.scrollTop = el.scrollHeight;
+        atBottomRef.current = true;
+      }
+    }
+
+    prevRef.current = { firstKey, lastKey, height: el.scrollHeight, top: el.scrollTop };
+  }, [firstKey, lastKey, messages]);
+
+  // Keep pinned to the bottom while images/media finish loading and grow
+  // the content, as long as the agent hasn't scrolled away.
+  useEffect(() => {
+    const content = contentRef.current;
+    const el = scrollRef.current;
+    if (!content || !el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (atBottomRef.current) el.scrollTop = el.scrollHeight;
+      prevRef.current.height = el.scrollHeight;
+      prevRef.current.top = el.scrollTop;
+    });
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, []);
+
+  // If the first page doesn't fill the viewport, pull more history.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || loading || !hasOlder || loadingOlder) return;
+    if (el.scrollHeight <= el.clientHeight + LOAD_OLDER_PX) onLoadOlder();
+  }, [loading, hasOlder, loadingOlder, messages.length, onLoadOlder]);
+
+  const lastKeyRef = useRef(lastKey);
+  const onLoadOlderRef = useRef(onLoadOlder);
+  useEffect(() => {
+    lastKeyRef.current = lastKey;
+    onLoadOlderRef.current = onLoadOlder;
+  });
+
+  const rafRef = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    },
+    [],
+  );
+  const handleScroll = useCallback(() => {
+    if (rafRef.current !== null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      const el = scrollRef.current;
+      if (!el) return;
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+      atBottomRef.current = atBottom;
+      prevRef.current.top = el.scrollTop;
+      prevRef.current.height = el.scrollHeight;
+      setFollow((f) => {
+        const seenKey = atBottom ? lastKeyRef.current : f.seenKey;
+        return f.atBottom === atBottom && f.seenKey === seenKey ? f : { atBottom, seenKey };
+      });
+      if (el.scrollTop < LOAD_OLDER_PX) onLoadOlderRef.current();
+    });
+  }, []);
+
+  // Unseen inbound messages since the agent scrolled away from the bottom.
+  const unseen = useMemo(() => {
+    if (follow.atBottom || !follow.seenKey) return 0;
+    let count = 0;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (messageKey(m) === follow.seenKey) return count;
+      if (m.sender_type === "customer") count++;
+    }
+    return 0;
+  }, [follow, messages]);
+
+  return (
+    <div className="relative min-h-0 flex-1">
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        // We restore scroll positions ourselves; browser scroll anchoring
+        // would double-apply the offset on prepend (and Safari lacks it).
+        className="h-full overflow-y-auto overscroll-contain px-3 py-3 [overflow-anchor:none] sm:px-6"
+      >
+        <div ref={contentRef} className="mx-auto flex max-w-3xl flex-col">
+          {hasOlder && (
+            <div className="flex justify-center py-2">
+              {loadingOlder ? (
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              ) : (
+                <button
+                  type="button"
+                  onClick={onLoadOlder}
+                  className="rounded-full bg-card px-3 py-1 text-[11px] text-muted-foreground shadow-xs hover:text-foreground"
+                >
+                  Load earlier messages
+                </button>
+              )}
+            </div>
+          )}
+
+          {loading && messages.length === 0 ? (
+            <ThreadSkeleton />
+          ) : error && messages.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-16 text-center">
+              <p className="text-sm text-muted-foreground">Couldn&apos;t load messages.</p>
+              <button
+                type="button"
+                onClick={onRetryLoad}
+                className="rounded-full bg-card px-3 py-1 text-xs font-medium text-foreground shadow-xs hover:bg-muted"
+              >
+                Try again
+              </button>
+            </div>
+          ) : messages.length === 0 ? (
+            <div className="mx-auto mt-10 max-w-xs rounded-xl bg-card/90 px-4 py-3 text-center shadow-xs">
+              <p className="text-sm text-foreground">{t("noMessagesYet")}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{t("sendTemplateHint")}</p>
+            </div>
+          ) : (
+            items.map((item) =>
+              item.kind === "day" ? (
+                <div key={item.key} className="sticky top-0 z-[1] my-3 flex justify-center">
+                  <span className="rounded-full bg-card/95 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-xs backdrop-blur">
+                    {item.label}
+                  </span>
+                </div>
+              ) : (
+                <MessageRow
+                  key={item.key}
+                  message={item.message}
+                  firstInGroup={item.firstInGroup}
+                  parent={
+                    item.message.reply_to_message_id
+                      ? byId.get(item.message.reply_to_message_id)
+                      : undefined
+                  }
+                  reactions={reactionsByMessage.get(item.message.id)}
+                  userId={userId}
+                  contactLabel={contactLabel}
+                  meLabel={meLabel}
+                  tQuote={tQuote}
+                  onReply={onReply}
+                  onReact={onReact}
+                  onToggleReaction={onToggleReaction}
+                  onOpenMedia={onOpenMedia}
+                  onRetry={onRetry}
+                  onDiscard={onDiscard}
+                />
+              ),
+            )
+          )}
+        </div>
+      </div>
+
+      {!follow.atBottom && (
+        <button
+          type="button"
+          onClick={() => scrollToBottom(true)}
+          aria-label={unseen > 0 ? `${unseen} new messages` : "Scroll to latest"}
+          className={cn(
+            "absolute bottom-3 right-3 z-10 inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium shadow-md transition-colors hover:bg-muted sm:right-6",
+            unseen > 0 ? "text-primary" : "text-muted-foreground",
+          )}
+        >
+          {unseen > 0 && <span>{unseen > 99 ? "99+" : unseen} new</span>}
+          <ArrowDown className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ThreadSkeleton() {
+  return (
+    <div className="flex flex-col gap-3 py-4" aria-hidden>
+      {[60, 40, 70, 35, 55].map((w, i) => (
+        <div key={i} className={cn("flex", i % 2 ? "justify-end" : "justify-start")}>
+          <div className="h-10 animate-pulse rounded-2xl bg-card/80" style={{ width: `${w}%` }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface MessageRowProps {
+  message: ThreadMessage;
+  firstInGroup: boolean;
+  parent?: ThreadMessage;
+  reactions?: MessageReaction[];
+  userId: string | null;
+  contactLabel: string;
+  meLabel: string;
+  tQuote: Translator;
+  onReply: (msg: ThreadMessage) => void;
+  onReact: (messageId: string, emoji: string) => void;
+  onToggleReaction: (messageId: string, emoji: string) => void;
+  onOpenMedia: (messageId: string | null) => void;
+  onRetry: (key: string) => void;
+  onDiscard: (key: string) => void;
+}
+
+/**
+ * One message. Memoised with stable callbacks from the thread, so a new
+ * message, a status tick, or a keystroke in the composer re-renders only
+ * the row whose data actually changed.
+ */
+const MessageRow = memo(function MessageRow({
+  message,
+  firstInGroup,
+  parent,
+  reactions,
+  userId,
+  contactLabel,
+  meLabel,
+  tQuote,
+  onReply,
+  onReact,
+  onToggleReaction,
+  onOpenMedia,
+  onRetry,
+  onDiscard,
+}: MessageRowProps) {
+  const id = message.id;
+  const key = messageKey(message);
+
+  const reply = useMemo(() => {
+    if (!parent) return null;
+    const mine = parent.sender_type === "agent" || parent.sender_type === "bot";
+    return {
+      authorLabel: mine ? meLabel : contactLabel,
+      preview: buildReplyPreview(parent, tQuote),
+    };
+  }, [parent, meLabel, contactLabel, tQuote]);
+
+  const handleReply = useCallback(() => onReply(message), [onReply, message]);
+  const handleReact = useCallback(
+    (emoji: string) => {
+      if (emoji) onReact(id, emoji);
+    },
+    [onReact, id],
+  );
+  const handleToggle = useCallback((emoji: string) => onToggleReaction(id, emoji), [onToggleReaction, id]);
+  const handleRetry = useCallback(() => onRetry(key), [onRetry, key]);
+  const handleDiscard = useCallback(() => onDiscard(key), [onDiscard, key]);
+  const failed = message.status === "failed" && !!message.client_key;
+
+  return (
+    <div className={firstInGroup ? "mt-3" : "mt-0.5"}>
+      <MessageActions message={message} onReply={handleReply} onReact={handleReact}>
+        <MessageBubble
+          message={message}
+          reply={reply}
+          reactions={reactions}
+          currentUserId={userId ?? undefined}
+          onToggleReaction={handleToggle}
+          onOpenMedia={onOpenMedia}
+          onRetry={failed ? handleRetry : undefined}
+          onDiscard={failed ? handleDiscard : undefined}
+        />
+      </MessageActions>
+    </div>
+  );
+});
