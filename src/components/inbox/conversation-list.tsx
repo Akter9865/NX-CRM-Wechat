@@ -208,7 +208,14 @@ export function ConversationList({
 
   const filtered = useMemo(() => {
     return conversations.filter((c) => {
-      if (!matchesInboxFilter(c, filter, currentUserId)) return false;
+      if (
+        !matchesInboxFilter(c, filter, currentUserId) &&
+        // Opening a chat from "Unread" clears its badge; keep it in place
+        // while it's open instead of yanking the row out from under the click.
+        !(filter === "unread" && c.id === activeConversationId)
+      ) {
+        return false;
+      }
       // Rows outside the paged-in window wait for "load more" — except
       // while searching, where server results may be arbitrarily old.
       if (
