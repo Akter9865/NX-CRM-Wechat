@@ -6,7 +6,12 @@ import {
   subscribeWabaToApp,
   verifyPhoneNumber,
 } from '@/lib/whatsapp/meta-api';
-import { encrypt } from '@/lib/whatsapp/encryption';
+import { decrypt, encrypt } from '@/lib/whatsapp/encryption';
+import {
+  DEFAULT_WEBHOOK_VERIFY_TOKEN,
+  getConnectionWebhookUrl,
+  getSharedWebhookUrl,
+} from '@/lib/whatsapp/webhook-url';
 import { checkCanAddConnection, getAccountEntitlement } from '@/lib/billing/entitlements';
 import { logAuditEvent } from '@/lib/audit/log';
 import { getAccountBotPauseStatus } from '@/lib/whatsapp/bot-pause-service';
@@ -34,6 +39,42 @@ async function resolveUserAndAccount(supabase: Awaited<ReturnType<typeof createC
   };
 }
 
+/** Stored verify tokens are encrypted; older rows may be plaintext. */
+function readVerifyToken(stored?: string | null): string {
+  if (!stored) return DEFAULT_WEBHOOK_VERIFY_TOKEN;
+  try {
+    return decrypt(stored) || DEFAULT_WEBHOOK_VERIFY_TOKEN;
+  } catch {
+    return stored;
+  }
+}
+
+/**
+ * Meta token introspection, used to auto-detect app_id / waba_id when the
+ * admin left them blank. Best-effort: any failure (including the timeout)
+ * resolves to null and the save carries on without auto-detection.
+ */
+async function inspectAccessToken(
+  accessToken: string,
+): Promise<{
+  data?: {
+    app_id?: string | number;
+    granular_scopes?: Array<{ scope?: string; target_ids?: string[] }>;
+  };
+} | null> {
+  try {
+    const debugRes = await fetch(
+      `https://graph.facebook.com/v21.0/debug_token?input_token=${accessToken}&access_token=${accessToken}`,
+      { signal: AbortSignal.timeout(10_000) },
+    );
+    if (!debugRes.ok) return null;
+    return await debugRes.json();
+  } catch (err) {
+    console.warn('[connections] Token debug inspection skipped:', err);
+    return null;
+  }
+}
+
 let _adminClient: SupabaseClient | null = null;
 function supabaseAdmin(): SupabaseClient {
   if (!_adminClient) {
@@ -54,7 +95,7 @@ function supabaseAdmin(): SupabaseClient {
  * For agents/viewers, filters down to assigned connections in team_whatsapp_permissions.
  * For owners/admins, returns all active connections for the account.
  */
-export async function GET(_request: Request) {
+export async function GET(request: Request) {
   try {
     const supabase = await createClient();
     const auth = await resolveUserAndAccount(supabase);
@@ -65,6 +106,7 @@ export async function GET(_request: Request) {
 
     const { user, accountId, role } = auth;
     const isPrivileged = role === 'owner' || role === 'admin';
+    const requestOrigin = new URL(request.url).origin;
 
     const entitlement = await getAccountEntitlement(accountId);
 
@@ -118,6 +160,7 @@ export async function GET(_request: Request) {
       business_portfolio_id?: string;
       app_id?: string;
       app_secret?: string;
+      verify_token?: string | null;
       display_phone_number?: string;
       quality_rating?: string;
       code_verification_status?: string;
@@ -159,12 +202,19 @@ export async function GET(_request: Request) {
       mirror_inbound_media: row.mirror_inbound_media !== false,
       created_at: row.created_at,
       updated_at: row.updated_at,
+      webhook_url: getConnectionWebhookUrl(row.id, requestOrigin),
+      // Only owners/admins configure Meta, so only they see the token.
+      verify_token: isPrivileged ? readVerifyToken(row.verify_token) : undefined,
     }));
 
     const { isGlobalPaused } = await getAccountBotPauseStatus(accountId);
 
     return NextResponse.json({
       connections,
+      webhook: {
+        shared_url: getSharedWebhookUrl(requestOrigin),
+        default_verify_token: DEFAULT_WEBHOOK_VERIFY_TOKEN,
+      },
       is_global_bot_paused: isGlobalPaused,
       usage: {
         current: entitlement.connections.current,
@@ -202,8 +252,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Only account admins or owners can add WhatsApp connections.' }, { status: 403 });
     }
 
-    // 1. Check plan limit
-    const canConnect = await checkCanAddConnection(accountId, supabaseAdmin());
+    // 1. Check plan limit. Started before the body is parsed so the
+    // entitlement lookup overlaps with reading the request; the result is
+    // still checked first, exactly as before.
+    const canConnectPromise = checkCanAddConnection(accountId, supabaseAdmin());
+    const bodyPromise = request.json();
+    // Don't leave a rejected body read unobserved if we return early.
+    bodyPromise.catch(() => {});
+    const canConnect = await canConnectPromise;
     if (!canConnect.allowed) {
       return NextResponse.json(
         { error: canConnect.message || 'WhatsApp connection limit reached for your plan.' },
@@ -211,7 +267,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = await request.json();
+    const body = await bodyPromise;
     const {
       connection_name,
       phone_number_id,
@@ -237,14 +293,32 @@ export async function POST(request: Request) {
       }
     }
 
-    // 2. Reject if another account has already claimed this phone_number_id
-    const { data: claimed, error: claimedError } = await supabaseAdmin()
-      .from('whatsapp_config')
-      .select('account_id')
-      .eq('phone_number_id', phone_number_id)
-      .eq('is_archived', false)
-      .neq('account_id', accountId)
-      .maybeSingle();
+    // 2–3. The ownership check, the Meta credential check and the token
+    // introspection (app_id / waba_id auto-detect) are independent, so they
+    // run concurrently instead of as three back-to-back round trips (two of
+    // them to Meta). Results are still evaluated in the original order.
+    let resolvedAppId = app_id?.trim() || null;
+    let resolvedWabaId = waba_id?.trim() || null;
+
+    const [{ data: claimed, error: claimedError }, verifyResult, debugData] = await Promise.all([
+      supabaseAdmin()
+        .from('whatsapp_config')
+        .select('account_id')
+        .eq('phone_number_id', phone_number_id)
+        .eq('is_archived', false)
+        .neq('account_id', accountId)
+        .maybeSingle(),
+      verifyPhoneNumber({
+        phoneNumberId: phone_number_id,
+        accessToken: access_token,
+      }).then(
+        (info) => ({ ok: true as const, info }),
+        (err: unknown) => ({ ok: false as const, err }),
+      ),
+      !resolvedAppId || !resolvedWabaId
+        ? inspectAccessToken(access_token)
+        : Promise.resolve(null),
+    ]);
 
     if (claimedError) {
       console.error('Error checking phone_number_id uniqueness:', claimedError);
@@ -258,14 +332,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. Verify credentials with Meta
-    let phoneInfo;
-    try {
-      phoneInfo = await verifyPhoneNumber({
-        phoneNumberId: phone_number_id,
-        accessToken: access_token,
-      });
-    } catch (err) {
+    // 3. Verify credentials with Meta (request already in flight above)
+    if (!verifyResult.ok) {
+      const err = verifyResult.err;
       const message = err instanceof Error ? err.message : 'Unknown Meta API error';
       console.error('Meta API verification failed:', message);
       return NextResponse.json(
@@ -274,34 +343,23 @@ export async function POST(request: Request) {
       );
     }
 
-    // Auto-detect app_id and waba_id if omitted
-    let resolvedAppId = app_id?.trim() || null;
-    let resolvedWabaId = waba_id?.trim() || null;
+    const phoneInfo = verifyResult.info;
 
-    if (!resolvedAppId || !resolvedWabaId) {
-      try {
-        const debugRes = await fetch(
-          `https://graph.facebook.com/v21.0/debug_token?input_token=${access_token}&access_token=${access_token}`
+    // Auto-detect app_id and waba_id if omitted (token inspected above)
+    if (debugData) {
+      if (debugData?.data?.app_id && !resolvedAppId) {
+        resolvedAppId = String(debugData.data.app_id);
+      }
+      if (!resolvedWabaId && Array.isArray(debugData?.data?.granular_scopes)) {
+        const wabaScope = debugData.data.granular_scopes.find(
+          (s: { scope?: string; target_ids?: string[] }) =>
+            (s.scope === 'whatsapp_business_management' || s.scope === 'whatsapp_business_messaging') &&
+            Array.isArray(s.target_ids) &&
+            s.target_ids.length > 0
         );
-        if (debugRes.ok) {
-          const debugData = await debugRes.json();
-          if (debugData?.data?.app_id && !resolvedAppId) {
-            resolvedAppId = String(debugData.data.app_id);
-          }
-          if (!resolvedWabaId && Array.isArray(debugData?.data?.granular_scopes)) {
-            const wabaScope = debugData.data.granular_scopes.find(
-              (s: { scope?: string; target_ids?: string[] }) =>
-                (s.scope === 'whatsapp_business_management' || s.scope === 'whatsapp_business_messaging') &&
-                Array.isArray(s.target_ids) &&
-                s.target_ids.length > 0
-            );
-            if (wabaScope && wabaScope.target_ids?.[0]) {
-              resolvedWabaId = String(wabaScope.target_ids[0]);
-            }
-          }
+        if (wabaScope && wabaScope.target_ids?.[0]) {
+          resolvedWabaId = String(wabaScope.target_ids[0]);
         }
-      } catch (err) {
-        console.warn('[connections] Token debug inspection skipped:', err);
       }
     }
 
@@ -340,7 +398,8 @@ export async function POST(request: Request) {
     let registeredAt: string | null = null;
     let registrationError: string | null = null;
 
-    if (pin) {
+    const registrationTask = (async () => {
+      if (!pin) return;
       try {
         await registerPhoneNumber({
           phoneNumberId: phone_number_id,
@@ -352,11 +411,12 @@ export async function POST(request: Request) {
         registrationError = err instanceof Error ? err.message : 'Unknown Meta registration error';
         console.error('Meta register error:', registrationError);
       }
-    }
+    })();
 
     // 6. Subscribe WABA to this app
     let subscribedAppsAt: string | null = null;
-    if (resolvedWabaId) {
+    const subscribeTask = (async () => {
+      if (!resolvedWabaId) return;
       try {
         await subscribeWabaToApp({
           wabaId: resolvedWabaId,
@@ -366,14 +426,34 @@ export async function POST(request: Request) {
       } catch (err) {
         console.warn('WABA subscribe warning:', err);
       }
-    }
+    })();
 
-    // 7. Check if this is the first connection (mark as default)
-    const { count: existingCount } = await supabaseAdmin()
-      .from('whatsapp_config')
-      .select('id', { count: 'exact', head: true })
-      .eq('account_id', accountId)
-      .eq('is_archived', false);
+    // 7. Check if this is the first connection (mark as default), plus the
+    // other DB reads the row needs. Steps 5–7 are mutually independent, so
+    // the two Meta calls and three DB reads all overlap.
+    const [
+      ,
+      ,
+      { count: existingCount },
+      { isGlobalPaused: isAccountPaused },
+      { data: existingConfig },
+    ] = await Promise.all([
+      registrationTask,
+      subscribeTask,
+      supabaseAdmin()
+        .from('whatsapp_config')
+        .select('id', { count: 'exact', head: true })
+        .eq('account_id', accountId)
+        .eq('is_archived', false),
+      getAccountBotPauseStatus(accountId),
+      // Does this phone number already exist in whatsapp_config (e.g. was
+      // previously disconnected/archived or re-added)?
+      supabaseAdmin()
+        .from('whatsapp_config')
+        .select('id, account_id, is_archived')
+        .eq('phone_number_id', phone_number_id)
+        .maybeSingle(),
+    ]);
 
     const isFirstConnection = (existingCount || 0) === 0;
 
@@ -387,8 +467,6 @@ export async function POST(request: Request) {
         : registrationError
           ? 'error'
           : 'connected';
-
-    const { isGlobalPaused: isAccountPaused } = await getAccountBotPauseStatus(accountId);
 
     const rowData = {
       account_id: accountId,
@@ -418,13 +496,6 @@ export async function POST(request: Request) {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-
-    // Check if this phone number already exists in whatsapp_config (e.g. was previously disconnected/archived or re-added)
-    const { data: existingConfig } = await supabaseAdmin()
-      .from('whatsapp_config')
-      .select('id, account_id, is_archived')
-      .eq('phone_number_id', phone_number_id)
-      .maybeSingle();
 
     let inserted: any = null;
 

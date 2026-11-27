@@ -105,6 +105,25 @@ export async function loadConversationsSeries(
   db: DB,
   rangeDays: number,
 ): Promise<ConversationsSeriesPoint[]> {
+  // Preferred: aggregate in Postgres (migration 058). Exact counts at any
+  // volume, a few hundred bytes over the wire.
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+    const { data: agg, error: aggErr } = await db.rpc('dashboard_message_series', {
+      p_days: rangeDays,
+      p_tz: tz,
+    })
+    if (!aggErr && Array.isArray(agg)) {
+      const byDay = new Map<string, { incoming: number; outgoing: number }>()
+      for (const r of agg as { day: string; incoming: number | string; outgoing: number | string }[]) {
+        byDay.set(String(r.day).slice(0, 10), { incoming: Number(r.incoming), outgoing: Number(r.outgoing) })
+      }
+      return lastNDayKeys(rangeDays).map((day) => ({ day, ...(byDay.get(day) ?? { incoming: 0, outgoing: 0 }) }))
+    }
+  } catch {
+    // fall through to the client-side path (RPC not deployed yet)
+  }
+
   const start = daysAgoStart(rangeDays - 1).toISOString()
   const { data, error } = await db
     .from('messages')
@@ -175,6 +194,32 @@ export async function loadResponseTime(db: DB): Promise<ResponseTimeSummary> {
   // outbound" pair. 14 days gives us both "this week" + "last week"
   // with enough overlap if the user opens the dashboard late on a
   // Monday.
+  interface Sample {
+    customerAt: Date
+    responseAt: Date
+  }
+  let samples: Sample[] | null = null
+
+  // Preferred: first-response pairs computed in Postgres (migration 058).
+  try {
+    const { data: rpcRows, error: rpcErr } = await db.rpc('dashboard_response_samples', { p_days: 14 })
+    if (!rpcErr && Array.isArray(rpcRows)) {
+      samples = (rpcRows as { customer_at: string; response_at: string }[]).map((r) => ({
+        customerAt: new Date(r.customer_at),
+        responseAt: new Date(r.response_at),
+      }))
+    }
+  } catch {
+    // fall back below
+  }
+
+  if (!samples) samples = await loadResponseSamplesClientSide(db)
+  return summarizeResponseSamples(samples)
+}
+
+async function loadResponseSamplesClientSide(
+  db: DB,
+): Promise<{ customerAt: Date; responseAt: Date }[]> {
   const fourteenDaysAgo = daysAgoStart(13).toISOString()
   const { data, error } = await db
     .from('messages')
@@ -194,11 +239,7 @@ export async function loadResponseTime(db: DB): Promise<ResponseTimeSummary> {
   // next outbound message from the agent/bot. A single customer message
   // can only count once (avoids inflating averages if the customer
   // double-messages while the agent takes time to reply).
-  interface Sample {
-    customerAt: Date
-    responseAt: Date
-  }
-  const samples: Sample[] = []
+  const samples: { customerAt: Date; responseAt: Date }[] = []
 
   let currentConv = ''
   let pendingCustomer: Date | null = null
@@ -215,7 +256,12 @@ export async function loadResponseTime(db: DB): Promise<ResponseTimeSummary> {
       pendingCustomer = null
     }
   }
+  return samples
+}
 
+function summarizeResponseSamples(
+  samples: { customerAt: Date; responseAt: Date }[],
+): ResponseTimeSummary {
   const now = new Date()
   const thisWeekStart = daysAgoStart(mondayIndex(now))
   const lastWeekStart = daysAgoStart(mondayIndex(now) + 7)

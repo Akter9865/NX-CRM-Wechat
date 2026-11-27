@@ -333,47 +333,66 @@ export async function getAccountEntitlement(
     const statusInfo = evaluateSubscriptionStatus(sub);
     const plan = { ...statusInfo.plan };
 
-    // If database plans table has custom limits configured, merge them
-    try {
-      const dbPlan = await safeMaybeSingle(
-        sb.from?.('plans')?.select?.('name, contact_limit, monthly_message_limit, whatsapp_connection_limit')?.eq?.('id', statusInfo.planId)
-      );
-      if (dbPlan) {
-        if (dbPlan.name) plan.name = dbPlan.name;
-        if (dbPlan.contact_limit !== undefined) plan.contactLimit = dbPlan.contact_limit;
-        if (dbPlan.monthly_message_limit !== undefined) plan.monthlyMessageLimit = dbPlan.monthly_message_limit;
-        if (dbPlan.whatsapp_connection_limit !== undefined) plan.whatsappConnectionLimit = dbPlan.whatsapp_connection_limit;
+    // Everything below depends only on accountId / planId, so run the
+    // five lookups concurrently (was 5 sequential round-trips).
+    const loadPlan = async () => {
+      try {
+        const dbPlan = await safeMaybeSingle(
+          sb.from?.('plans')?.select?.('name, contact_limit, monthly_message_limit, whatsapp_connection_limit')?.eq?.('id', statusInfo.planId)
+        );
+        if (dbPlan) {
+          if (dbPlan.name) plan.name = dbPlan.name;
+          if (dbPlan.contact_limit !== undefined) plan.contactLimit = dbPlan.contact_limit;
+          if (dbPlan.monthly_message_limit !== undefined) plan.monthlyMessageLimit = dbPlan.monthly_message_limit;
+          if (dbPlan.whatsapp_connection_limit !== undefined) plan.whatsappConnectionLimit = dbPlan.whatsapp_connection_limit;
+        }
+      } catch {}
+    };
+    const countContacts = async () => {
+      try {
+        const q = sb.from?.('contacts')?.select?.('id', { count: 'exact', head: true })?.eq?.('account_id', accountId);
+        return await safeCount(q);
+      } catch {
+        return 0;
       }
-    } catch {}
-
-    let currentContacts = 0;
-    try {
-      const q = sb.from?.('contacts')?.select?.('id', { count: 'exact', head: true })?.eq?.('account_id', accountId);
-      currentContacts = await safeCount(q);
-    } catch {}
-
-    let currentMessages = 0;
-    try {
-      const q = sb.from?.('usage_records')?.select?.('messages_sent, messages_received')?.eq?.('account_id', accountId)?.eq?.('billing_period', period);
-      const usage = await safeMaybeSingle(q);
-      currentMessages = usage?.messages_sent ?? 0;
-    } catch {}
-
-    let currentConnections = 0;
-    try {
-      let q = sb.from?.('whatsapp_config')?.select?.('id', { count: 'exact', head: true })?.eq?.('account_id', accountId);
-      if (q && typeof q.eq === 'function') {
-        const withArchived = q.eq('is_archived', false);
-        if (withArchived) q = withArchived;
+    };
+    const countMessages = async () => {
+      try {
+        const q = sb.from?.('usage_records')?.select?.('messages_sent, messages_received')?.eq?.('account_id', accountId)?.eq?.('billing_period', period);
+        const usage = await safeMaybeSingle(q);
+        return usage?.messages_sent ?? 0;
+      } catch {
+        return 0;
       }
-      currentConnections = await safeCount(q);
-    } catch {}
+    };
+    const countConnections = async () => {
+      try {
+        let q = sb.from?.('whatsapp_config')?.select?.('id', { count: 'exact', head: true })?.eq?.('account_id', accountId);
+        if (q && typeof q.eq === 'function') {
+          const withArchived = q.eq('is_archived', false);
+          if (withArchived) q = withArchived;
+        }
+        return await safeCount(q);
+      } catch {
+        return 0;
+      }
+    };
+    const countAutomations = async () => {
+      try {
+        const q = sb.from?.('automations')?.select?.('id', { count: 'exact', head: true })?.eq?.('account_id', accountId);
+        return await safeCount(q);
+      } catch {
+        return 0;
+      }
+    };
 
-    let currentAutomations = 0;
-    try {
-      const q = sb.from?.('automations')?.select?.('id', { count: 'exact', head: true })?.eq?.('account_id', accountId);
-      currentAutomations = await safeCount(q);
-    } catch {}
+    const [, currentContacts, currentMessages, currentConnections, currentAutomations] = await Promise.all([
+      loadPlan(),
+      countContacts(),
+      countMessages(),
+      countConnections(),
+      countAutomations(),
+    ]);
 
     const automationLimit = statusInfo.planId === 'free' ? 3 : null;
 

@@ -327,12 +327,45 @@ export async function POST(request: Request) {
     // inbound message. See issue #136. Post-multi-user we key on
     // account_id (not user_id) since teammates inside the same account
     // all share one config; the conflict is between accounts.
-    const { data: claimed, error: claimedError } = await supabaseAdmin()
+    //
+    // The ownership check, the Meta credential check and the existing-row
+    // lookup are independent, so they run concurrently: the Meta round
+    // trip (often 300ms–1s+) no longer queues behind two DB reads. The
+    // results are still evaluated in the original order, so the error a
+    // user sees for a given bad input is unchanged.
+    const targetConnId = body.connection_id || body.id
+    let existingQuery = supabase
       .from('whatsapp_config')
-      .select('account_id')
-      .eq('phone_number_id', phone_number_id)
-      .neq('account_id', accountId)
-      .maybeSingle()
+      .select('id, registered_at, phone_number_id, app_secret')
+      .eq('account_id', accountId)
+      .eq('is_archived', false)
+
+    if (targetConnId) {
+      existingQuery = existingQuery.eq('id', targetConnId)
+    } else {
+      existingQuery = existingQuery.eq('phone_number_id', phone_number_id)
+    }
+
+    const [
+      { data: claimed, error: claimedError },
+      verifyResult,
+      { data: existingRows },
+    ] = await Promise.all([
+      supabaseAdmin()
+        .from('whatsapp_config')
+        .select('account_id')
+        .eq('phone_number_id', phone_number_id)
+        .neq('account_id', accountId)
+        .maybeSingle(),
+      verifyPhoneNumber({
+        phoneNumberId: phone_number_id,
+        accessToken: access_token,
+      }).then(
+        (info) => ({ ok: true as const, info }),
+        (err: unknown) => ({ ok: false as const, err }),
+      ),
+      existingQuery.limit(1),
+    ])
 
     if (claimedError) {
       console.error('Error checking phone_number_id ownership:', claimedError)
@@ -352,14 +385,9 @@ export async function POST(request: Request) {
       )
     }
 
-    // Verify credentials with Meta BEFORE saving
-    let phoneInfo
-    try {
-      phoneInfo = await verifyPhoneNumber({
-        phoneNumberId: phone_number_id,
-        accessToken: access_token,
-      })
-    } catch (err) {
+    // Verify credentials with Meta BEFORE saving (call already in flight above)
+    if (!verifyResult.ok) {
+      const err = verifyResult.err
       const message = err instanceof Error ? err.message : 'Unknown Meta API error'
       console.error('Meta API verification failed during save:', message)
       return NextResponse.json(
@@ -367,6 +395,7 @@ export async function POST(request: Request) {
         { status: 400 }
       )
     }
+    const phoneInfo = verifyResult.info
 
     // Encrypt sensitive tokens before storing
     let encryptedAccessToken: string
@@ -388,21 +417,8 @@ export async function POST(request: Request) {
       )
     }
 
-    // Look up any pre-existing row for this account by connection_id or phone_number_id
-    const targetConnId = body.connection_id || body.id
-    let existingQuery = supabase
-      .from('whatsapp_config')
-      .select('id, registered_at, phone_number_id, app_secret')
-      .eq('account_id', accountId)
-      .eq('is_archived', false)
-
-    if (targetConnId) {
-      existingQuery = existingQuery.eq('id', targetConnId)
-    } else {
-      existingQuery = existingQuery.eq('phone_number_id', phone_number_id)
-    }
-
-    const { data: existingRows } = await existingQuery.limit(1)
+    // Pre-existing row for this account (by connection_id or
+    // phone_number_id) — fetched concurrently above.
     const existing = existingRows?.[0] || null
 
     if (!existing) {
@@ -438,59 +454,69 @@ export async function POST(request: Request) {
     // is not a failure, just an incomplete-but-valid save.
     let registrationSkipped = false
 
+    // Steps 1 and 2 hit independent Meta resources (the phone number vs
+    // the WABA), so they run concurrently; each keeps its own error
+    // handling, and neither outcome feeds into the other.
     const needsRegistration = !sameNumber || (typeof pin === 'string' && pin.length > 0)
-    if (needsRegistration) {
-      if (!pin) {
-        // No PIN provided. Meta TEST numbers (Developer Console) are
-        // pre-registered by Meta and expose no two-step verification
-        // PIN to set, so requiring one made them impossible to connect
-        // (issue #242). The /register + PIN step only matters for
-        // production numbers under a shared WABA (issue #136), so treat
-        // it as best-effort: skip it, save the (already Meta-verified)
-        // credentials as connected, and leave registered_at null. The
-        // UI surfaces a separate "Not registered" banner with a path to
-        // add a PIN later for users who do need inbound webhook routing.
-        registrationSkipped = true
-      } else {
-        try {
-          await registerPhoneNumber({
-            phoneNumberId: phone_number_id,
-            accessToken: access_token,
-            pin,
-          })
-          registeredAt = new Date().toISOString()
-        } catch (err) {
-          registrationError =
-            err instanceof Error ? err.message : 'Unknown Meta API error'
-          console.error('Phone number /register failed:', registrationError)
-          // We deliberately fall through and still save the row so the
-          // user can retry without re-entering everything. The UI
-          // surfaces `last_registration_error` so they see WHY it's
-          // not actually live yet.
+    const registrationTask = (async () => {
+      if (needsRegistration) {
+        if (!pin) {
+          // No PIN provided. Meta TEST numbers (Developer Console) are
+          // pre-registered by Meta and expose no two-step verification
+          // PIN to set, so requiring one made them impossible to connect
+          // (issue #242). The /register + PIN step only matters for
+          // production numbers under a shared WABA (issue #136), so treat
+          // it as best-effort: skip it, save the (already Meta-verified)
+          // credentials as connected, and leave registered_at null. The
+          // UI surfaces a separate "Not registered" banner with a path to
+          // add a PIN later for users who do need inbound webhook routing.
+          registrationSkipped = true
+        } else {
+          try {
+            await registerPhoneNumber({
+              phoneNumberId: phone_number_id,
+              accessToken: access_token,
+              pin,
+            })
+            registeredAt = new Date().toISOString()
+          } catch (err) {
+            registrationError =
+              err instanceof Error ? err.message : 'Unknown Meta API error'
+            console.error('Phone number /register failed:', registrationError)
+            // We deliberately fall through and still save the row so the
+            // user can retry without re-entering everything. The UI
+            // surfaces `last_registration_error` so they see WHY it's
+            // not actually live yet.
+          }
         }
       }
-    }
+    })()
 
     // Step 2: subscribe the WABA to this app. Idempotent on Meta's
     // side, so we call on every save and persist the timestamp.
     // Skipped only when there's no waba_id (legacy rows from before
     // we required it).
     let subscribedAppsAt: string | null = null
-    if (waba_id) {
-      try {
-        await subscribeWabaToApp({
-          wabaId: waba_id,
-          accessToken: access_token,
-        })
-        subscribedAppsAt = new Date().toISOString()
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        console.warn('WABA subscribed_apps failed (non-fatal):', message)
-        // Subscription failures are rare once the App has the right
-        // permissions; we don't block save on them — the diagnostic
-        // endpoint surfaces this state too.
+    const subscribeTask = (async () => {
+      if (waba_id) {
+        try {
+          await subscribeWabaToApp({
+            wabaId: waba_id,
+            accessToken: access_token,
+          })
+          subscribedAppsAt = new Date().toISOString()
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          console.warn('WABA subscribed_apps failed (non-fatal):', message)
+          // Subscription failures are rare once the App has the right
+          // permissions; we don't block save on them — the diagnostic
+          // endpoint surfaces this state too.
+        }
       }
-    }
+    })()
+
+    // Both tasks own their try/catch and never reject.
+    await Promise.all([registrationTask, subscribeTask])
 
     const metaStatusUpper = String(phoneInfo?.status || '').toUpperCase()
     const isBanned = metaStatusUpper === 'BANNED'

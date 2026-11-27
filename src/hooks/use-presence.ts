@@ -81,7 +81,7 @@ export function usePresence(enabled = true): UsePresenceResult {
     // rather than replacing the map — so an event that lands while the
     // fetch is in flight isn't clobbered by a staler snapshot row.
     const channel: RealtimeChannel = supabase
-      .channel(`presence:${accountId}`)
+      .channel(`presence:${accountId}:${Math.random().toString(36).slice(2, 9)}`)
       .on(
         "postgres_changes",
         {

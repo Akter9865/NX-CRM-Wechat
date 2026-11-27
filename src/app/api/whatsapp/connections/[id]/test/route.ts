@@ -110,6 +110,19 @@ export async function POST(
     let phoneInfo: MetaPhoneInfo | null = null;
     let errorMessage: string | null = null;
 
+    // Both Meta checks are issued concurrently (previously back to back).
+    // The WABA result is still only counted when the phone check passed,
+    // matching the old sequential gating.
+    const wabaCheck = connection.waba_id
+      ? getSubscribedApps({
+          wabaId: connection.waba_id,
+          accessToken,
+        }).then(
+          (subs) => subs.length > 0,
+          () => false,
+        )
+      : Promise.resolve(false);
+
     // 1. Check Phone Number metadata
     try {
       phoneInfo = await verifyPhoneNumber({
@@ -122,16 +135,9 @@ export async function POST(
     }
 
     // 2. Check WABA Subscribed Apps
+    const wabaSubscribed = await wabaCheck;
     if (connection.waba_id && checks.phone_api_reachable) {
-      try {
-        const subs = await getSubscribedApps({
-          wabaId: connection.waba_id,
-          accessToken,
-        });
-        checks.waba_subscribed = subs.length > 0;
-      } catch {
-        checks.waba_subscribed = false;
-      }
+      checks.waba_subscribed = wabaSubscribed;
     }
 
     const metaStatusUpper = String(phoneInfo?.status || '').toUpperCase();

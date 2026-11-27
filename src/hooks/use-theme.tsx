@@ -78,12 +78,31 @@ function readInitialMode(): Mode {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<ThemeId>(readInitialTheme);
-  const [mode, setModeState] = useState<Mode>(readInitialMode);
+  // Start from the server defaults so the first client render matches
+  // the SSR HTML exactly (reading localStorage in the initializer caused
+  // a hydration mismatch → React discarded and re-rendered the whole
+  // tree on every page load). The real values are adopted right after
+  // mount; the boot script has already painted the correct colours, so
+  // nothing visibly changes.
+  const [theme, setThemeState] = useState<ThemeId>(DEFAULT_THEME);
+  const [mode, setModeState] = useState<Mode>(DEFAULT_MODE);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    applyThemeToDom(theme);
-  }, [theme]);
+    const t = readInitialTheme();
+    const m = readInitialMode();
+    /* eslint-disable react-hooks/set-state-in-effect -- adopt persisted prefs post-hydration */
+    setThemeState(t);
+    setModeState(m);
+    setHydrated(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
+    // Belt and braces in case the boot script was blocked.
+    document.documentElement.dataset.mode = m;
+  }, []);
+
+  useEffect(() => {
+    if (hydrated) applyThemeToDom(theme);
+  }, [theme, hydrated]);
 
   const setTheme = useCallback((next: ThemeId) => {
     setThemeState(next);

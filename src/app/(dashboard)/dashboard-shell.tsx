@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { Sidebar } from "@/components/layout/sidebar";
+import { MobileTabBar } from "@/components/layout/mobile-tab-bar";
 import { Header } from "@/components/layout/header";
 import { AppFooter } from "@/components/layout/app-footer";
 import { AccountAccessAlert } from "@/components/layout/account-access-alert";
@@ -27,6 +28,24 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
+  const openSidebar = useCallback(() => setSidebarOpen(true), []);
+
+  // Desktop rail collapse, remembered per browser.
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate from localStorage after mount
+      setCollapsed(localStorage.getItem("nxcrm.sidebar.collapsed") === "1");
+    } catch {}
+  }, []);
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed((c) => {
+      try {
+        localStorage.setItem("nxcrm.sidebar.collapsed", c ? "0" : "1");
+      } catch {}
+      return !c;
+    });
+  }, []);
 
   const [entitlementSummary, setEntitlementSummary] = useState<AccountEntitlementSummary | null>(null);
 
@@ -57,23 +76,48 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
       },
     );
 
+    // Re-check plan status when the user returns to the tab (e.g. after
+    // paying in another tab) — cheap, and avoids a manual reload.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refreshSubscription();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
     return () => {
       isMounted = false;
+      document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [accountId, supabase]);
+  }, [accountId, supabase, refreshSubscription]);
 
   useEffect(() => {
     if (!loading && !user) {
-      router.push("/login");
+      router.replace("/login");
     }
   }, [user, loading, router]);
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="text-sm text-muted-foreground">Loading...</p>
+      <div className="flex h-[100dvh] bg-background" aria-busy="true" aria-label="Loading">
+        <div className="hidden w-60 shrink-0 border-r border-border bg-sidebar p-4 lg:block">
+          <div className="mb-6 flex items-center gap-2.5">
+            <div className="size-9 animate-pulse rounded-xl bg-muted" />
+            <div className="h-4 w-24 animate-pulse rounded bg-muted" />
+          </div>
+          {Array.from({ length: 9 }).map((_, i) => (
+            <div key={i} className="mb-2 h-8 animate-pulse rounded-lg bg-muted/70" />
+          ))}
+        </div>
+        <div className="flex-1">
+          <div className="h-14 border-b border-border sm:h-16" />
+          <div className="space-y-4 p-4 sm:p-6">
+            <div className="h-7 w-48 animate-pulse rounded-lg bg-muted" />
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="h-28 animate-pulse rounded-2xl bg-muted/70" />
+              ))}
+            </div>
+            <div className="h-72 animate-pulse rounded-2xl bg-muted/60" />
+          </div>
         </div>
       </div>
     );
@@ -93,16 +137,24 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
 
   // Workspace canvas routes (/inbox, /flows/[id]) require 100% viewport fit without outer scrollbars
   const isFullHeightRoute = pathname.startsWith('/inbox') || (pathname.startsWith('/flows/') && pathname !== '/flows');
+  // The inbox and the flow canvas need every pixel on phones; hide the
+  // bottom tab bar there (the inbox has its own back navigation).
+  const hideTabBar = isFullHeightRoute;
 
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-background">
       <PresenceHeartbeat />
-      <Suspense fallback={<aside className="hidden lg:block lg:w-60 border-r border-border bg-card shrink-0" />}>
-        <Sidebar open={sidebarOpen} onClose={closeSidebar} />
+      <Suspense fallback={<aside className="hidden lg:block lg:w-60 border-r border-border bg-sidebar shrink-0" />}>
+        <Sidebar
+          open={sidebarOpen}
+          onClose={closeSidebar}
+          collapsed={collapsed}
+          onToggleCollapsed={toggleCollapsed}
+        />
       </Suspense>
       <div className="flex flex-1 flex-col overflow-hidden min-w-0">
         <ImpersonationBanner />
-        <Header onOpenSidebar={() => setSidebarOpen(true)} />
+        <Header onOpenSidebar={openSidebar} />
         <main
           className={cn(
             "flex-1 flex flex-col min-w-0",
@@ -112,7 +164,9 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
           <div
             className={cn(
               "flex-1 flex flex-col min-w-0",
-              isFullHeightRoute ? "h-full w-full overflow-hidden p-0" : "p-4 sm:p-6 space-y-6"
+              isFullHeightRoute
+                ? "h-full w-full overflow-hidden p-0"
+                : "mx-auto w-full max-w-[1440px] space-y-6 p-4 pb-24 sm:p-6 sm:pb-24 lg:pb-6"
             )}
           >
             {!isFullHeightRoute && <AccountAccessAlert />}
@@ -188,13 +242,26 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
                   </Link>
                 </div>
               </div>
-            ) : (
+            ) : isFullHeightRoute ? (
               children
+            ) : (
+              // Keyed on the route so each page eases in on navigation
+              // instead of snapping (collapses under reduced-motion).
+              <div key={pathname} className="animate-page-in flex flex-1 flex-col space-y-6 min-w-0">
+                {children}
+              </div>
             )}
           </div>
-          {!isFullHeightRoute && <AppFooter />}
+          {!isFullHeightRoute && (
+            <div className="hidden lg:block">
+              <AppFooter />
+            </div>
+          )}
         </main>
       </div>
+      <Suspense fallback={null}>
+        <MobileTabBar onOpenMore={openSidebar} hidden={hideTabBar} />
+      </Suspense>
     </div>
   );
 }

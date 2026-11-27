@@ -1,129 +1,212 @@
 "use client";
 
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type {
+  RealtimeChannel,
+  RealtimePostgresChangesPayload,
+} from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-import type { Message, Conversation } from "@/types";
-import type { RealtimeChannel } from "@supabase/supabase-js";
 
-interface RealtimeEvent<T> {
-  eventType: "INSERT" | "UPDATE" | "DELETE";
-  new: T;
-  old: Partial<T>;
+export type RealtimeConnectionStatus =
+  | "connecting"
+  | "connected"
+  | "disconnected"
+  | "error";
+
+export interface RealtimeTableBinding {
+  table: string;
+  event?: "*" | "INSERT" | "UPDATE" | "DELETE";
+  /** PostgREST-style filter, e.g. `conversation_id=eq.<uuid>`. */
+  filter?: string;
 }
 
-export type RealtimeConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
+export type RealtimeRow = Record<string, unknown>;
 
-interface UseRealtimeOptions {
-  channelName: string;
-  accountId?: string | null;
-  onMessageEvent?: (event: RealtimeEvent<Message>) => void;
-  onConversationEvent?: (event: RealtimeEvent<Conversation>) => void;
-  onStatusChange?: (status: RealtimeConnectionStatus) => void;
-  enabled?: boolean;
+export interface UseRealtimeChannelOptions {
+  /** Readable prefix for the channel topic (debugging only). */
+  name: string;
+  /**
+   * Subscription identity. The channel is (re)built whenever this changes
+   * and torn down while it is null. `tables` must be derived from it.
+   */
+  channelKey: string | null;
+  tables: RealtimeTableBinding[];
+  onChange: (
+    table: string,
+    payload: RealtimePostgresChangesPayload<RealtimeRow>,
+  ) => void;
+  /**
+   * Gap-fill hook. Fired after a *re*-subscribe (not the first one), when
+   * the tab becomes visible again, and when the browser comes back online
+   * — i.e. whenever events may have been missed. Callers refetch.
+   */
+  onResync?: () => void;
 }
 
-export function useRealtime({
-  channelName,
-  accountId,
-  onMessageEvent,
-  onConversationEvent,
-  onStatusChange,
-  enabled = true,
-}: UseRealtimeOptions) {
-  const channelRef = useRef<RealtimeChannel | null>(null);
-  const [internalConnected, setInternalConnected] = useState(false);
-  const [internalStatus, setInternalStatus] = useState<RealtimeConnectionStatus>("connecting");
+/** "connecting" (first subscribe) counts as healthy — no alarming flash on load. */
+export function isRealtimeHealthy(status: RealtimeConnectionStatus): boolean {
+  return status === "connected" || status === "connecting";
+}
 
-  const isConnected = enabled ? internalConnected : false;
-  const status: RealtimeConnectionStatus = enabled ? internalStatus : "disconnected";
+const MAX_BACKOFF_MS = 30_000;
+/** Visibility/online can fire in bursts; don't refetch more often than this. */
+const RESYNC_THROTTLE_MS = 3_000;
+/** How long a tab must have been hidden before becoming visible triggers a resync. */
+const HIDDEN_RESYNC_MS = 5_000;
 
-  // Store latest callbacks in refs to avoid re-subscribing when parent re-renders
-  const onMessageRef = useRef(onMessageEvent);
-  const onConversationRef = useRef(onConversationEvent);
-  const onStatusChangeRef = useRef(onStatusChange);
+function uniqueSuffix(): string {
+  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID().slice(0, 8)
+    : Math.random().toString(36).slice(2, 10);
+}
 
+/**
+ * One Supabase Realtime channel with:
+ *  - a unique topic per subscribe attempt — supabase-js returns an
+ *    *existing* channel for a reused topic, so a remount (or React strict
+ *    mode's double effect) could otherwise grab a channel that is still
+ *    leaving and fail with "tried to subscribe multiple times";
+ *  - exponential-backoff resubscribe on CHANNEL_ERROR / TIMED_OUT / CLOSED;
+ *  - `onResync` on reconnect / visibility / online so the caller can
+ *    backfill anything missed while the socket was down.
+ *
+ * Handlers are read through refs, so passing inline callbacks never
+ * triggers a resubscribe.
+ */
+export function useRealtimeChannel({
+  name,
+  channelKey,
+  tables,
+  onChange,
+  onResync,
+}: UseRealtimeChannelOptions): RealtimeConnectionStatus {
+  const [status, setStatus] = useState<RealtimeConnectionStatus>("connecting");
+
+  const tablesRef = useRef(tables);
+  const onChangeRef = useRef(onChange);
+  const onResyncRef = useRef(onResync);
   useEffect(() => {
-    onMessageRef.current = onMessageEvent;
-    onConversationRef.current = onConversationEvent;
-    onStatusChangeRef.current = onStatusChange;
+    tablesRef.current = tables;
+    onChangeRef.current = onChange;
+    onResyncRef.current = onResync;
   });
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!channelKey) return;
 
     const supabase = createClient();
+    let disposed = false;
+    let channel: RealtimeChannel | null = null;
+    let attempt = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let subscribedOnce = false;
+    // True between a channel failure and the next successful subscribe.
+    let errored = false;
+    let lastResyncAt = 0;
 
-    // Account-scoped channel name to prevent cross-tenant noise
-    const scopedTopic = accountId ? `${channelName}-${accountId}` : channelName;
-    const channel = supabase.channel(scopedTopic);
+    const resync = (force = false) => {
+      if (disposed) return;
+      const now = Date.now();
+      if (!force && now - lastResyncAt < RESYNC_THROTTLE_MS) return;
+      lastResyncAt = now;
+      onResyncRef.current?.();
+    };
 
-    // Messages subscription
-    channel.on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "messages" },
-      (payload) => {
-        onMessageRef.current?.({
-          eventType: payload.eventType as RealtimeEvent<Message>["eventType"],
-          new: payload.new as Message,
-          old: payload.old as Partial<Message>,
-        });
+    const teardown = () => {
+      const old = channel;
+      channel = null;
+      if (old) void supabase.removeChannel(old);
+    };
+
+    const scheduleRetry = (immediate = false) => {
+      if (disposed) return;
+      if (retryTimer) {
+        if (!immediate) return;
+        clearTimeout(retryTimer);
+        retryTimer = null;
       }
-    );
+      teardown();
+      // Status stays "error"/"disconnected" until the retry succeeds, so
+      // the UI only reports "connecting" for the very first subscribe.
+      const delay = immediate
+        ? 0
+        : Math.min(MAX_BACKOFF_MS, 1000 * 2 ** attempt) + Math.random() * 500;
+      attempt += 1;
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        subscribe();
+      }, delay);
+    };
 
-    // Conversations subscription — scoped by account_id filter when available
-    const convFilter = accountId ? `account_id=eq.${accountId}` : undefined;
-    channel.on(
-      "postgres_changes",
-      convFilter
-        ? { event: "*", schema: "public", table: "conversations", filter: convFilter }
-        : { event: "*", schema: "public", table: "conversations" },
-      (payload) => {
-        onConversationRef.current?.({
-          eventType: payload.eventType as RealtimeEvent<Conversation>["eventType"],
-          new: payload.new as Conversation,
-          old: payload.old as Partial<Conversation>,
-        });
+    const subscribe = () => {
+      if (disposed) return;
+      const ch = supabase.channel(`${name}:${channelKey}:${uniqueSuffix()}`);
+      for (const binding of tablesRef.current) {
+        const table = binding.table;
+        ch.on(
+          "postgres_changes",
+          {
+            event: binding.event ?? "*",
+            schema: "public",
+            table,
+            ...(binding.filter ? { filter: binding.filter } : {}),
+          },
+          (payload: RealtimePostgresChangesPayload<RealtimeRow>) => {
+            if (disposed || channel !== ch) return;
+            onChangeRef.current(table, payload);
+          },
+        );
       }
-    );
+      channel = ch;
+      ch.subscribe((s) => {
+        // Ignore callbacks from a channel we already replaced/removed.
+        if (disposed || channel !== ch) return;
+        if (s === "SUBSCRIBED") {
+          attempt = 0;
+          errored = false;
+          setStatus("connected");
+          // realtime-js also auto-rejoins after a socket drop and reports
+          // SUBSCRIBED again — either way events may have been missed.
+          if (subscribedOnce) resync(true);
+          subscribedOnce = true;
+        } else if (s === "CHANNEL_ERROR" || s === "TIMED_OUT" || s === "CLOSED") {
+          errored = true;
+          setStatus(s === "CLOSED" ? "disconnected" : "error");
+          scheduleRetry();
+        }
+      });
+    };
 
-    channel.subscribe((subStatus) => {
-      const isSubbed = subStatus === "SUBSCRIBED";
-      setInternalConnected(isSubbed);
-
-      let nextStatus: RealtimeConnectionStatus = "connecting";
-      if (isSubbed) {
-        nextStatus = "connected";
-      } else if (subStatus === "CHANNEL_ERROR" || subStatus === "TIMED_OUT") {
-        nextStatus = "error";
-      } else if (subStatus === "CLOSED") {
-        nextStatus = "disconnected";
+    let hiddenAt = 0;
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") {
+        hiddenAt = Date.now();
+        return;
       }
+      if (errored) scheduleRetry(true);
+      // Background tabs get their sockets throttled; only a real absence
+      // (not a quick alt-tab) is worth a refetch.
+      if (errored || Date.now() - hiddenAt > HIDDEN_RESYNC_MS) resync();
+    };
+    const onOnline = () => {
+      if (errored) scheduleRetry(true);
+      // The resubscribe's SUBSCRIBED callback resyncs too; the throttle
+      // collapses the two into one refetch.
+      resync();
+    };
 
-      setInternalStatus(nextStatus);
-      onStatusChangeRef.current?.(nextStatus);
-    });
-
-    channelRef.current = channel;
+    subscribe();
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("online", onOnline);
 
     return () => {
-      supabase.removeChannel(channel);
-      channelRef.current = null;
-      setInternalConnected(false);
-      setInternalStatus("disconnected");
-      onStatusChangeRef.current?.("disconnected");
+      disposed = true;
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("online", onOnline);
+      if (retryTimer) clearTimeout(retryTimer);
+      teardown();
     };
-  }, [channelName, accountId, enabled]);
+  }, [name, channelKey]);
 
-  const unsubscribe = useCallback(() => {
-    if (channelRef.current) {
-      const supabase = createClient();
-      supabase.removeChannel(channelRef.current);
-      channelRef.current = null;
-      setInternalConnected(false);
-      setInternalStatus("disconnected");
-      onStatusChangeRef.current?.("disconnected");
-    }
-  }, []);
-
-  return { isConnected, status, unsubscribe };
+  return channelKey ? status : "disconnected";
 }

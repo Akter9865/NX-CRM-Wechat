@@ -17,10 +17,11 @@ import { useTranslations } from "next-intl";
  */
 export function ModeToggle({ className }: { className?: string }) {
   const t = useTranslations("ModeToggle");
-  const { mode, toggleMode } = useTheme();
-  const goingTo = mode === "dark" ? "light" : "dark";
-  const switchLabel = t("switchMode", { mode: goingTo });
-  
+  const { toggleMode } = useTheme();
+  // Icon is chosen by CSS from <html data-mode>, so the server HTML and
+  // the first client render are identical (no hydration mismatch).
+  const switchLabel = t("switchMode", { mode: "light / dark" });
+
   return (
     <button
       type="button"
@@ -28,15 +29,12 @@ export function ModeToggle({ className }: { className?: string }) {
       aria-label={switchLabel}
       title={switchLabel}
       className={cn(
-        "flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-border/60 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground hover:border-primary/40 shrink-0",
+        "flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground shrink-0",
         className,
       )}
     >
-      {mode === "dark" ? (
-        <Moon className="h-5 w-5" />
-      ) : (
-        <Sun className="h-5 w-5" />
-      )}
+      <Moon className="hidden size-[18px] dark:block" />
+      <Sun className="size-[18px] dark:hidden" />
     </button>
   );
 }

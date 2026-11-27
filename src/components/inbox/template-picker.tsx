@@ -95,11 +95,13 @@ export function TemplatePicker({
     (async () => {
       setLoading(true);
       const supabase = createClient();
+      // getSession reads the local session; getUser() made a round-trip to
+      // the auth server every time the picker opened.
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
+        data: { session },
+      } = await supabase.auth.getSession();
 
-      if (!user) {
+      if (!session?.user) {
         if (!cancelled) {
           setTemplates([]);
           setLoading(false);

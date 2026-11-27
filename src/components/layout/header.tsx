@@ -83,226 +83,125 @@ export function Header({ onOpenSidebar }: HeaderProps) {
     profile?.email?.charAt(0)?.toUpperCase() ??
     "U";
 
+  const status = waLoading
+    ? { tone: "muted", label: "Checking…", short: "…", icon: null as null | typeof Zap, title: "Checking WhatsApp connection" }
+    : isBanned
+      ? { tone: "rose", label: "Number banned", short: "Banned", icon: AlertCircle, title: "Meta has banned a connected number — click to review" }
+      : isRestricted
+        ? { tone: "amber", label: "Restricted", short: "Restricted", icon: AlertTriangle, title: "Messaging restricted by Meta — click to review" }
+        : isConnected
+          ? {
+              tone: "emerald",
+              label: primaryConnection?.display_phone_number ?? "WhatsApp live",
+              short: "Live",
+              icon: Zap,
+              title: `WhatsApp connected${connectionCount > 1 ? ` (${connectionCount} numbers)` : ""} — click to manage`,
+            }
+          : hasError
+            ? { tone: "rose", label: "Connection error", short: "Error", icon: AlertTriangle, title: "WhatsApp connection error — click to fix" }
+            : { tone: "amber", label: "Connect WhatsApp", short: "Connect", icon: AlertCircle, title: "Connect your WhatsApp Business number" };
+
+  const toneClass: Record<string, string> = {
+    muted: "border-border bg-muted text-muted-foreground",
+    emerald: "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+    amber: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+    rose: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-400",
+  };
+  const dotClass: Record<string, string> = {
+    muted: "bg-muted-foreground/50",
+    emerald: "bg-emerald-500",
+    amber: "bg-amber-500",
+    rose: "bg-rose-500",
+  };
+  const StatusIcon = status.icon;
+
   return (
-    <header className="sticky top-0 z-20 flex h-14 sm:h-16 shrink-0 items-center justify-between gap-1.5 sm:gap-3 border-b border-border/80 bg-background/80 backdrop-blur-md px-3 sm:px-4 lg:px-6">
-      {/* Left side: Mobile menu & Breadcrumb hierarchy */}
-      <div className="flex min-w-0 items-center gap-1.5 sm:gap-2.5">
-        <button
-          type="button"
-          onClick={onOpenSidebar}
-          aria-label={t("openMenu")}
-          className="flex h-8 w-8 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
-        >
-          <Menu className="h-5 w-5" />
-        </button>
+    <header className="glass-header sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b border-border px-3 pt-safe sm:h-16 sm:gap-3 sm:px-4 lg:px-6">
+      <button
+        type="button"
+        onClick={onOpenSidebar}
+        aria-label={t("openMenu")}
+        className="hidden size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:flex lg:hidden"
+      >
+        <Menu className="size-5" />
+      </button>
 
-        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-          <span className="hidden sm:inline text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors">
-            NX CRM
-          </span>
-          <span className="hidden sm:inline text-xs text-muted-foreground/40 font-mono">/</span>
-          <div className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-card/60 px-2 sm:px-2.5 py-1 text-xs font-bold text-foreground tracking-tight shadow-2xs min-w-0">
-            <span className="relative flex h-1.5 w-1.5 shrink-0">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            </span>
-            <span className="capitalize truncate max-w-[90px] xs:max-w-[140px] sm:max-w-none">{t(titleKey as string)}</span>
-          </div>
-        </div>
-      </div>
+      <h1 className="min-w-0 truncate text-base font-semibold tracking-tight text-foreground sm:text-lg">
+        {t(titleKey as string)}
+      </h1>
 
-      {/* Center: Global Quick Search Shortcut */}
       <Link
         href="/contacts"
-        className="hidden md:flex items-center gap-2.5 h-9 w-64 lg:w-80 rounded-xl border border-border/70 bg-card/60 px-3 text-xs text-muted-foreground transition-all duration-200 hover:border-primary/40 hover:bg-card hover:text-foreground shadow-2xs group"
+        className="ml-auto hidden h-9 w-56 items-center gap-2 rounded-lg border border-border bg-card px-3 text-[13px] text-muted-foreground shadow-elev-1 transition-colors hover:border-primary/40 hover:text-foreground md:flex lg:w-72"
       >
-        <Search className="size-3.5 text-muted-foreground/80 group-hover:text-primary transition-colors shrink-0" />
-        <span className="truncate">Search contacts, deals, flows...</span>
-        <kbd className="ml-auto pointer-events-none inline-flex h-4.5 select-none items-center gap-1 rounded border border-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-          ⌘K
-        </kbd>
+        <Search className="size-4 shrink-0" />
+        <span className="truncate">Search contacts…</span>
       </Link>
 
-      {/* Right Action Icons & Profile */}
-      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-        {/* WhatsApp Cloud API Live Status Badge */}
-        {waLoading ? (
-          <div className="flex items-center gap-1 sm:gap-1.5 h-8 px-2 sm:px-2.5 py-1 rounded-full border border-border/60 bg-muted/40 text-muted-foreground text-[11px] font-medium shrink-0">
-            <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-pulse" />
-            <span className="hidden sm:inline">Checking Meta API...</span>
-          </div>
-        ) : isBanned ? (
-          <Link
-            href="/settings?tab=whatsapp"
-            title="Meta API Banned: Policy violation detected. Click to view appeal instructions."
-            className="flex items-center gap-1 sm:gap-1.5 h-8 px-2 sm:px-2.5 py-1 rounded-full border border-rose-500/40 bg-rose-500/15 text-rose-600 dark:text-rose-400 hover:bg-rose-500/25 transition-all text-[11px] font-bold animate-pulse shadow-2xs shrink-0"
-          >
-            <span className="relative flex h-1.5 w-1.5 shrink-0">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-rose-500" />
-            </span>
-            <AlertCircle className="size-3 text-rose-600 dark:text-rose-400 shrink-0" />
-            <span className="hidden xl:inline">Meta API Banned</span>
-            <span className="hidden md:inline xl:hidden">Banned</span>
-            {bannedCount > 1 && (
-              <span className="rounded-full bg-rose-500/20 px-1 py-0.2 text-[9px] font-bold">
-                {bannedCount}
-              </span>
-            )}
-          </Link>
-        ) : isRestricted ? (
-          <Link
-            href="/settings?tab=whatsapp"
-            title="Meta API Restricted: Messaging restricted by Meta. Click to review."
-            className="flex items-center gap-1 sm:gap-1.5 h-8 px-2 sm:px-2.5 py-1 rounded-full border border-amber-500/40 bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/25 transition-all text-[11px] font-semibold animate-fade-in shadow-2xs shrink-0"
-          >
-            <AlertTriangle className="size-3 text-amber-600 dark:text-amber-400 shrink-0" />
-            <span className="hidden xl:inline">Meta API Restricted</span>
-            <span className="hidden md:inline xl:hidden">Restricted</span>
-          </Link>
-        ) : isConnected ? (
-          <Link
-            href="/settings?tab=whatsapp"
-            title={
-              primaryConnection?.display_phone_number
-                ? `Meta API Connected: ${primaryConnection.display_phone_number}${connectionCount > 1 ? ` (+${connectionCount - 1} more)` : ""}`
-                : "Meta API Connected — Click to manage"
-            }
-            className="flex items-center gap-1 sm:gap-1.5 h-8 px-2 sm:px-2.5 py-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-all text-[11px] font-semibold animate-fade-in shadow-2xs shrink-0"
-          >
-            <span className="relative flex h-1.5 w-1.5 shrink-0">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            </span>
-            <Zap className="size-3 text-emerald-600 dark:text-emerald-400 fill-emerald-500/20 shrink-0" />
-            <span className="hidden xl:inline">Meta API Connected</span>
-            <span className="hidden md:inline xl:hidden">Live</span>
-            {connectionCount > 1 && (
-              <span className="rounded-full bg-emerald-500/20 px-1 py-0.2 text-[9px] font-bold">
-                {connectionCount}
-              </span>
-            )}
-          </Link>
-        ) : hasError ? (
-          <Link
-            href="/settings?tab=whatsapp"
-            title="Meta API Connection Error — Click to fix"
-            className="flex items-center gap-1 sm:gap-1.5 h-8 px-2 sm:px-2.5 py-1 rounded-full border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20 transition-all text-[11px] font-semibold animate-fade-in shadow-2xs shrink-0"
-          >
-            <span className="relative flex h-1.5 w-1.5 shrink-0">
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red-500" />
-            </span>
-            <AlertTriangle className="size-3 text-red-600 dark:text-red-400 shrink-0" />
-            <span className="hidden xl:inline">Meta API Error</span>
-            <span className="hidden md:inline xl:hidden">Error</span>
-          </Link>
-        ) : (
-          <Link
-            href="/settings?tab=whatsapp"
-            title="Meta API Not Connected — Click to connect WhatsApp Business"
-            className="hidden sm:flex items-center gap-1.5 h-8 px-2.5 py-1 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-all text-[11px] font-semibold animate-fade-in shadow-2xs shrink-0"
-          >
-            <span className="relative flex h-1.5 w-1.5 shrink-0">
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-amber-500" />
-            </span>
-            <AlertCircle className="size-3 text-amber-600 dark:text-amber-400 shrink-0" />
-            <span className="hidden xl:inline">Meta API Not Connected</span>
-            <span className="hidden md:inline xl:hidden">Connect</span>
-          </Link>
-        )}
+      <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2 md:ml-0">
+        <Link
+          href="/settings?tab=whatsapp"
+          title={status.title}
+          className={`flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold transition-colors hover:brightness-95 ${toneClass[status.tone]}`}
+        >
+          <span className={`size-1.5 shrink-0 rounded-full ${dotClass[status.tone]}`} />
+          {StatusIcon ? <StatusIcon className="hidden size-3.5 shrink-0 sm:block" /> : null}
+          <span className="hidden max-w-36 truncate lg:inline">{status.label}</span>
+          <span className="lg:hidden">{status.short}</span>
+          {bannedCount > 1 && <span className="rounded-full bg-rose-500/20 px-1 text-[10px]">{bannedCount}</span>}
+        </Link>
 
-        {/* Notifications Icon with Unread Counter */}
         <Link
           href="/notifications"
           aria-label={t("notifications")}
-          className="relative flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-all duration-150 hover:bg-muted hover:text-foreground border border-border/60 hover:border-primary/40"
+          className="relative flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
-          <Bell className="size-4" />
+          <Bell className="size-[18px]" />
           {unreadNotifications > 0 && (
-            <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground animate-pulse shadow-sm">
+            <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white ring-2 ring-background">
               {unreadNotifications > 9 ? "9+" : unreadNotifications}
             </span>
           )}
         </Link>
 
-        {/* PWA 1-Click Install Button */}
-        <div className="hidden sm:block">
-          <PwaInstallButton
-            variant="outline"
-            size="sm"
-            className="h-9 rounded-xl border-border/60 hover:border-primary/40 bg-card/60 hover:bg-card text-xs font-semibold"
-          />
+        <div className="hidden xl:block">
+          <PwaInstallButton variant="ghost" size="sm" className="h-9 rounded-lg text-xs font-semibold" />
         </div>
 
-        {/* Theme Palette Switcher */}
-        <ThemePalettePopover />
-
-        {/* Mode Toggle (Light / Dark) */}
+        <div className="hidden sm:block">
+          <ThemePalettePopover />
+        </div>
         <ModeToggle />
 
-        {/* User Account Dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger
-            className="flex items-center gap-1.5 rounded-full border border-border/80 bg-card/60 p-0.5 sm:p-1 shadow-sm transition-all hover:bg-muted/70 hover:border-primary/40 focus:outline-none data-popup-open:bg-muted/70 sm:pl-1 sm:pr-3 shrink-0"
+            className="flex shrink-0 items-center rounded-full p-0.5 transition-colors hover:bg-muted focus:outline-none data-popup-open:bg-muted"
             aria-label={t("openAccountMenu")}
           >
-            <Avatar className="size-7 sm:size-7.5 ring-1 ring-border shrink-0">
+            <Avatar className="size-8 ring-1 ring-border">
               {profile?.avatar_url ? (
-                <AvatarImage
-                  src={profile.avatar_url}
-                  alt={profile.full_name ?? t("defaultAvatar")}
-                />
+                <AvatarImage src={profile.avatar_url} alt={profile.full_name ?? t("defaultAvatar")} />
               ) : null}
-              <AvatarFallback className="bg-gradient-to-br from-emerald-500/20 to-blue-500/20 text-xs font-bold text-primary">
-                {initial}
-              </AvatarFallback>
+              <AvatarFallback className="bg-primary/12 text-xs font-bold text-primary">{initial}</AvatarFallback>
             </Avatar>
-            <span className="hidden text-xs font-semibold text-foreground sm:inline truncate max-w-28">
-              {profile?.full_name ?? t("defaultUser")}
-            </span>
           </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            sideOffset={6}
-            className="min-w-56 bg-popover text-popover-foreground ring-border rounded-2xl p-1.5 shadow-2xl border-border"
-          >
+          <DropdownMenuContent align="end" sideOffset={8} className="min-w-60 rounded-xl p-1.5">
             <div className="px-2.5 py-2">
-              <p className="truncate text-sm font-semibold text-foreground">
-                {profile?.full_name ?? t("defaultUser")}
-              </p>
-              <p className="truncate text-xs text-muted-foreground">
-                {profile?.email ?? ""}
-              </p>
+              <p className="truncate text-sm font-semibold text-foreground">{profile?.full_name ?? t("defaultUser")}</p>
+              <p className="truncate text-xs text-muted-foreground">{profile?.email ?? ""}</p>
             </div>
-            <DropdownMenuSeparator className="bg-border/60" />
-            <DropdownMenuItem
-              render={
-                <Link
-                  href="/settings?tab=profile"
-                  className="text-popover-foreground focus:bg-accent focus:text-accent-foreground rounded-xl"
-                />
-              }
-            >
-              <User className="size-4 mr-2 text-muted-foreground" />
+            <DropdownMenuSeparator />
+            <DropdownMenuItem render={<Link href="/settings?tab=profile" className="rounded-lg" />}>
+              <User className="mr-2 size-4 text-muted-foreground" />
               {t("menuProfile")}
             </DropdownMenuItem>
-            <DropdownMenuItem
-              render={
-                <Link
-                  href="/settings?tab=whatsapp"
-                  className="text-popover-foreground focus:bg-accent focus:text-accent-foreground rounded-xl"
-                />
-              }
-            >
-              <SettingsIcon className="size-4 mr-2 text-muted-foreground" />
+            <DropdownMenuItem render={<Link href="/settings?tab=whatsapp" className="rounded-lg" />}>
+              <SettingsIcon className="mr-2 size-4 text-muted-foreground" />
               {t("menuSettings")}
             </DropdownMenuItem>
-            <DropdownMenuSeparator className="bg-border/60" />
-            <DropdownMenuItem
-              onClick={signOut}
-              className="text-red-400 focus:bg-red-500/10 focus:text-red-400 rounded-xl cursor-pointer"
-            >
-              <LogOut className="size-4 mr-2" />
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={signOut} className="cursor-pointer rounded-lg text-rose-600 focus:bg-rose-500/10 focus:text-rose-600 dark:text-rose-400">
+              <LogOut className="mr-2 size-4" />
               {t("menuSignOut")}
             </DropdownMenuItem>
           </DropdownMenuContent>

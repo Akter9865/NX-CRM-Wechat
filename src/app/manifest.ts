@@ -7,11 +7,17 @@ export default function manifest(): MetadataRoute.Manifest {
     description: 'Unified WhatsApp CRM, Visual Flows & AI Auto-Reply Platform for Modern Teams',
     start_url: '/dashboard',
     display: 'standalone',
-    background_color: '#090d16',
-    theme_color: '#10b981',
+    // Window-controls-overlay on desktop installs, standalone elsewhere.
+    display_override: ['window-controls-overlay', 'standalone', 'minimal-ui'],
+    background_color: '#f6f8f7',
+    theme_color: '#128C7E',
     orientation: 'any',
     id: '/',
     scope: '/',
+    lang: 'en',
+    dir: 'ltr',
+    categories: ['business', 'productivity', 'social'],
+    prefer_related_applications: false,
     icons: [
       {
         src: '/icons/icon-192x192.png',
@@ -46,18 +52,24 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     shortcuts: [
       {
-        name: 'Unified Inbox',
+        name: 'Team Inbox',
+        short_name: 'Inbox',
         url: '/inbox',
+        icons: [{ src: '/icons/icon-96x96.png', sizes: '96x96', type: 'image/png' }],
         description: 'View and reply to incoming WhatsApp conversations',
       },
       {
-        name: 'Automations',
-        url: '/automations',
-        description: 'Manage keyword triggers and automated visual flows',
+        name: 'Chatbot Flows',
+        short_name: 'Flows',
+        url: '/flows',
+        description: 'Build and manage automated WhatsApp chatbot flows',
+        icons: [{ src: '/icons/icon-96x96.png', sizes: '96x96', type: 'image/png' }],
       },
       {
         name: 'Contacts',
+        short_name: 'Contacts',
         url: '/contacts',
+        icons: [{ src: '/icons/icon-96x96.png', sizes: '96x96', type: 'image/png' }],
         description: 'Browse contacts and lead pipelines',
       },
     ],

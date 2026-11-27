@@ -1,16 +1,20 @@
 "use client";
 
+import { memo } from "react";
 import { cn } from "@/lib/utils";
 import type { Message, MessageReaction } from "@/types";
+import type { ThreadMessage } from "@/lib/inbox/messages";
 import {
   Clock,
   Check,
   CheckCheck,
-  XCircle,
+  AlertCircle,
   MapPin,
   LayoutTemplate,
   CornerDownLeft,
   Sparkles,
+  RotateCw,
+  X,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
@@ -26,7 +30,7 @@ import { InteractivePreview } from "@/components/interactive/interactive-preview
 import { useTranslations } from "next-intl";
 
 interface MessageBubbleProps {
-  message: Message;
+  message: ThreadMessage;
   /** Pre-computed quote info for messages that reply to another. */
   reply?: { authorLabel: string; preview: string } | null;
   reactions?: MessageReaction[];
@@ -38,38 +42,42 @@ interface MessageBubbleProps {
    * stays inline and non-clickable.
    */
   onOpenMedia?: (messageId: string) => void;
+  /** Re-send a failed outbound message. Only rendered when status is failed. */
+  onRetry?: () => void;
+  /** Remove a failed, never-delivered bubble from the thread. */
+  onDiscard?: () => void;
 }
 
 function StatusIcon({ status }: { status: Message["status"] }) {
   switch (status) {
     case "sending":
       return (
-        <span title="Sending...">
-          <Clock className="h-3 w-3 text-primary-foreground/60 animate-pulse" />
+        <span title="Sending…" aria-label="Sending">
+          <Clock className="h-3 w-3 text-primary-foreground/60" />
         </span>
       );
     case "sent":
       return (
-        <span title="Sent to WhatsApp">
+        <span title="Sent" aria-label="Sent">
           <Check className="h-3 w-3 text-primary-foreground/75" />
         </span>
       );
     case "delivered":
       return (
-        <span title="Delivered to recipient">
+        <span title="Delivered" aria-label="Delivered">
           <CheckCheck className="h-3 w-3 text-primary-foreground/90" />
         </span>
       );
     case "read":
       return (
-        <span title="Seen / Read">
-          <CheckCheck className="h-3 w-3 text-sky-300 drop-shadow-[0_0_2px_rgba(56,189,248,0.4)]" />
+        <span title="Read" aria-label="Read">
+          <CheckCheck className="h-3 w-3 text-sky-300" />
         </span>
       );
     case "failed":
       return (
-        <span title="Delivery Failed / Error">
-          <XCircle className="h-3 w-3 text-rose-300 drop-shadow-[0_0_2px_rgba(244,63,94,0.4)]" />
+        <span title="Failed" aria-label="Failed">
+          <AlertCircle className="h-3 w-3 text-destructive" />
         </span>
       );
     default:
@@ -235,34 +243,40 @@ function MessageContent({
   }
 }
 
-export function MessageBubble({
+function MessageBubbleImpl({
   message,
   reply,
   reactions,
   currentUserId,
   onToggleReaction,
   onOpenMedia,
+  onRetry,
+  onDiscard,
 }: MessageBubbleProps) {
   const t = useTranslations("Inbox.bubble");
 
   const isAgent = message.sender_type === "agent" || message.sender_type === "bot";
   const time = format(new Date(message.created_at), "HH:mm");
+  const failed = isAgent && message.status === "failed";
+  const sending = isAgent && message.status === "sending";
 
   // Row alignment + width cap are owned by <MessageActions> so its hover
   // group matches the bubble's content area, not the full row.
   return (
     <div
       className={cn(
-        "flex flex-col",
+        "flex flex-col animate-message-in",
         isAgent ? "items-end" : "items-start",
       )}
     >
       <div
         className={cn(
-          "relative rounded-2xl px-3 py-2",
+          "relative rounded-2xl px-3 py-2 shadow-xs transition-opacity",
           isAgent
             ? "rounded-br-md bg-primary text-primary-foreground"
-            : "rounded-bl-md bg-muted text-foreground",
+            : "rounded-bl-md border border-border/60 bg-card text-card-foreground",
+          sending && "opacity-80",
+          failed && "ring-1 ring-destructive/70",
         )}
       >
         {reply && (
@@ -285,9 +299,7 @@ export function MessageBubble({
           )}
         >
           {/* AI badge — only on replies the auto-reply bot generated
-              (always outbound, so it sits on the primary fill). Lets
-              agents tell an AI reply from their own / a Flow's at a
-              glance. */}
+              (always outbound, so it sits on the primary fill). */}
           {message.ai_generated && (
             <span
               className="inline-flex items-center gap-0.5 rounded-full bg-primary-foreground/20 px-1.5 py-px text-[9px] font-semibold uppercase leading-none tracking-wide text-primary-foreground"
@@ -299,11 +311,7 @@ export function MessageBubble({
           )}
           <span
             className={cn(
-              "text-[10px]",
-              // Outbound bubbles sit on the primary fill, so the
-              // timestamp must read against that (not the neutral
-              // foreground) — otherwise it goes low-contrast in light
-              // mode. Inbound bubbles use the muted surface.
+              "text-[10px] tabular-nums",
               isAgent ? "text-primary-foreground/70" : "text-muted-foreground",
             )}
           >
@@ -312,6 +320,39 @@ export function MessageBubble({
           {isAgent && <StatusIcon status={message.status} />}
         </div>
       </div>
+      {failed && (
+        <div
+          role="alert"
+          className="mt-1 flex max-w-full flex-wrap items-center justify-end gap-x-2 gap-y-0.5 text-[11px] text-destructive"
+        >
+          <span className="inline-flex min-w-0 items-center gap-1">
+            <AlertCircle className="h-3 w-3 shrink-0" />
+            <span className="truncate" title={message.error_message ?? undefined}>
+              {message.error_message ? `Failed — ${message.error_message}` : "Failed to send"}
+            </span>
+          </span>
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-semibold hover:bg-destructive/10"
+            >
+              <RotateCw className="h-3 w-3" />
+              Retry
+            </button>
+          )}
+          {onDiscard && (
+            <button
+              type="button"
+              onClick={onDiscard}
+              aria-label="Discard failed message"
+              className="inline-flex items-center rounded-md p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      )}
       {reactions && reactions.length > 0 && onToggleReaction && (
         <MessageReactions
           reactions={reactions}
@@ -322,3 +363,6 @@ export function MessageBubble({
     </div>
   );
 }
+
+/** Memoised: a bubble only re-renders when its own message/reactions change. */
+export const MessageBubble = memo(MessageBubbleImpl);
