@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { memo, useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { addContactTag, deleteContactTag } from "@/lib/contacts/tag-api";
@@ -47,7 +47,7 @@ const TAG_PALETTE = [
   "#f97316",
 ];
 
-export function ContactSidebar({ contact, onTagsUpdated }: ContactSidebarProps) {
+export const ContactSidebar = memo(function ContactSidebar({ contact, onTagsUpdated }: ContactSidebarProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
 
@@ -64,59 +64,72 @@ export function ContactSidebar({ contact, onTagsUpdated }: ContactSidebarProps) 
   const [tagActionLoading, setTagActionLoading] = useState(false);
   const [syncingSheet, setSyncingSheet] = useState(false);
 
-  const fetchContactData = useCallback(async () => {
-    if (!contact) return;
+  const contactId = contact?.id ?? null;
 
+  // Load deals / notes / tags whenever the contact changes. Keyed on the id
+  // (not the object) so a realtime refresh of the same conversation doesn't
+  // refetch, and guarded so a slow response for the previous contact can't
+  // overwrite the panel after the agent switched threads.
+  useEffect(() => {
+    if (!contactId) return;
+    let cancelled = false;
     const supabase = createClient();
 
-    // Fetch deals, notes, tags, and all workspace tags in parallel
     let allTagsQuery = supabase.from("tags").select("*").order("name", { ascending: true });
     if (accountId) {
       allTagsQuery = allTagsQuery.eq("account_id", accountId);
     }
 
-    const [dealsRes, notesRes, tagsRes, allTagsRes] = await Promise.all([
-      supabase
-        .from("deals")
-        .select("*, stage:pipeline_stages(*)")
-        .eq("contact_id", contact.id)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("contact_notes")
-        .select("*")
-        .eq("contact_id", contact.id)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("contact_tags")
-        .select("id, tag_id, tags(*)")
-        .eq("contact_id", contact.id),
-      allTagsQuery,
-    ]);
+    const run = async () => {
+      try {
+        const [dealsRes, notesRes, tagsRes, allTagsRes] = await Promise.all([
+          supabase
+            .from("deals")
+            .select("*, stage:pipeline_stages(*)")
+            .eq("contact_id", contactId)
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("contact_notes")
+            .select("*")
+            .eq("contact_id", contactId)
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("contact_tags")
+            .select("id, tag_id, tags(*)")
+            .eq("contact_id", contactId),
+          allTagsQuery,
+        ]);
+        if (cancelled) return;
 
-    if (dealsRes.data) setDeals(dealsRes.data);
-    if (notesRes.data) setNotes(notesRes.data);
-    if (tagsRes.data) {
-      const mapped = tagsRes.data
-        .filter((ct: Record<string, unknown>) => ct.tags)
-        .map((ct: Record<string, unknown>) => ({
-          ...(ct.tags as Tag),
-          contact_tag_id: ct.id as string,
-        }));
-      setTags(mapped);
-    }
-    if (allTagsRes.data) {
-      setAllWorkspaceTags(allTagsRes.data);
-    }
-  }, [contact, accountId]);
-
-  // Load on contact change
-  useEffect(() => {
-    fetchContactData();
-  }, [fetchContactData]);
+        setDeals(dealsRes.data ?? []);
+        setNotes(notesRes.data ?? []);
+        setTags(
+          (tagsRes.data ?? [])
+            .filter((ct: Record<string, unknown>) => ct.tags)
+            .map((ct: Record<string, unknown>) => ({
+              ...(ct.tags as Tag),
+              contact_tag_id: ct.id as string,
+            })),
+        );
+        if (allTagsRes.data) setAllWorkspaceTags(allTagsRes.data);
+      } catch (err) {
+        console.error("Failed to load contact details:", err);
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [contactId, accountId]);
 
   const handleCopyPhone = useCallback(async () => {
     if (!contact?.phone) return;
-    await navigator.clipboard.writeText(contact.phone);
+    try {
+      await navigator.clipboard.writeText(contact.phone);
+    } catch {
+      toast.error("Copy failed");
+      return;
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [contact]);
@@ -229,22 +242,27 @@ export function ContactSidebar({ contact, onTagsUpdated }: ContactSidebarProps) 
     } = await supabase.auth.getSession();
     const user = session?.user;
 
-    const { data, error } = await supabase
-      .from("contact_notes")
-      .insert({
-        contact_id: contact.id,
-        account_id: accountId,
-        user_id: user?.id,
-        note_text: newNote.trim(),
-      })
-      .select()
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from("contact_notes")
+        .insert({
+          contact_id: contact.id,
+          account_id: accountId,
+          user_id: user?.id,
+          note_text: newNote.trim(),
+        })
+        .select()
+        .single();
 
-    if (!error && data) {
-      setNotes((prev) => [data, ...prev]);
-      setNewNote("");
+      if (error || !data) {
+        toast.error(error?.message ?? "Couldn't save the note");
+      } else {
+        setNotes((prev) => [data, ...prev]);
+        setNewNote("");
+      }
+    } finally {
+      setAddingNote(false);
     }
-    setAddingNote(false);
   }, [contact, newNote, accountId]);
 
   const handleSyncToGoogleSheets = useCallback(async () => {
@@ -267,8 +285,12 @@ export function ContactSidebar({ contact, onTagsUpdated }: ContactSidebarProps) 
       toast.success(
         data.message || `Contact "${contact.name || contact.phone}" synced to Google Sheets!`
       );
-    } catch (err: any) {
-      toast.error(err?.message || "Could not sync contact. Check Integrations settings.");
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error && err.message
+          ? err.message
+          : "Could not sync contact. Check Integrations settings.",
+      );
     } finally {
       setSyncingSheet(false);
     }
@@ -565,4 +587,4 @@ export function ContactSidebar({ contact, onTagsUpdated }: ContactSidebarProps) 
       </ScrollArea>
     </div>
   );
-}
+});

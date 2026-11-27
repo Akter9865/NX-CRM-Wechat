@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages } from 'next-intl/server';
 import { Inter } from "next/font/google";
-import Script from "next/script";
 import "./globals.css";
 import { ThemeProvider } from "@/hooks/use-theme";
 import { ThemedToaster } from "@/components/themed-toaster";
@@ -41,6 +40,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
+    startupImage: [{ url: "/icons/icon-512x512.png" }],
     title: "NX CRM",
   },
   icons: {
@@ -65,9 +65,12 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   viewportFit: "cover",
+  // Android: shrink the layout viewport when the keyboard opens so the
+  // inbox composer stays visible above it (iOS already behaves this way).
+  interactiveWidget: "resizes-content",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#090d16" },
+    { media: "(prefers-color-scheme: light)", color: "#f6f8f7" },
+    { media: "(prefers-color-scheme: dark)", color: "#111b21" },
   ],
   colorScheme: "dark light",
 };
@@ -144,9 +147,12 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        <Script
+        {/* Plain inline script (not next/script): it is part of the
+            server HTML and runs while <head> parses, before first paint.
+            The next/script variant was rendered inert here, so saved
+            light/dark choices were never applied pre-hydration. */}
+        <script
           id="theme-boot"
-          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }}
         />
       </head>

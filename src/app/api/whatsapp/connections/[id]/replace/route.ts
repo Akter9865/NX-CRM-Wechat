@@ -99,15 +99,26 @@ export async function POST(
       return NextResponse.json({ error: 'New phone_number_id and access_token are required' }, { status: 400 });
     }
 
-    // 2. Reject if another account has already claimed this new phone_number_id
-    const { data: claimed, error: claimedError } = await supabaseAdmin()
-      .from('whatsapp_config')
-      .select('account_id')
-      .eq('phone_number_id', phone_number_id)
-      .eq('is_archived', false)
-      .neq('id', id)
-      .neq('account_id', accountId)
-      .maybeSingle();
+    // 2. Reject if another account has already claimed this new phone_number_id.
+    // The Meta credential check (step 3) is independent, so it is issued
+    // concurrently; results are still evaluated in the original order.
+    const [{ data: claimed, error: claimedError }, verifyResult] = await Promise.all([
+      supabaseAdmin()
+        .from('whatsapp_config')
+        .select('account_id')
+        .eq('phone_number_id', phone_number_id)
+        .eq('is_archived', false)
+        .neq('id', id)
+        .neq('account_id', accountId)
+        .maybeSingle(),
+      verifyPhoneNumber({
+        phoneNumberId: phone_number_id,
+        accessToken: access_token,
+      }).then(
+        (info) => ({ ok: true as const, info }),
+        (err: unknown) => ({ ok: false as const, err }),
+      ),
+    ]);
 
     if (claimedError) {
       console.error('Error checking phone_number_id uniqueness:', claimedError);
@@ -122,13 +133,8 @@ export async function POST(
     }
 
     // 3. Verify new credentials with Meta BEFORE applying any changes
-    let phoneInfo;
-    try {
-      phoneInfo = await verifyPhoneNumber({
-        phoneNumberId: phone_number_id,
-        accessToken: access_token,
-      });
-    } catch (err) {
+    if (!verifyResult.ok) {
+      const err = verifyResult.err;
       const message = err instanceof Error ? err.message : 'Unknown Meta API error';
       console.error('Meta API verification failed for replacement:', message);
       return NextResponse.json(
@@ -136,6 +142,7 @@ export async function POST(
         { status: 400 }
       );
     }
+    const phoneInfo = verifyResult.info;
 
     // 4. Encrypt new credentials
     let encryptedAccessToken: string;
@@ -157,7 +164,10 @@ export async function POST(
     let registeredAt: string | null = null;
     let registrationError: string | null = null;
 
-    if (pin) {
+    // Steps 5 and 6 target independent Meta resources (number vs WABA) and
+    // each owns its error handling, so they run concurrently.
+    const registrationTask = (async () => {
+      if (!pin) return;
       try {
         await registerPhoneNumber({
           phoneNumberId: phone_number_id,
@@ -169,12 +179,13 @@ export async function POST(
         registrationError = err instanceof Error ? err.message : 'Unknown Meta registration error';
         console.error('Meta register error during replacement:', registrationError);
       }
-    }
+    })();
 
     // 6. Subscribe WABA to this app
     let subscribedAppsAt: string | null = null;
     const effectiveWabaId = waba_id?.trim() || current.waba_id;
-    if (effectiveWabaId) {
+    const subscribeTask = (async () => {
+      if (!effectiveWabaId) return;
       try {
         await subscribeWabaToApp({
           wabaId: effectiveWabaId,
@@ -184,7 +195,9 @@ export async function POST(
       } catch (err) {
         console.warn('WABA subscribe warning during replacement:', err);
       }
-    }
+    })();
+
+    await Promise.all([registrationTask, subscribeTask]);
 
     // 7. Update connection record with new credentials and metadata
     const updatedFields = {

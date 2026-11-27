@@ -44,6 +44,10 @@ export function QuickReplyPicker({
         if (!cancelled && res.ok) {
           setItems((data.quick_replies as QuickReply[]) ?? []);
         }
+      } catch (err) {
+        // Previously unhandled — a network blip surfaced as an unhandled
+        // promise rejection and left the dialog empty with no hint.
+        console.error("Failed to load quick replies:", err);
       } finally {
         if (!cancelled) setLoading(false);
       }

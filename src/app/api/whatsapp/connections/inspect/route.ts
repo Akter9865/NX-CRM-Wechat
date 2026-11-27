@@ -57,9 +57,21 @@ export async function POST(request: Request) {
     let tokenScopes: string[] = [];
     let detectedWabaId: string | null = null;
 
+    // debug_token and the phone-number lookup are independent Meta calls,
+    // so both are issued at once rather than back to back. The phone
+    // result is only inspected after the token result has been applied,
+    // so `wabaId` below still sees the auto-detected WABA.
+    const phonePromise = phoneNumberId
+      ? verifyPhoneNumber({ phoneNumberId, accessToken }).then(
+          (info) => ({ ok: true as const, info }),
+          (err: unknown) => ({ ok: false as const, err }),
+        )
+      : null;
+
     try {
       const debugRes = await fetch(
-        `https://graph.facebook.com/v21.0/debug_token?input_token=${accessToken}&access_token=${accessToken}`
+        `https://graph.facebook.com/v21.0/debug_token?input_token=${accessToken}&access_token=${accessToken}`,
+        { signal: AbortSignal.timeout(10_000) },
       );
       if (debugRes.ok) {
         const debugData = await debugRes.json();
@@ -88,10 +100,14 @@ export async function POST(request: Request) {
       console.warn('[inspect] Debug token error:', err);
     }
 
-    // Fallback token check if debug_token restricted permissions
-    if (!isValidToken) {
+    // Fallback token check if debug_token restricted permissions. Skipped
+    // when a phone lookup is in flight: its success proves the token
+    // valid, and its failure returns 400 below regardless.
+    if (!isValidToken && !phonePromise) {
       try {
-        const meRes = await fetch(`https://graph.facebook.com/v21.0/me?access_token=${accessToken}`);
+        const meRes = await fetch(`https://graph.facebook.com/v21.0/me?access_token=${accessToken}`, {
+          signal: AbortSignal.timeout(10_000),
+        });
         if (meRes.ok) {
           isValidToken = true;
         }
@@ -100,12 +116,10 @@ export async function POST(request: Request) {
 
     // 2. If Phone Number ID provided, inspect phone details & auto-resolve WABA ID
     let phoneInfo = null;
-    if (phoneNumberId) {
-      try {
-        const info = await verifyPhoneNumber({
-          phoneNumberId,
-          accessToken,
-        });
+    if (phonePromise) {
+      const phoneResult = await phonePromise;
+      if (phoneResult.ok) {
+        const info = phoneResult.info;
         phoneInfo = {
           id: info.id,
           displayPhoneNumber: info.display_phone_number,
@@ -116,7 +130,8 @@ export async function POST(request: Request) {
         };
         // If phone verification succeeded, token is definitely valid
         isValidToken = true;
-      } catch (err) {
+      } else {
+        const err = phoneResult.err;
         const msg = err instanceof Error ? err.message : 'Unknown Meta API error';
         return NextResponse.json(
           {

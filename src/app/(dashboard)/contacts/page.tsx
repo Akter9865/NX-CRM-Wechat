@@ -138,18 +138,24 @@ export default function ContactsPage() {
       if (scope === 'selected' && selected.size > 0) {
         listToExport = contacts.filter((c) => selected.has(c.id));
       } else {
-        // Fetch all contacts with tags for the account
-        let query = supabase
-          .from('contacts')
-          .select('*, contact_tags(tags(*))')
-          .order('created_at', { ascending: false });
-
-        if (accountId) {
-          query = query.eq('account_id', accountId);
+        // Fetch ALL contacts with tags, page by page. A single request is
+        // capped at PostgREST's max-rows (1000), which silently truncated
+        // exports for larger accounts.
+        const BATCH = 1000;
+        const data: unknown[] = [];
+        for (let offset = 0; ; offset += BATCH) {
+          let query = supabase
+            .from('contacts')
+            .select('*, contact_tags(tags(*))')
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: true })
+            .range(offset, offset + BATCH - 1);
+          if (accountId) query = query.eq('account_id', accountId);
+          const { data: page, error } = await query;
+          if (error) throw error;
+          data.push(...(page ?? []));
+          if (!page || page.length < BATCH) break;
         }
-
-        const { data, error } = await query;
-        if (error) throw error;
 
         listToExport = ((data || []) as Array<Contact & { contact_tags?: Array<{ tags?: Tag }> }>).map((row) => ({
           ...row,

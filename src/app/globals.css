@@ -2,7 +2,10 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/* Mode is driven by `data-mode` on <html> (see layout boot script), not a
+ * `.dark` class. The old `.dark *` selector meant every `dark:` utility in
+ * the codebase silently never applied. */
+@custom-variant dark (&:where([data-mode="dark"], [data-mode="dark"] *):not(:where([data-mode="light"], [data-mode="light"] *)));
 
 @theme inline {
   --color-background: var(--background);
@@ -48,6 +51,13 @@
   --color-primary-hover: var(--primary-hover);
   --color-primary-soft: var(--primary-soft);
   --color-primary-soft-2: var(--primary-soft-2);
+  --color-bubble-out: var(--bubble-out);
+  --color-bubble-out-foreground: var(--bubble-out-foreground);
+  --color-bubble-in: var(--bubble-in);
+  --color-chat-wallpaper: var(--chat-wallpaper);
+  --shadow-elev-1: var(--elev-1);
+  --shadow-elev-2: var(--elev-2);
+  --shadow-elev-3: var(--elev-3);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -86,80 +96,142 @@
 
 /* ---- MODE: neutral surfaces ---- */
 
+/* Light is the default: a clean, business-grade surface in the style of
+ * modern WhatsApp Business platforms — white cards on a faintly green-grey
+ * canvas, crisp hairline borders, soft elevation. */
 :root,
-html[data-mode="dark"] {
-  --background: oklch(0.12 0.015 240);
-  --foreground: oklch(0.99 0 0);
-  --card: oklch(0.155 0.018 240);
-  --card-2: oklch(0.185 0.02 240);
-  --card-foreground: oklch(0.99 0 0);
-  --popover: oklch(0.155 0.018 240);
-  --popover-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.20 0.02 240);
-  --secondary-foreground: oklch(0.99 0 0);
-  --muted: oklch(0.19 0.02 240);
-  --muted-foreground: oklch(0.68 0.02 240);
-  --accent: oklch(0.20 0.02 240);
-  --accent-foreground: oklch(0.99 0 0);
+[data-mode="light"] {
+  --background: oklch(0.977 0.004 165);
+  --foreground: oklch(0.22 0.018 170);
+  --card: oklch(1 0 0);
+  --card-2: oklch(0.968 0.005 165);
+  --card-foreground: oklch(0.22 0.018 170);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.018 170);
+  --secondary: oklch(0.955 0.006 165);
+  --secondary-foreground: oklch(0.25 0.018 170);
+  --muted: oklch(0.958 0.006 165);
+  --muted-foreground: oklch(0.5 0.016 170);
+  --accent: oklch(0.948 0.01 165);
+  --accent-foreground: oklch(0.22 0.018 170);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.24 0.02 240);
-  --input: oklch(0.24 0.02 240);
-  --chart-2: oklch(0.65 0.22 245);
-  --chart-3: oklch(0.76 0.17 195);
-  --chart-4: oklch(0.86 0.13 165);
-  --chart-5: oklch(0.92 0.07 230);
-  --radius: 0.75rem;
-  --sidebar: oklch(0.135 0.018 240);
-  --sidebar-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.19 0.02 240);
-  --sidebar-accent-foreground: oklch(0.99 0 0);
-  --sidebar-border: oklch(0.22 0.02 240);
+  --border: oklch(0.912 0.007 165);
+  --input: oklch(0.89 0.008 165);
+  --chart-2: oklch(0.62 0.2 245);
+  --chart-3: oklch(0.72 0.15 195);
+  --chart-4: oklch(0.8 0.13 85);
+  --chart-5: oklch(0.65 0.2 25);
+  --radius: 0.7rem;
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.3 0.018 170);
+  --sidebar-accent: oklch(0.955 0.012 160);
+  --sidebar-accent-foreground: oklch(0.22 0.018 170);
+  --sidebar-border: oklch(0.915 0.007 165);
+  --shadow-color: 165 20% 20%;
+  --elev-1: 0 1px 2px 0 hsl(var(--shadow-color) / 0.06), 0 1px 1px 0 hsl(var(--shadow-color) / 0.03);
+  --elev-2: 0 4px 12px -2px hsl(var(--shadow-color) / 0.08), 0 2px 4px -2px hsl(var(--shadow-color) / 0.05);
+  --elev-3: 0 16px 40px -12px hsl(var(--shadow-color) / 0.18);
+  --chat-wallpaper: oklch(0.955 0.012 85);
+  --bubble-out: oklch(0.93 0.07 150);
+  --bubble-out-foreground: oklch(0.22 0.03 160);
+  --bubble-in: oklch(1 0 0);
+  color-scheme: light;
 }
 
-html[data-mode="light"] {
-  --background: oklch(0.985 0.005 240);
-  --foreground: oklch(0.16 0.02 240);
-  --card: oklch(1 0 0);
-  --card-2: oklch(0.97 0.006 240);
-  --card-foreground: oklch(0.16 0.02 240);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.16 0.02 240);
-  --secondary: oklch(0.95 0.008 240);
-  --secondary-foreground: oklch(0.20 0.02 240);
-  --muted: oklch(0.95 0.008 240);
-  --muted-foreground: oklch(0.48 0.02 240);
-  --accent: oklch(0.94 0.01 240);
-  --accent-foreground: oklch(0.20 0.02 240);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.92 0.008 240);
-  --input: oklch(0.92 0.008 240);
-  --chart-2: oklch(0.62 0.20 245);
-  --chart-3: oklch(0.72 0.15 195);
-  --chart-4: oklch(0.82 0.10 165);
-  --chart-5: oklch(0.90 0.05 230);
-  --radius: 0.75rem;
-  --sidebar: oklch(0.99 0.004 240);
-  --sidebar-foreground: oklch(0.16 0.02 240);
-  --sidebar-accent: oklch(0.94 0.01 240);
-  --sidebar-accent-foreground: oklch(0.20 0.02 240);
-  --sidebar-border: oklch(0.92 0.008 240);
+/* Dark: deep teal-slate, modelled on WhatsApp's own desktop dark theme. */
+html[data-mode="dark"] {
+  --background: oklch(0.19 0.016 230);
+  --foreground: oklch(0.95 0.005 230);
+  --card: oklch(0.225 0.018 230);
+  --card-2: oklch(0.25 0.019 230);
+  --card-foreground: oklch(0.95 0.005 230);
+  --popover: oklch(0.24 0.019 230);
+  --popover-foreground: oklch(0.95 0.005 230);
+  --secondary: oklch(0.25 0.017 235);
+  --secondary-foreground: oklch(0.95 0.005 230);
+  --muted: oklch(0.24 0.016 235);
+  --muted-foreground: oklch(0.7 0.015 230);
+  --accent: oklch(0.26 0.018 235);
+  --accent-foreground: oklch(0.95 0.005 230);
+  --destructive: oklch(0.63 0.22 25);
+  --border: oklch(0.3 0.018 230);
+  --input: oklch(0.3 0.017 235);
+  --chart-2: oklch(0.68 0.18 245);
+  --chart-3: oklch(0.76 0.14 195);
+  --chart-4: oklch(0.84 0.13 85);
+  --chart-5: oklch(0.7 0.19 25);
+  --radius: 0.7rem;
+  --sidebar: oklch(0.21 0.017 230);
+  --sidebar-foreground: oklch(0.86 0.01 230);
+  --sidebar-accent: oklch(0.255 0.018 235);
+  --sidebar-accent-foreground: oklch(0.97 0.005 230);
+  --sidebar-border: oklch(0.29 0.018 230);
+  --shadow-color: 230 40% 3%;
+  --elev-1: 0 1px 2px 0 hsl(var(--shadow-color) / 0.4);
+  --elev-2: 0 6px 16px -4px hsl(var(--shadow-color) / 0.5);
+  --elev-3: 0 20px 48px -12px hsl(var(--shadow-color) / 0.65);
+  --chat-wallpaper: oklch(0.175 0.015 230);
+  --bubble-out: oklch(0.38 0.07 172);
+  --bubble-out-foreground: oklch(0.97 0.005 170);
+  --bubble-in: oklch(0.25 0.019 230);
+  color-scheme: dark;
+}
+
+/* Light-mode legibility remap. Much of the UI was authored dark-first
+ * with `text-<hue>-300/400` (bright tints that only read on a dark
+ * surface). In light mode those tints are re-pointed at their 700/600
+ * shades so every status chip, badge and icon keeps WCAG-level contrast
+ * without touching hundreds of call-sites. */
+[data-mode="light"] {
+  --color-emerald-300: oklch(50.8% 0.118 165.612); --color-emerald-400: oklch(59.6% 0.145 163.225);
+  --color-green-300: oklch(52.7% 0.154 150.069);   --color-green-400: oklch(62.7% 0.194 149.214);
+  --color-amber-300: oklch(55.5% 0.163 48.998);    --color-amber-400: oklch(66.6% 0.179 58.318);
+  --color-yellow-300: oklch(55.4% 0.135 66.442);   --color-yellow-400: oklch(68.1% 0.162 75.834);
+  --color-orange-300: oklch(55.3% 0.195 38.402);   --color-orange-400: oklch(64.6% 0.222 41.116);
+  --color-rose-300: oklch(51.4% 0.222 16.935);     --color-rose-400: oklch(58.6% 0.253 17.585);
+  --color-red-300: oklch(50.5% 0.213 27.518);      --color-red-400: oklch(57.7% 0.245 27.325);
+  --color-pink-300: oklch(52.5% 0.223 3.958);      --color-pink-400: oklch(59.2% 0.249 0.584);
+  --color-fuchsia-300: oklch(51.8% 0.253 323.949); --color-fuchsia-400: oklch(59.1% 0.293 322.896);
+  --color-purple-300: oklch(49.6% 0.265 301.924);  --color-purple-400: oklch(55.8% 0.288 302.321);
+  --color-violet-300: oklch(49.1% 0.27 292.581);   --color-violet-400: oklch(54.1% 0.281 293.009);
+  --color-indigo-300: oklch(45.7% 0.24 277.023);   --color-indigo-400: oklch(51.1% 0.262 276.966);
+  --color-blue-300: oklch(48.8% 0.243 264.376);    --color-blue-400: oklch(54.6% 0.245 262.881);
+  --color-sky-300: oklch(50% 0.134 242.749);       --color-sky-400: oklch(58.8% 0.158 241.966);
+  --color-cyan-300: oklch(52% 0.105 223.128);      --color-cyan-400: oklch(60.9% 0.126 221.723);
+  --color-teal-300: oklch(51.1% 0.096 186.391);    --color-teal-400: oklch(60% 0.118 184.704);
+  --color-lime-300: oklch(53.2% 0.157 131.589);    --color-lime-400: oklch(64.8% 0.2 131.684);
 }
 
 /* ---- ACCENT: primary color ---- */
 
+/* Default accent: WhatsApp business green. Slightly deeper in light mode
+ * so white button labels clear 4.5:1 contrast. */
 :root,
 html[data-theme="emerald"] {
-  --primary: oklch(0.68 0.20 155);
+  --primary: oklch(0.6 0.15 155);
   --primary-foreground: oklch(0.99 0 0);
-  --primary-hover: oklch(0.74 0.18 155);
-  --primary-soft: oklch(0.68 0.20 155 / 0.14);
-  --primary-soft-2: oklch(0.68 0.20 155 / 0.24);
-  --ring: oklch(0.68 0.20 155);
-  --chart-1: oklch(0.68 0.20 155);
-  --chart-2: oklch(0.65 0.22 245);
-  --sidebar-primary: oklch(0.68 0.20 155);
+  --primary-hover: oklch(0.55 0.145 155);
+  --primary-soft: oklch(0.6 0.15 155 / 0.12);
+  --primary-soft-2: oklch(0.6 0.15 155 / 0.22);
+  --ring: oklch(0.6 0.15 155);
+  --chart-1: oklch(0.6 0.15 155);
+  --sidebar-primary: oklch(0.6 0.15 155);
   --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-ring: oklch(0.68 0.20 155);
+  --sidebar-ring: oklch(0.6 0.15 155);
+}
+
+html[data-mode="dark"][data-theme="emerald"],
+html[data-mode="dark"]:not([data-theme]) {
+  --primary: oklch(0.7 0.16 155);
+  --primary-foreground: oklch(0.17 0.03 160);
+  --primary-hover: oklch(0.76 0.15 155);
+  --primary-soft: oklch(0.7 0.16 155 / 0.14);
+  --primary-soft-2: oklch(0.7 0.16 155 / 0.24);
+  --ring: oklch(0.7 0.16 155);
+  --chart-1: oklch(0.7 0.16 155);
+  --sidebar-primary: oklch(0.7 0.16 155);
+  --sidebar-primary-foreground: oklch(0.17 0.03 160);
+  --sidebar-ring: oklch(0.7 0.16 155);
 }
 
 html[data-theme="cobalt"] {
@@ -363,9 +435,38 @@ html[data-theme="slate"] {
   }
   body {
     @apply bg-background text-foreground selection:bg-primary/20 selection:text-primary;
+    -webkit-tap-highlight-color: transparent;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "cv11", "ss01";
   }
   html {
     @apply font-sans;
+    -webkit-text-size-adjust: 100%;
+  }
+  /* Prevent iOS from zooming the page when an input is focused (it zooms
+   * any field under 16px), which made the inbox composer jump around. */
+  @media (max-width: 767px) {
+    input, textarea, select { font-size: max(16px, 1em); }
+  }
+  /* Thin, unobtrusive scrollbars on desktop. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--muted-foreground) 35%, transparent) transparent;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+/* Respect the OS "reduce motion" setting: kill decorative loops that
+ * also burn CPU/GPU on low-end phones. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -479,15 +580,38 @@ html[data-theme="slate"] {
     box-shadow: 0 16px 32px -8px rgba(15, 23, 42, 0.08);
   }
   .glass-card {
-    background: radial-gradient(circle at top left, oklch(0.18 0.02 240 / 0.7), oklch(0.14 0.015 240 / 0.9));
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: color-mix(in srgb, var(--card) 88%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
   }
   .glass-header {
-    background: oklch(0.12 0.015 240 / 0.85);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: color-mix(in srgb, var(--background) 86%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
   }
+  /* Standard surfaces used by the redesigned pages. */
+  .surface {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) * 1.4);
+    box-shadow: var(--elev-1);
+  }
+  .surface-hover {
+    transition: box-shadow 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+  }
+  .surface-hover:hover {
+    box-shadow: var(--elev-2);
+    border-color: color-mix(in oklch, var(--primary) 35%, var(--border));
+  }
+  .chat-wallpaper {
+    background-color: var(--chat-wallpaper);
+    background-image: radial-gradient(color-mix(in srgb, var(--foreground) 6%, transparent) 1px, transparent 1px);
+    background-size: 18px 18px;
+  }
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+  .pt-safe { padding-top: env(safe-area-inset-top); }
+  .scrollbar-none { scrollbar-width: none; }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
   .gradient-nx-wechat {
     background: linear-gradient(135deg, #10b981 0%, #06b6d4 50%, #3b82f6 100%);
   }
@@ -595,12 +719,6 @@ html[data-theme="slate"] {
   .press:active {
     transform: scale(0.97);
   }
-  .scrollbar-none {
-    scrollbar-width: none;
-  }
-  .scrollbar-none::-webkit-scrollbar {
-    display: none;
-  }
   .scrollbar-thin {
     scrollbar-width: thin;
     scrollbar-color: color-mix(in oklch, var(--muted-foreground) 35%, transparent) transparent;
@@ -612,32 +730,5 @@ html[data-theme="slate"] {
   .scrollbar-thin::-webkit-scrollbar-thumb {
     border-radius: 9999px;
     background: color-mix(in oklch, var(--muted-foreground) 35%, transparent);
-  }
-  .safe-bottom {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-}
-
-@layer base {
-  :focus-visible {
-    outline: 2px solid var(--ring);
-    outline-offset: 2px;
-  }
-  /* Smooth scrolling for in-page anchors, but never for users who opted out. */
-  @media (prefers-reduced-motion: no-preference) {
-    html {
-      scroll-behavior: smooth;
-    }
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
   }
 }

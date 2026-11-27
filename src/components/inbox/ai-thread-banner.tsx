@@ -1,48 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { Sparkles, Hand, Undo2, Loader2, BotOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { useTranslations } from "next-intl";
-import { useAuth } from "@/hooks/use-auth";
-import { useWhatsAppStatus } from "@/hooks/use-whatsapp-status";
-
-// ------------------------------------------------------------
-// Account AI status is the same for every conversation, so cache it per
-// account and reuse it across thread switches instead of hitting
-// /api/ai/config every time the agent opens a chat.
-//
-// Keyed by accountId (a multi-account user switching workspaces must not
-// see the previous account's status), and only *successful* fetches are
-// cached — a transient failure returns a default without poisoning the
-// cache, so it retries on the next thread open rather than hiding the
-// banner for the whole session.
-// ------------------------------------------------------------
-interface AiAccountStatus {
-  autoReplyOn: boolean;
-}
-const statusCache = new Map<string, AiAccountStatus>();
-
-async function fetchAiAccountStatus(accountId: string): Promise<AiAccountStatus> {
-  const cached = statusCache.get(accountId);
-  if (cached) return cached;
-  try {
-    const res = await fetch("/api/ai/config", { cache: "no-store" });
-    if (!res.ok) return { autoReplyOn: false }; // don't cache a transient failure
-    const j = await res.json();
-    const status = {
-      // AI auto-reply is "live" only when configured, the master switch
-      // is on, and the inbound bot is enabled.
-      autoReplyOn: !!(j?.configured && j?.is_active && j?.auto_reply_enabled),
-    };
-    statusCache.set(accountId, status);
-    return status;
-  } catch {
-    return { autoReplyOn: false }; // don't cache
-  }
-}
 
 interface AiThreadBannerProps {
   conversationId: string;
@@ -62,6 +24,11 @@ interface AiThreadBannerProps {
     ai_autoreply_disabled: boolean;
     assigned_agent_id?: string | null;
   }) => void;
+  /**
+   * Account-wide "100% human agent mode". Passed in by the thread (which
+   * already loads WhatsApp status) instead of re-fetching it here.
+   */
+  isGlobalBotPaused?: boolean;
 }
 
 /**
@@ -69,24 +36,21 @@ interface AiThreadBannerProps {
  * conversation:
  *   - bot active here → "AI is replying automatically" + [Take over]
  *   - bot paused here → the handoff note (if any) + [Resume AI]
- * Renders nothing when the account has no auto-reply configured, or when
- * the bot is active but a human already owns the thread (nothing to do).
+ *   - account-wide human mode → a notice linking to Bot Reply settings
  */
 export function AiThreadBanner({
   conversationId,
   disabled,
   handoffSummary,
-  assignedAgentId,
   currentUserId,
   onChange,
+  isGlobalBotPaused = false,
 }: AiThreadBannerProps) {
-  const t = useTranslations("Inbox.aiBanner");
   const [busy, setBusy] = useState(false);
-  // Optimistic local mirror of the pause flag so the banner flips
-  // instantly on click; re-seeds whenever the thread (or its server
-  // state via realtime) changes.
-  const [paused, setPaused] = useState(disabled);
-  useEffect(() => setPaused(disabled), [conversationId, disabled]);
+  // The parent patches its conversation store from `onChange`, so the
+  // prop itself flips instantly — no local mirror to drift out of sync
+  // with the header's bot toggle.
+  const paused = disabled;
 
   const toggle = useCallback(
     async (nextPaused: boolean) => {
@@ -103,7 +67,6 @@ export function AiThreadBanner({
           toast.error(j?.error ?? (nextPaused ? "Failed to pause bot" : "Failed to resume bot"));
           return;
         }
-        setPaused(nextPaused);
         onChange?.({
           ai_autoreply_disabled: nextPaused,
           ...(nextPaused
@@ -125,8 +88,6 @@ export function AiThreadBanner({
     },
     [conversationId, currentUserId, onChange],
   );
-
-  const { isGlobalBotPaused } = useWhatsAppStatus();
 
   // If Bot replies are globally disabled across all numbers (100% Human Agent Mode)
   if (isGlobalBotPaused) {

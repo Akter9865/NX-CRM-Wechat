@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { useAuth } from "@/hooks/use-auth";
 
 export interface WhatsAppConnectionItem {
@@ -40,55 +40,106 @@ export function dispatchWhatsAppStatusChanged() {
   }
 }
 
-export function useWhatsAppStatus(): WhatsAppStatusState {
-  const { user } = useAuth();
-  const [connections, setConnections] = useState<WhatsAppConnectionItem[]>([]);
-  const [isGlobalBotPausedFromServer, setIsGlobalBotPausedFromServer] = useState<boolean>(false);
-  const [isLoading, setIsLoading] = useState(true);
+// ------------------------------------------------------------------
+// Shared, de-duplicated store.
+//
+// This hook is mounted by the header, dashboard banner, settings,
+// bot-reply page and more at the same time. Previously each instance
+// fetched /api/whatsapp/connections on mount AND on every window focus,
+// so one alt-tab fired 5–8 identical requests. Now every consumer reads
+// one module-level snapshot; fetches are coalesced (one in flight at a
+// time) and focus refreshes are throttled.
+// ------------------------------------------------------------------
 
-  const fetchConnections = useCallback(async () => {
-    if (!user) {
-      setConnections([]);
-      setIsLoading(false);
-      return;
-    }
+interface Snapshot {
+  connections: WhatsAppConnectionItem[];
+  isGlobalBotPausedFromServer: boolean;
+  isLoading: boolean;
+}
 
+const FOCUS_REFRESH_MIN_MS = 30_000;
+let snapshot: Snapshot = { connections: [], isGlobalBotPausedFromServer: false, isLoading: true };
+const listeners = new Set<() => void>();
+let inFlight: Promise<void> | null = null;
+let lastFetchedAt = 0;
+let currentUserId: string | null = null;
+
+function emit(next: Partial<Snapshot>) {
+  snapshot = { ...snapshot, ...next };
+  listeners.forEach((l) => l());
+}
+
+function fetchShared(force = false): Promise<void> {
+  if (!currentUserId) {
+    emit({ connections: [], isLoading: false });
+    return Promise.resolve();
+  }
+  if (inFlight) return inFlight;
+  if (!force && Date.now() - lastFetchedAt < FOCUS_REFRESH_MIN_MS && !snapshot.isLoading) {
+    return Promise.resolve();
+  }
+  inFlight = (async () => {
     try {
-      const res = await fetch("/api/whatsapp/connections");
+      const res = await fetch("/api/whatsapp/connections", { cache: "no-store" });
       if (!res.ok) {
-        if (res.status === 401) {
-          setConnections([]);
-          return;
-        }
-        throw new Error(`Failed to fetch connections (${res.status})`);
+        if (res.status === 401) emit({ connections: [] });
+        return;
       }
       const data = await res.json();
-      setConnections(data.connections || []);
-      if (typeof data.is_global_bot_paused === 'boolean') {
-        setIsGlobalBotPausedFromServer(data.is_global_bot_paused);
-      }
+      emit({
+        connections: data.connections || [],
+        ...(typeof data.is_global_bot_paused === "boolean"
+          ? { isGlobalBotPausedFromServer: data.is_global_bot_paused }
+          : {}),
+      });
     } catch {
-      // Graceful fallback on network error
+      // Network blip — keep the last good snapshot.
     } finally {
-      setIsLoading(false);
+      lastFetchedAt = Date.now();
+      inFlight = null;
+      emit({ isLoading: false });
     }
-  }, [user]);
+  })();
+  return inFlight;
+}
+
+let windowListenersAttached = false;
+function attachWindowListeners() {
+  if (windowListenersAttached || typeof window === "undefined") return;
+  windowListenersAttached = true;
+  window.addEventListener(WHATSAPP_STATUS_CHANGED_EVENT, () => void fetchShared(true));
+  window.addEventListener("focus", () => void fetchShared(false));
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+const getSnapshot = () => snapshot;
+const SERVER_SNAPSHOT: Snapshot = { connections: [], isGlobalBotPausedFromServer: false, isLoading: true };
+const getServerSnapshot = () => SERVER_SNAPSHOT;
+
+export function useWhatsAppStatus(): WhatsAppStatusState {
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
+  const { connections, isGlobalBotPausedFromServer, isLoading } = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    getServerSnapshot,
+  );
 
   useEffect(() => {
-    fetchConnections();
+    attachWindowListeners();
+    if (userId !== currentUserId) {
+      currentUserId = userId;
+      lastFetchedAt = 0;
+      void fetchShared(true);
+    } else if (lastFetchedAt === 0) {
+      void fetchShared(true);
+    }
+  }, [userId]);
 
-    const handleUpdate = () => {
-      fetchConnections();
-    };
-
-    window.addEventListener(WHATSAPP_STATUS_CHANGED_EVENT, handleUpdate);
-    window.addEventListener("focus", handleUpdate);
-
-    return () => {
-      window.removeEventListener(WHATSAPP_STATUS_CHANGED_EVENT, handleUpdate);
-      window.removeEventListener("focus", handleUpdate);
-    };
-  }, [fetchConnections]);
+  const refetch = useCallback(() => fetchShared(true), []);
 
   const isBanned = connections.some((c) => c.status === "banned");
   const isRestricted = connections.some((c) => c.status === "restricted");
@@ -111,6 +162,6 @@ export function useWhatsAppStatus(): WhatsAppStatusState {
     bannedCount,
     connectionCount: connections.length,
     primaryConnection,
-    refetch: fetchConnections,
+    refetch,
   };
 }

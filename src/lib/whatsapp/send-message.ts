@@ -436,7 +436,15 @@ export async function sendMessageToConversation(
       text: outboundText,
       templateRow,
       isAutomated: false,
-      lastCustomerMessageAt: conversation.last_inbound_message_at || conversation.last_message_at,
+      // `last_customer_message_at` is the column the inbound webhook
+      // maintains (migrations 049/052). The previous `last_inbound_message_at`
+      // doesn't exist, so this always fell back to `last_message_at` — which
+      // our own outbound sends bump — letting free-text through after the
+      // 24h window closed only for Meta to reject it (error 131047).
+      lastCustomerMessageAt:
+        conversation.last_customer_message_at ||
+        conversation.last_inbound_message_at ||
+        conversation.last_message_at,
     });
   } catch (eligibilityErr) {
     if (eligibilityErr instanceof OutboundEligibilityError) {

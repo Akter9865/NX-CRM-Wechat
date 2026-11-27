@@ -113,21 +113,32 @@ export async function GET(request: Request) {
   }
   const errors: string[] = []
 
-  // 1. Phone metadata
-  try {
-    await verifyPhoneNumber({
-      phoneNumberId: config.phone_number_id,
-      accessToken,
-    })
-    checks.phone_metadata_ok = true
-  } catch (err) {
-    errors.push(
-      `Phone metadata check failed: ${err instanceof Error ? err.message : String(err)}`,
-    )
-  }
+  // The two checks are independent Meta calls, so they run concurrently
+  // (previously back to back). Each collects its own errors and they are
+  // concatenated in the original order, so the response is unchanged.
+  const phoneCheck = (async (): Promise<string[]> => {
+    // 1. Phone metadata
+    try {
+      await verifyPhoneNumber({
+        phoneNumberId: config.phone_number_id,
+        accessToken,
+      })
+      checks.phone_metadata_ok = true
+      return []
+    } catch (err) {
+      return [
+        `Phone metadata check failed: ${err instanceof Error ? err.message : String(err)}`,
+      ]
+    }
+  })()
 
-  // 2. WABA subscription — only meaningful if we have a waba_id
-  if (config.waba_id) {
+  const wabaCheck = (async (): Promise<string[]> => {
+    // 2. WABA subscription — only meaningful if we have a waba_id
+    if (!config.waba_id) {
+      return [
+        'No WABA ID on file — webhooks can\'t be wired without it. Add it in the form and re-save.',
+      ]
+    }
     try {
       const subs = await getSubscribedApps({
         wabaId: config.waba_id,
@@ -139,20 +150,20 @@ export async function GET(request: Request) {
       // the token can't see). Treat any entry as success.
       checks.waba_subscribed_to_app = subs.length > 0
       if (!checks.waba_subscribed_to_app) {
-        errors.push(
+        return [
           'WABA has no subscribed apps. Re-save the configuration to subscribe.',
-        )
+        ]
       }
+      return []
     } catch (err) {
-      errors.push(
+      return [
         `WABA subscription check failed: ${err instanceof Error ? err.message : String(err)}`,
-      )
+      ]
     }
-  } else {
-    errors.push(
-      'No WABA ID on file — webhooks can\'t be wired without it. Add it in the form and re-save.',
-    )
-  }
+  })()
+
+  const [phoneErrors, wabaErrors] = await Promise.all([phoneCheck, wabaCheck])
+  errors.push(...phoneErrors, ...wabaErrors)
 
   const live =
     checks.phone_metadata_ok &&

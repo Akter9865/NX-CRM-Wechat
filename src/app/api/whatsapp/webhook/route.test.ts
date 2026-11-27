@@ -15,6 +15,22 @@ const h = vi.hoisted(() => ({
     replyContextParent: null as { id: string } | null,
     conversation: { id: 'conv-1', unread_count: 0, account_id: 'acc-1' },
     upsertCalls: [] as { row: Record<string, unknown>; options: unknown }[],
+    /** Error the message upsert resolves with (all attempts), if any. */
+    messageUpsertError: null as { message: string; code?: string } | null,
+    /** UPDATEs against `messages`: the post-insert media patch and status writes. */
+    messageUpdates: [] as {
+      values: Record<string, unknown>
+      filters: [string, ...unknown[]][]
+    }[],
+    /** Rows a status-driven `messages` UPDATE ... RETURNING yields. */
+    statusUpdateRows: [] as Record<string, unknown>[],
+    /** Conditional UPDATEs against broadcast_recipients (status path). */
+    recipientUpdates: [] as {
+      values: Record<string, unknown>
+      filters: [string, ...unknown[]][]
+    }[],
+    /** Ordered log of interesting side effects, for sequencing assertions. */
+    events: [] as string[],
     rpcCalls: [] as { name: string; args: Record<string, unknown> }[],
     afterCallbacks: [] as (() => Promise<void> | void)[],
     automationStarted: 0,
@@ -101,7 +117,26 @@ vi.mock('@supabase/supabase-js', () => ({
         }
         case 'broadcast_recipients':
           // flagBroadcastReplyIfAny: select().eq().eq().in().order().limit()
+          // status path: update().eq().in() — one conditional UPDATE
           return {
+            update: (values: Record<string, unknown>) => {
+              const entry = { values, filters: [] as [string, ...unknown[]][] }
+              h.state.recipientUpdates.push(entry)
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const chain: any = {
+                eq: (...a: unknown[]) => {
+                  entry.filters.push(['eq', ...a])
+                  return chain
+                },
+                in: (...a: unknown[]) => {
+                  entry.filters.push(['in', ...a])
+                  return chain
+                },
+                then: (resolve: (v: unknown) => unknown) =>
+                  Promise.resolve({ data: null, error: null }).then(resolve),
+              }
+              return chain
+            },
             select: () => ({
               eq: () => ({
                 eq: () => ({
@@ -132,13 +167,22 @@ vi.mock('@supabase/supabase-js', () => ({
                         }),
                     }),
                   }
-                : // lookupInternalIdByMetaId: select('id').eq().eq().maybeSingle()
-                  {
+                : {
                     eq: () => ({
                       eq: () => ({
+                        // lookupInternalIdByMetaId: select('id').eq().eq().maybeSingle()
                         maybeSingle: () =>
                           Promise.resolve({
                             data: h.state.replyContextParent,
+                            error: null,
+                          }),
+                        // prior-customer-message probe: select('id').eq().eq().limit(1)
+                        limit: () =>
+                          Promise.resolve({
+                            data:
+                              h.state.priorCustomerMsgCount > 0
+                                ? [{ id: 'prior-msg' }]
+                                : [],
                             error: null,
                           }),
                       }),
@@ -147,13 +191,37 @@ vi.mock('@supabase/supabase-js', () => ({
             // Idempotent insert: upsert(...).select('id')
             upsert: (row: Record<string, unknown>, options: unknown) => {
               h.state.upsertCalls.push({ row, options })
+              h.state.events.push('message.upsert')
               return {
                 select: () =>
-                  Promise.resolve({
-                    data: h.state.messageUpsertResult,
-                    error: null,
-                  }),
+                  Promise.resolve(
+                    h.state.messageUpsertError
+                      ? { data: null, error: h.state.messageUpsertError }
+                      : { data: h.state.messageUpsertResult, error: null },
+                  ),
               }
+            },
+            // Media patch: update().eq('id') / status: update().eq().not?().select()
+            update: (values: Record<string, unknown>) => {
+              const entry = { values, filters: [] as [string, ...unknown[]][] }
+              h.state.messageUpdates.push(entry)
+              h.state.events.push('message.update')
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const chain: any = {
+                eq: (...a: unknown[]) => {
+                  entry.filters.push(['eq', ...a])
+                  return chain
+                },
+                not: (...a: unknown[]) => {
+                  entry.filters.push(['not', ...a])
+                  return chain
+                },
+                select: () =>
+                  Promise.resolve({ data: h.state.statusUpdateRows, error: null }),
+                then: (resolve: (v: unknown) => unknown) =>
+                  Promise.resolve({ data: null, error: null }).then(resolve),
+              }
+              return chain
             },
           }
         default:
@@ -256,6 +324,20 @@ function inboundRequest(message: Record<string, unknown> = TEXT_MESSAGE) {
   } as unknown as Request
 }
 
+function rawRequest(body: unknown) {
+  return {
+    text: async () => JSON.stringify(body),
+    headers: { get: () => 'sha256=stub' },
+  } as unknown as Request
+}
+
+async function runRaw(body: unknown) {
+  const res = await POST(rawRequest(body))
+  for (const cb of h.state.afterCallbacks) await cb()
+  h.state.afterCallbacks = []
+  return res
+}
+
 async function runWebhook(message?: Record<string, unknown>) {
   const res = await POST(inboundRequest(message))
   // Drain the after() callback exactly as the runtime would.
@@ -271,6 +353,11 @@ beforeEach(() => {
   h.state.replyContextParent = null
   h.state.conversation = { id: 'conv-1', unread_count: 0, account_id: 'acc-1' }
   h.state.upsertCalls = []
+  h.state.messageUpsertError = null
+  h.state.messageUpdates = []
+  h.state.statusUpdateRows = []
+  h.state.recipientUpdates = []
+  h.state.events = []
   h.state.rpcCalls = []
   h.state.afterCallbacks = []
   h.state.automationStarted = 0
@@ -427,12 +514,48 @@ describe('inbound webhook: inbound media is mirrored (#466)', () => {
     expect(h.state.storageUploads[0].path).toBe(
       'account-acc-1/inbound/1234567890123456-image-1700000000.jpg',
     )
+    // The row lands immediately with the (renderable) proxy URL…
     expect(h.state.upsertCalls[0].row).toMatchObject({
-      media_url:
-        'https://cdn.test/chat-media/account-acc-1/inbound/1234567890123456-image-1700000000.jpg',
+      media_url: '/api/whatsapp/media/1234567890123456',
       // Meta's MIME type used to be discarded outright (`void mediaType`).
       media_type: 'image/jpeg',
     })
+    // …and is patched to the durable bucket URL once the mirror lands.
+    expect(h.state.messageUpdates).toHaveLength(1)
+    expect(h.state.messageUpdates[0].values).toEqual({
+      media_url:
+        'https://cdn.test/chat-media/account-acc-1/inbound/1234567890123456-image-1700000000.jpg',
+    })
+    expect(h.state.messageUpdates[0].filters).toContainEqual(['eq', 'id', 'msg-1'])
+  })
+
+  it('inserts the message BEFORE touching Meta for the media', async () => {
+    mockGetMediaUrl.mockImplementation(async () => {
+      h.state.events.push('meta.getMediaUrl')
+      return {
+        url: 'https://lookaside.fbsbx.com/whatsapp/abc',
+        mimeType: 'image/jpeg',
+        fileSize: 2048,
+      }
+    })
+
+    await runWebhook(IMAGE_MESSAGE)
+
+    expect(h.state.events.indexOf('message.upsert')).toBeGreaterThanOrEqual(0)
+    expect(h.state.events.indexOf('message.upsert')).toBeLessThan(
+      h.state.events.indexOf('meta.getMediaUrl'),
+    )
+  })
+
+  it('keeps the proxy URL when Meta media lookup fails', async () => {
+    mockGetMediaUrl.mockRejectedValueOnce(new Error('Media fetch failed: 500'))
+
+    await runWebhook(IMAGE_MESSAGE)
+
+    expect(h.state.upsertCalls[0].row).toMatchObject({
+      media_url: '/api/whatsapp/media/1234567890123456',
+    })
+    expect(h.state.messageUpdates).toHaveLength(0)
   })
 
   it('falls back to the proxy URL when the upload is refused', async () => {
@@ -447,6 +570,7 @@ describe('inbound webhook: inbound media is mirrored (#466)', () => {
       media_url: '/api/whatsapp/media/1234567890123456',
       media_type: 'image/jpeg',
     })
+    expect(h.state.messageUpdates).toHaveLength(0)
   })
 
   it('falls back to the proxy URL when the download from Meta throws', async () => {
@@ -513,6 +637,10 @@ describe('inbound webhook: inbound media is mirrored (#466)', () => {
     expect(h.state.storageUploads[0].path).toBe(
       'account-acc-1/inbound/1234567890123456-invoice.pdf',
     )
+    expect(h.state.upsertCalls[0].row).toMatchObject({
+      content_text: 'have a look',
+      media_url: '/api/whatsapp/media/1234567890123456',
+    })
   })
 
   it('does not mirror when the account has opted out', async () => {
@@ -520,6 +648,8 @@ describe('inbound webhook: inbound media is mirrored (#466)', () => {
 
     await runWebhook(IMAGE_MESSAGE)
 
+    // No Meta round trip at all on the opt-out path.
+    expect(mockGetMediaUrl).not.toHaveBeenCalled()
     expect(mockDownloadMedia).not.toHaveBeenCalled()
     expect(h.state.storageUploads).toHaveLength(0)
     expect(h.state.upsertCalls[0].row).toMatchObject({
@@ -556,5 +686,223 @@ describe('inbound webhook: after() awaits automations (#368)', () => {
     // If the dispatches were fire-and-forget, completed would still be 0
     // here — the callback would have resolved before the timers fired.
     expect(h.state.automationCompleted).toBe(3)
+  })
+})
+
+describe('inbound webhook: first-inbound detection', () => {
+  it('fires first_inbound_message when the thread has no customer message yet', async () => {
+    h.state.priorCustomerMsgCount = 0
+    await runWebhook()
+    const triggers = h.runAutomationsForTrigger.mock.calls.map(
+      (call) => (call[0] as { triggerType: string }).triggerType,
+    )
+    expect(triggers).toContain('first_inbound_message')
+  })
+
+  it('does not fire first_inbound_message once the customer has written before', async () => {
+    h.state.priorCustomerMsgCount = 3
+    await runWebhook()
+    const triggers = h.runAutomationsForTrigger.mock.calls.map(
+      (call) => (call[0] as { triggerType: string }).triggerType,
+    )
+    expect(triggers).not.toContain('first_inbound_message')
+    expect(h.dispatchInboundToFlows).toHaveBeenCalledWith(
+      expect.objectContaining({ isFirstInboundMessage: false }),
+    )
+  })
+})
+
+describe('inbound webhook: fan-out isolation', () => {
+  it('a throwing flow dispatch still lets automations and message.received run', async () => {
+    h.dispatchInboundToFlows.mockRejectedValueOnce(new Error('flows down'))
+
+    await runWebhook()
+
+    expect(h.state.upsertCalls).toHaveLength(1)
+    expect(h.runAutomationsForTrigger).toHaveBeenCalled()
+    expect(h.dispatchWebhookEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      'acc-1',
+      'message.received',
+      expect.objectContaining({ whatsapp_message_id: 'wamid.TEST1' }),
+    )
+  })
+})
+
+describe('inbound webhook: lost-message protection', () => {
+  it('retries a transient insert failure once', async () => {
+    h.state.messageUpsertError = { message: 'fetch failed', code: '' }
+
+    await runWebhook()
+
+    expect(h.state.upsertCalls).toHaveLength(2)
+  })
+
+  it('does not retry a permanent (constraint) insert failure', async () => {
+    h.state.messageUpsertError = { message: 'violates check', code: '23514' }
+
+    await runWebhook()
+
+    expect(h.state.upsertCalls).toHaveLength(1)
+  })
+
+  it('a failed delivery does not poison the in-memory dedupe for a redelivery', async () => {
+    h.state.messageUpsertError = { message: 'violates check', code: '23514' }
+    await runWebhook()
+    expect(h.state.upsertCalls).toHaveLength(1)
+
+    // Meta redelivers the same wamid; this time the DB accepts it.
+    h.state.messageUpsertError = null
+    await runWebhook()
+
+    expect(h.state.upsertCalls).toHaveLength(2)
+    expect(h.dispatchInboundToFlows).toHaveBeenCalledTimes(1)
+  })
+
+  it('a successful delivery still short-circuits an immediate redelivery', async () => {
+    await runWebhook()
+    await runWebhook()
+
+    expect(h.state.upsertCalls).toHaveLength(1)
+  })
+})
+
+describe('inbound webhook: batched deliveries', () => {
+  function batch(messages: Record<string, unknown>[]) {
+    return {
+      entry: [
+        {
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                metadata: { phone_number_id: 'pn-1' },
+                contacts: messages.map((m) => ({
+                  wa_id: m.from,
+                  profile: { name: 'Ada' },
+                })),
+                messages,
+              },
+            },
+          ],
+        },
+      ],
+    }
+  }
+
+  it("keeps one sender's messages in payload order", async () => {
+    await runRaw(
+      batch(
+        ['A', 'B', 'C'].map((n, i) => ({
+          id: `wamid.SEQ${n}`,
+          from: '15551230000',
+          timestamp: String(1700000000 + i),
+          type: 'text',
+          text: { body: n },
+        })),
+      ),
+    )
+
+    expect(h.state.upsertCalls.map((c) => c.row.message_id)).toEqual([
+      'wamid.SEQA',
+      'wamid.SEQB',
+      'wamid.SEQC',
+    ])
+  })
+
+  it('processes every message in the batch', async () => {
+    await runRaw(
+      batch(
+        ['15551230000', '15551230001', '15551230002'].map((from, i) => ({
+          id: `wamid.MULTI${i}`,
+          from,
+          timestamp: '1700000000',
+          type: 'text',
+          text: { body: 'hi' },
+        })),
+      ),
+    )
+
+    expect(h.state.upsertCalls).toHaveLength(3)
+    expect(h.dispatchInboundToFlows).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('status webhook', () => {
+  function statusBody(status: string, id = 'wamid.OUT1') {
+    return {
+      entry: [
+        {
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                metadata: { phone_number_id: 'pn-1' },
+                statuses: [
+                  { id, status, timestamp: '1700000100', recipient_id: '15551230000' },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+  }
+
+  it('never regresses a message down the ladder (late "delivered" after "read")', async () => {
+    await runRaw(statusBody('delivered'))
+
+    expect(h.state.messageUpdates).toHaveLength(1)
+    expect(h.state.messageUpdates[0].values).toEqual({ status: 'delivered' })
+    expect(h.state.messageUpdates[0].filters).toContainEqual(['eq', 'message_id', 'wamid.OUT1'])
+    expect(h.state.messageUpdates[0].filters).toContainEqual(['not', 'status', 'in', '(read)'])
+  })
+
+  it('guards the broadcast recipient transition in the same UPDATE', async () => {
+    await runRaw(statusBody('read'))
+
+    expect(h.state.recipientUpdates).toHaveLength(1)
+    expect(h.state.recipientUpdates[0].values).toMatchObject({ status: 'read' })
+    expect(h.state.recipientUpdates[0].filters).toContainEqual([
+      'in',
+      'status',
+      ['pending', 'sent', 'delivered'],
+    ])
+  })
+
+  it('only lets "failed" land on pre-delivery recipients', async () => {
+    await runRaw(statusBody('failed'))
+
+    expect(h.state.recipientUpdates[0].filters).toContainEqual([
+      'in',
+      'status',
+      ['pending', 'sent'],
+    ])
+    // messages keep their unconditional failed write
+    expect(h.state.messageUpdates[0].filters.some((f) => f[0] === 'not')).toBe(false)
+  })
+
+  it('dispatches message.status_updated using the account returned by the update', async () => {
+    h.state.statusUpdateRows = [
+      { conversation_id: 'conv-1', conversations: { account_id: 'acc-1' } },
+    ]
+
+    await runRaw(statusBody('delivered'))
+
+    expect(h.dispatchWebhookEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      'acc-1',
+      'message.status_updated',
+      expect.objectContaining({
+        whatsapp_message_id: 'wamid.OUT1',
+        conversation_id: 'conv-1',
+        status: 'delivered',
+      }),
+    )
+  })
+
+  it('does not dispatch when no stored message matched (e.g. broadcast sends)', async () => {
+    await runRaw(statusBody('delivered'))
+    expect(h.dispatchWebhookEvent).not.toHaveBeenCalled()
   })
 })
