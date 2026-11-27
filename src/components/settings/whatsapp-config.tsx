@@ -21,6 +21,7 @@ import {
   ArrowRightLeft,
   Settings2,
   Sparkles,
+  Webhook,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { dispatchWhatsAppStatusChanged } from '@/hooks/use-whatsapp-status';
@@ -55,6 +56,11 @@ import {
 import { useTranslations } from 'next-intl';
 import { useAuth } from '@/hooks/use-auth';
 import type { WhatsAppConfig } from '@/types';
+import {
+  DEFAULT_WEBHOOK_VERIFY_TOKEN,
+  getConnectionWebhookUrl,
+  getSharedWebhookUrl,
+} from '@/lib/whatsapp/webhook-url';
 
 interface WhatsAppTestResults {
   healthy?: boolean;
@@ -116,7 +122,8 @@ export function WhatsAppConfigForm() {
   const [testResults, setTestResults] = useState<WhatsAppTestResults | null>(null);
 
   // Webhook Test State
-  const [webhookTesting, setWebhookTesting] = useState(false);
+  const [sharedWebhookUrl, setSharedWebhookUrl] = useState<string | null>(null);
+  const [webhookTesting, setWebhookTesting] = useState<string | false>(false);
   const [webhookStatus, setWebhookStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   // Auto-Detect Meta Credentials State
@@ -129,22 +136,42 @@ export function WhatsAppConfigForm() {
     qualityRating?: string | null;
   } | null>(null);
 
+  // Canonical production URL (NEXT_PUBLIC_SITE_URL) — never whatever
+  // preview / www host the admin happens to be browsing on.
   const webhookUrl =
-    typeof window !== 'undefined'
-      ? `${window.location.origin}/api/whatsapp/webhook`
-      : 'https://your-domain.com/api/whatsapp/webhook';
+    sharedWebhookUrl ??
+    getSharedWebhookUrl(typeof window !== 'undefined' ? window.location.origin : null);
 
-  const handleTestWebhook = async () => {
+  const connectionWebhookUrl = (conn: WhatsAppConfig) =>
+    conn.webhook_url ??
+    getConnectionWebhookUrl(conn.id, typeof window !== 'undefined' ? window.location.origin : null);
+
+  /**
+   * Runs the same GET handshake Meta performs. With a connection it hits
+   * that connection's dedicated endpoint using its own verify token, so a
+   * green result means exactly what Meta will see.
+   */
+  const handleTestWebhook = async (conn?: WhatsAppConfig) => {
+    const testKey = conn?.id ?? 'shared';
     try {
-      setWebhookTesting(true);
+      setWebhookTesting(testKey);
       const testChallenge = `challenge_${Math.random().toString(36).substring(2, 9)}`;
-      const res = await fetch(
-        `/api/whatsapp/webhook?hub.mode=subscribe&hub.challenge=${testChallenge}&hub.verify_token=wacrm_verify_token`
-      );
+      const token = conn?.verify_token || DEFAULT_WEBHOOK_VERIFY_TOKEN;
+      const path = conn ? `/api/whatsapp/webhook/${conn.id}` : '/api/whatsapp/webhook';
+      const qs = new URLSearchParams({
+        'hub.mode': 'subscribe',
+        'hub.challenge': testChallenge,
+        'hub.verify_token': token,
+      });
+      const res = await fetch(`${path}?${qs.toString()}`, { cache: 'no-store' });
       const text = await res.text();
       if (res.ok && text.trim() === testChallenge) {
         setWebhookStatus('success');
-        toast.success('Webhook is online and verified! Meta will connect seamlessly.');
+        toast.success(
+          conn
+            ? `Webhook for ${conn.connection_name || conn.display_phone_number || 'this number'} is live and verified.`
+            : 'Webhook is online and verified! Meta will connect seamlessly.'
+        );
       } else {
         setWebhookStatus('error');
         toast.error(`Webhook check returned ${res.status}: ${text || 'Validation failed'}`);
@@ -226,6 +253,7 @@ export function WhatsAppConfigForm() {
       if (!res.ok) throw new Error('Failed to fetch connections');
       const data = await res.json();
       setConnections(data.connections || []);
+      if (data.webhook?.shared_url) setSharedWebhookUrl(data.webhook.shared_url);
       if (data.usage) setUsage(data.usage);
       if (data.plan) setPlan(data.plan);
       dispatchWhatsAppStatusChanged();
@@ -778,6 +806,62 @@ export function WhatsAppConfigForm() {
                         </span>
                       </div>
                     </div>
+
+                    {/* Dedicated Meta webhook for this number */}
+                    <div className="mt-3 rounded-xl border border-primary/20 bg-primary/[0.04] p-3">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                        <p className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground">
+                          <Webhook className="size-3.5 text-primary" aria-hidden />
+                          Dedicated webhook for this number
+                        </p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleTestWebhook(conn)}
+                          disabled={webhookTesting !== false}
+                          className="h-7 px-2 text-[11px] text-primary hover:bg-primary/10"
+                        >
+                          {webhookTesting === conn.id ? (
+                            <Loader2 className="mr-1 size-3 animate-spin" />
+                          ) : (
+                            <Activity className="mr-1 size-3" />
+                          )}
+                          Verify now
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto]">
+                        <div className="flex min-w-0 items-center gap-1.5 rounded-lg border border-border/60 bg-background px-2.5 py-1.5">
+                          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">URL</span>
+                          <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground" title={connectionWebhookUrl(conn)}>
+                            {connectionWebhookUrl(conn)}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(connectionWebhookUrl(conn), 'Callback URL')}
+                            className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            aria-label="Copy callback URL"
+                          >
+                            <Copy className="size-3.5" />
+                          </button>
+                        </div>
+                        {conn.verify_token && (
+                          <div className="flex min-w-0 items-center gap-1.5 rounded-lg border border-border/60 bg-background px-2.5 py-1.5">
+                            <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Token</span>
+                            <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground md:max-w-[180px]">
+                              {conn.verify_token}
+                            </code>
+                            <button
+                              type="button"
+                              onClick={() => handleCopy(conn.verify_token!, 'Verify Token')}
+                              className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                              aria-label="Copy verify token"
+                            >
+                              <Copy className="size-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
               );
@@ -813,11 +897,11 @@ export function WhatsAppConfigForm() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleTestWebhook}
-                disabled={webhookTesting}
+                onClick={() => handleTestWebhook()}
+                disabled={webhookTesting !== false}
                 className="text-xs h-8 border-border text-foreground hover:bg-muted"
               >
-                {webhookTesting ? (
+                {webhookTesting === 'shared' ? (
                   <>
                     <Loader2 className="size-3.5 mr-1.5 animate-spin" />
                     Testing...
@@ -882,13 +966,13 @@ export function WhatsAppConfigForm() {
               <div className="flex gap-2">
                 <Input
                   readOnly
-                  value="wacrm_verify_token"
+                  value={DEFAULT_WEBHOOK_VERIFY_TOKEN}
                   className="bg-muted/80 border-border text-foreground font-mono text-xs select-all font-semibold"
                 />
                 <Button
                   variant="outline"
                   size="icon"
-                  onClick={() => handleCopy('wacrm_verify_token', 'Verify Token')}
+                  onClick={() => handleCopy(DEFAULT_WEBHOOK_VERIFY_TOKEN, 'Verify Token')}
                   className="shrink-0 border-border text-muted-foreground hover:text-foreground hover:bg-muted"
                   title="Copy Verify Token"
                 >

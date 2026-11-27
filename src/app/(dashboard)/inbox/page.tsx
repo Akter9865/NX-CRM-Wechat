@@ -22,6 +22,21 @@ import { playIncomingChime } from "@/lib/inbox/chime";
 const CONTACT_PANEL_STORAGE_KEY = "wacrm:inbox:contact-panel-open";
 const SOUND_STORAGE_KEY = "wacrm:inbox:sound-enabled";
 
+const STATUS_ORDER = ["sending", "pending", "sent", "delivered", "read"];
+function statusRank(status?: string | null): number {
+  return STATUS_ORDER.indexOf(status ?? "");
+}
+
+/** Array.filter predicate that keeps the first row for each id. */
+function uniqueById() {
+  const seen = new Set<string>();
+  return (m: { id: string }) => {
+    if (seen.has(m.id)) return false;
+    seen.add(m.id);
+    return true;
+  };
+}
+
 // `useSearchParams` (the `?c=<id>` deep link below) requires a Suspense
 // boundary or the production build bails to CSR and errors out. Thin
 // wrapper supplies it; the inner component holds all the inbox state.
@@ -278,14 +293,18 @@ function InboxPageInner() {
               );
             }
 
-            // Check if there is an in-flight optimistic message to reconcile
+            // Reconcile with the oldest matching in-flight optimistic
+            // bubble. Text must match exactly; media / template /
+            // interactive bodies can be rewritten server-side (rendered
+            // variables, filename captions) so those match on type.
             const tempIdx = prev.findIndex(
               (m) =>
                 m.id.startsWith("temp-") &&
                 m.conversation_id === newMsg.conversation_id &&
                 m.sender_type === newMsg.sender_type &&
-                (m.content_text === newMsg.content_text ||
-                  m.content_type === newMsg.content_type)
+                m.content_type === newMsg.content_type &&
+                (m.content_type !== "text" ||
+                  (m.content_text ?? "") === (newMsg.content_text ?? ""))
             );
 
             if (tempIdx >= 0) {
@@ -304,17 +323,24 @@ function InboxPageInner() {
         // knownConvIdsRef for why a closure flag inside the updater would
         // always read false here.
         if (knownConvIdsRef.current.has(newMsg.conversation_id)) {
+          // Only customer messages count as unread — an agent / bot /
+          // broadcast send must never light up the badge. The webhook's
+          // conversation UPDATE will converge the exact count anyway.
+          const isInbound = newMsg.sender_type === "customer";
           setConversations((prev) =>
             prev.map((c) =>
               c.id === newMsg.conversation_id
                 ? {
                     ...c,
-                    last_message_text: newMsg.content_text ?? "",
+                    last_message_text:
+                      newMsg.content_text || `[${newMsg.content_type}]`,
                     last_message_at: newMsg.created_at,
                     unread_count:
                       activeConversation?.id === newMsg.conversation_id
                         ? 0
-                        : c.unread_count + 1,
+                        : isInbound
+                          ? c.unread_count + 1
+                          : c.unread_count,
                   }
                 : c,
             ),
@@ -415,7 +441,10 @@ function InboxPageInner() {
     accountId: currentAccountId,
     onMessageEvent: handleMessageEvent,
     onConversationEvent: handleConversationEvent,
-    enabled: true,
+    // Wait for the account id so the channel is opened once, already
+    // filtered to this tenant, instead of opening an unfiltered channel
+    // and immediately tearing it down again.
+    enabled: Boolean(currentAccountId),
   });
 
   /**
@@ -594,8 +623,13 @@ function InboxPageInner() {
   }, [router]);
 
 
-  const handleMessagesLoaded = useCallback((loaded: Message[]) => {
+  const handleMessagesLoaded = useCallback((fetched: Message[]) => {
     setMessages((prev) => {
+      // A background resync must not wipe bubbles that are still in
+      // flight (or failed and waiting for a retry) — keep optimistic
+      // rows the server copy doesn't know about yet.
+      const pending = prev.filter((m) => m.id.startsWith("temp-"));
+      const loaded = pending.length ? [...fetched, ...pending] : fetched;
       if (prev.length === loaded.length) {
         let changed = false;
         for (let i = 0; i < prev.length; i++) {
@@ -628,11 +662,26 @@ function InboxPageInner() {
   const handleUpdateMessage = useCallback(
     (id: string, updates: Partial<Message>) => {
       setMessages((prev) =>
-        prev.map((m) =>
-          m.id === id || (updates.message_id && m.message_id === updates.message_id)
-            ? { ...m, ...updates }
-            : m
-        )
+        // Swapping a temp id for the real one can collide with a copy a
+        // resync already pulled in; the trailing filter keeps one.
+        prev.map((m) => {
+          if (
+            m.id !== id &&
+            !(updates.message_id && m.message_id === updates.message_id)
+          ) {
+            return m;
+          }
+          // The send API's response can land after a realtime status
+          // UPDATE (delivered/read) — never let it drag the tick back.
+          const next = { ...m, ...updates };
+          if (
+            updates.status &&
+            statusRank(m.status) > statusRank(updates.status)
+          ) {
+            next.status = m.status;
+          }
+          return next;
+        }).filter(uniqueById()),
       );
     },
     []
@@ -644,7 +693,9 @@ function InboxPageInner() {
   // Realtime is already connected.
   useEffect(() => {
     if (!activeConversation?.id) return;
-    const intervalMs = isConnected ? 30000 : 12000;
+    // Realtime is the primary path; this is only a safety net, so keep it
+    // light while the socket is healthy and tighter while it is down.
+    const intervalMs = isConnected ? 60000 : 10000;
     const interval = setInterval(() => {
       if (document.visibilityState === "visible") {
         setResyncToken((n) => n + 1);

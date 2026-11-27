@@ -188,8 +188,14 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
                   </Link>
                 </div>
               </div>
-            ) : (
+            ) : isFullHeightRoute ? (
               children
+            ) : (
+              // Keyed on the route so each page eases in on navigation
+              // instead of snapping (collapses under reduced-motion).
+              <div key={pathname} className="animate-page-in flex flex-1 flex-col space-y-6 min-w-0">
+                {children}
+              </div>
             )}
           </div>
           {!isFullHeightRoute && <AppFooter />}

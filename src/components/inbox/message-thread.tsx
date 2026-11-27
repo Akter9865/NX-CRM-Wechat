@@ -30,6 +30,7 @@ import {
   PanelRightClose,
   Send,
   Smartphone,
+  ArrowDown,
 } from "lucide-react";
 import { format, isToday, isYesterday, differenceInHours } from "date-fns";
 import { useTranslations } from "next-intl";
@@ -56,6 +57,10 @@ import { AiThreadBanner } from "./ai-thread-banner";
 import { buildReplyPreview } from "./reply-quote";
 import { renderTemplateBody } from "@/lib/whatsapp/template-body";
 import { toast } from "sonner";
+
+
+/** How many of the most recent messages a thread loads at once. */
+const MESSAGE_PAGE_SIZE = 400;
 
 interface ReplyDraft {
   id: string;
@@ -177,6 +182,11 @@ export function MessageThread({
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Inbound messages that arrived while the agent was scrolled up reading
+  // history — surfaced as a "jump to latest" pill instead of yanking the
+  // scroll position.
+  const [unseenCount, setUnseenCount] = useState(0);
+  const [awayFromBottom, setAwayFromBottom] = useState(false);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
@@ -316,11 +326,15 @@ export function MessageThread({
       }
 
       try {
+        // Newest MESSAGE_PAGE_SIZE rows, then flipped to chronological.
+        // Loading an entire long-running thread on every open / resync was
+        // a major source of inbox lag on busy numbers.
         const { data, error } = await supabase
           .from("messages")
           .select("*")
           .eq("conversation_id", conversationId)
-          .order("created_at", { ascending: true });
+          .order("created_at", { ascending: false })
+          .limit(MESSAGE_PAGE_SIZE);
 
         if (cancelled) return;
 
@@ -328,7 +342,7 @@ export function MessageThread({
           console.error("Failed to fetch messages:", error);
         } else {
           lastLoadedConvIdRef.current = conversationId;
-          onMessagesLoadedRef.current(data ?? []);
+          onMessagesLoadedRef.current((data ?? []).slice().reverse());
         }
       } finally {
         if (!cancelled && isNewConversation) {
@@ -519,16 +533,41 @@ export function MessageThread({
     // If the user scrolled up to read text messages, preserve their scroll position!
     if (isNewConv || hadZeroMessages || isNearBottom || isOwnOutbound) {
       el.scrollTop = el.scrollHeight;
+      setUnseenCount(0);
+    } else if (messages.length > prevMessagesCountRef.current) {
+      setUnseenCount((n) => n + (messages.length - prevMessagesCountRef.current));
     }
 
     prevMessagesCountRef.current = messages.length;
   }, [messages, conversationId]);
 
+  const handleThreadScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const away = el.scrollHeight - el.scrollTop - el.clientHeight > 240;
+    setAwayFromBottom((prev) => (prev === away ? prev : away));
+    if (!away) setUnseenCount(0);
+  }, []);
+
+  const scrollToLatest = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    el.scrollTo({ top: el.scrollHeight, behavior: reduce ? "auto" : "smooth" });
+    setUnseenCount(0);
+  }, []);
+
+  // Fresh thread → start at the bottom with no pending pill.
+  useEffect(() => {
+    setUnseenCount(0);
+    setAwayFromBottom(false);
+  }, [conversationId]);
+
   const handleSend = useCallback(
     async (text: string, replyToId?: string) => {
       if (!conversation) return;
 
-      const tempId = `temp-${Date.now()}`;
+      const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
       // Optimistic update — shows the message immediately with "sending" status
       const optimisticMsg: Message = {
@@ -600,7 +639,7 @@ export function MessageThread({
           ? payload.caption || payload.filename || "Document"
           : payload.caption;
 
-      const tempId = `temp-${Date.now()}`;
+      const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const optimisticMsg: Message = {
         id: tempId,
         conversation_id: conversation.id,
@@ -667,7 +706,7 @@ export function MessageThread({
     async (payload: InteractiveMessagePayload, replyToId?: string) => {
       if (!conversation) return;
 
-      const tempId = `temp-${Date.now()}`;
+      const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       // Optimistic bubble — renders the buttons/list immediately via the
       // interactive_payload, same as the persisted row will.
       const optimisticMsg: Message = {
@@ -756,7 +795,7 @@ export function MessageThread({
       if (!conversation) return;
 
       const renderedBody = renderTemplateBody(template.body_text, values.body);
-      const tempId = `temp-${Date.now()}`;
+      const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
       const optimisticMsg: Message = {
         id: tempId,
@@ -899,7 +938,7 @@ export function MessageThread({
         return [
           ...prev,
           {
-            id: `temp-${Date.now()}`,
+            id: `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             message_id: messageId,
             conversation_id: convId,
             actor_type: "agent",
@@ -1287,14 +1326,32 @@ export function MessageThread({
       </div>
 
       {/* Messages Area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        ref={scrollRef}
+        onScroll={handleThreadScroll}
+        className="scrollbar-thin flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:px-4"
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions"
+      >
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <div className="space-y-3" aria-hidden>
+            {[56, 72, 40, 64, 48, 70].map((w, i) => (
+              <div
+                key={i}
+                className={cn("flex", i % 2 ? "justify-end" : "justify-start")}
+              >
+                <div
+                  className="skeleton h-10 rounded-2xl"
+                  style={{ width: `${w}%`, maxWidth: 420 }}
+                />
+              </div>
+            ))}
           </div>
         ) : messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12">
-            <p className="text-sm text-muted-foreground">{t("noMessagesYet")}</p>
+          <div className="flex flex-col items-center justify-center gap-1 py-12 text-center animate-page-in">
+            <p className="text-sm font-medium text-foreground">{t("noMessagesYet")}</p>
             <p className="text-xs text-muted-foreground">
               {t("sendTemplateHint")}
             </p>
@@ -1361,6 +1418,22 @@ export function MessageThread({
             ))}
           </div>
         )}
+      </div>
+      {awayFromBottom && (
+        <button
+          type="button"
+          onClick={scrollToLatest}
+          className="press absolute bottom-4 right-4 z-10 flex h-10 items-center gap-1.5 rounded-full border border-border bg-card/95 px-3 text-xs font-semibold text-foreground shadow-lg backdrop-blur animate-pop-in hover:bg-muted"
+          aria-label={unseenCount > 0 ? `${unseenCount} new messages, jump to latest` : "Jump to latest message"}
+        >
+          {unseenCount > 0 && (
+            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold tabular-nums text-primary-foreground">
+              {unseenCount > 99 ? "99+" : unseenCount}
+            </span>
+          )}
+          <ArrowDown className="size-4" aria-hidden />
+        </button>
+      )}
       </div>
 
       {/* AI auto-reply banner — take over an active bot, or resume it

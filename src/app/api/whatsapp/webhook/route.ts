@@ -365,7 +365,19 @@ export async function POST(request: Request) {
 async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
   if (!body.entry) return
 
-  for (const entry of body.entry) {
+  const pendingSideWrites: Promise<unknown>[] = []
+  try {
+    await processEntries(body.entry, pendingSideWrites)
+  } finally {
+    await Promise.allSettled(pendingSideWrites)
+  }
+}
+
+async function processEntries(
+  entries: WhatsAppWebhookEntry[],
+  pendingSideWrites: Promise<unknown>[]
+) {
+  for (const entry of entries) {
     for (const change of entry.changes) {
       // Template-lifecycle events (status / quality / components
       // updates from Meta) come in on a different change.field and
@@ -443,10 +455,19 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
         last_message_received_at: new Date().toISOString(),
       }
 
-      await supabaseAdmin()
-        .from('whatsapp_config')
-        .update(heartbeatUpdate)
-        .eq('id', config.id)
+      // Not awaited up front — the heartbeat is bookkeeping and must not
+      // sit in front of the customer's message. Collected and awaited at
+      // the end so `after()` still keeps the function alive for it.
+      pendingSideWrites.push(
+        Promise.resolve(
+          supabaseAdmin()
+            .from('whatsapp_config')
+            .update(heartbeatUpdate)
+            .eq('id', config.id)
+        ).catch((err: unknown) =>
+          console.warn('[webhook] heartbeat update failed:', err)
+        )
+      )
 
       let decryptedAccessToken: string
       try {
@@ -827,29 +848,47 @@ async function processMessage(
     return
   }
 
-  // Parse message content based on type
-  const { contentText, mediaUrl, mediaType, interactiveReplyId } =
-    await parseMessageContent(
+  // Media verification / mirroring, swipe-reply resolution and the
+  // first-inbound check are independent round trips — run them together
+  // so the message row (and therefore the inbox bubble) lands as early as
+  // possible instead of after three sequential network hops.
+  const [parsed, replyToInternalId, priorCustomerMsgCount] = await Promise.all([
+    // Parse message content based on type
+    parseMessageContent(
       message,
       accessToken,
       mirrorMedia ? { accountId } : null
-    )
-
-  // Resolve swipe-reply context if present. A missing parent is fine —
-  // we just store NULL and the UI renders the message without a quote.
-  let replyToInternalId: string | null = null
-  if (message.context?.id) {
-    replyToInternalId = await lookupInternalIdByMetaId(
-      message.context.id,
-      conversation.id
-    )
-    if (!replyToInternalId) {
-      console.warn(
-        '[webhook] reply context parent not found:',
-        message.context.id
+    ),
+    // Resolve swipe-reply context if present. A missing parent is fine —
+    // we just store NULL and the UI renders the message without a quote.
+    (async (): Promise<string | null> => {
+      if (!message.context?.id) return null
+      const found = await lookupInternalIdByMetaId(
+        message.context.id,
+        conversation.id
       )
-    }
-  }
+      if (!found) {
+        console.warn(
+          '[webhook] reply context parent not found:',
+          message.context.id
+        )
+      }
+      return found
+    })(),
+    // Determine whether this is the contact's very first inbound message
+    // BEFORE we insert, so the count is accurate. Covers the case where
+    // the contact row already exists (manual add / CSV import) but they've
+    // never messaged us before — which new_contact_created wouldn't catch.
+    (async (): Promise<number> => {
+      const { count } = await supabaseAdmin()
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('conversation_id', conversation.id)
+        .eq('sender_type', 'customer')
+      return count ?? 0
+    })(),
+  ])
+  const { contentText, mediaUrl, mediaType, interactiveReplyId } = parsed
 
   // Insert message — field names MUST match the messages table schema
   // (see supabase/migrations/001_initial_schema.sql):
@@ -874,16 +913,7 @@ async function processMessage(
         ? 'interactive' // template quick-reply tap (issue #478)
         : 'text'        // reaction, unknown → text fallback
 
-  // Determine whether this is the contact's very first inbound message
-  // BEFORE we insert, so the count is accurate. Covers the case where
-  // the contact row already exists (manual add / CSV import) but they've
-  // never messaged us before — which new_contact_created wouldn't catch.
-  const { count: priorCustomerMsgCount } = await supabaseAdmin()
-    .from('messages')
-    .select('id', { count: 'exact', head: true })
-    .eq('conversation_id', conversation.id)
-    .eq('sender_type', 'customer')
-  const isFirstInboundMessage = (priorCustomerMsgCount ?? 0) === 0
+  const isFirstInboundMessage = priorCustomerMsgCount === 0
 
   // Idempotent insert. Meta retries webhook deliveries (a slow ack, a
   // transient 5xx), and each retry replays the exact same message.id. The
@@ -981,12 +1011,14 @@ async function processMessage(
       .eq('id', conversation.id)
   }
 
-  // A customer writing again re-opens the thread (issue #409)
-  await reopenClosedConversation(supabaseAdmin(), conversation)
-
-  // 2. If this contact was a recent broadcast recipient, flag the reply
-  // so the broadcast's `replied_count` advances (installed in migration 003).
-  await flagBroadcastReplyIfAny(accountId, contactRecord.id)
+  // A customer writing again re-opens the thread (issue #409), and if this
+  // contact was a recent broadcast recipient, flag the reply so the
+  // broadcast's `replied_count` advances (migration 003). Independent
+  // writes — run together.
+  await Promise.all([
+    reopenClosedConversation(supabaseAdmin(), conversation),
+    flagBroadcastReplyIfAny(accountId, contactRecord.id),
+  ])
 
   // 3. Auto-detect Opt-Out and Opt-In keywords (Compliance & Anti-Ban requirement)
   const inboundTextRaw = (contentText ?? message.text?.body ?? '').trim().toLowerCase()

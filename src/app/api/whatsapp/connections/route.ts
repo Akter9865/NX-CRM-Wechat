@@ -6,7 +6,12 @@ import {
   subscribeWabaToApp,
   verifyPhoneNumber,
 } from '@/lib/whatsapp/meta-api';
-import { encrypt } from '@/lib/whatsapp/encryption';
+import { decrypt, encrypt } from '@/lib/whatsapp/encryption';
+import {
+  DEFAULT_WEBHOOK_VERIFY_TOKEN,
+  getConnectionWebhookUrl,
+  getSharedWebhookUrl,
+} from '@/lib/whatsapp/webhook-url';
 import { checkCanAddConnection, getAccountEntitlement } from '@/lib/billing/entitlements';
 import { logAuditEvent } from '@/lib/audit/log';
 import { getAccountBotPauseStatus } from '@/lib/whatsapp/bot-pause-service';
@@ -34,6 +39,16 @@ async function resolveUserAndAccount(supabase: Awaited<ReturnType<typeof createC
   };
 }
 
+/** Stored verify tokens are encrypted; older rows may be plaintext. */
+function readVerifyToken(stored?: string | null): string {
+  if (!stored) return DEFAULT_WEBHOOK_VERIFY_TOKEN;
+  try {
+    return decrypt(stored) || DEFAULT_WEBHOOK_VERIFY_TOKEN;
+  } catch {
+    return stored;
+  }
+}
+
 let _adminClient: SupabaseClient | null = null;
 function supabaseAdmin(): SupabaseClient {
   if (!_adminClient) {
@@ -54,7 +69,7 @@ function supabaseAdmin(): SupabaseClient {
  * For agents/viewers, filters down to assigned connections in team_whatsapp_permissions.
  * For owners/admins, returns all active connections for the account.
  */
-export async function GET(_request: Request) {
+export async function GET(request: Request) {
   try {
     const supabase = await createClient();
     const auth = await resolveUserAndAccount(supabase);
@@ -65,6 +80,7 @@ export async function GET(_request: Request) {
 
     const { user, accountId, role } = auth;
     const isPrivileged = role === 'owner' || role === 'admin';
+    const requestOrigin = new URL(request.url).origin;
 
     const entitlement = await getAccountEntitlement(accountId);
 
@@ -118,6 +134,7 @@ export async function GET(_request: Request) {
       business_portfolio_id?: string;
       app_id?: string;
       app_secret?: string;
+      verify_token?: string | null;
       display_phone_number?: string;
       quality_rating?: string;
       code_verification_status?: string;
@@ -159,12 +176,19 @@ export async function GET(_request: Request) {
       mirror_inbound_media: row.mirror_inbound_media !== false,
       created_at: row.created_at,
       updated_at: row.updated_at,
+      webhook_url: getConnectionWebhookUrl(row.id, requestOrigin),
+      // Only owners/admins configure Meta, so only they see the token.
+      verify_token: isPrivileged ? readVerifyToken(row.verify_token) : undefined,
     }));
 
     const { isGlobalPaused } = await getAccountBotPauseStatus(accountId);
 
     return NextResponse.json({
       connections,
+      webhook: {
+        shared_url: getSharedWebhookUrl(requestOrigin),
+        default_verify_token: DEFAULT_WEBHOOK_VERIFY_TOKEN,
+      },
       is_global_bot_paused: isGlobalPaused,
       usage: {
         current: entitlement.connections.current,

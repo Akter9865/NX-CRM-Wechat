@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { memo, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   CONVERSATION_SELECT,
@@ -37,6 +37,39 @@ interface ConversationListProps {
   isLiveConnected?: boolean;
   soundEnabled?: boolean;
   onToggleSound?: () => void;
+}
+
+const CONVERSATION_PAGE_SIZE = 500;
+
+// Stable per-contact avatar tint so the list is scannable at a glance.
+const AVATAR_TINTS = [
+  "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+  "bg-sky-500/15 text-sky-700 dark:text-sky-300",
+  "bg-violet-500/15 text-violet-700 dark:text-violet-300",
+  "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+  "bg-rose-500/15 text-rose-700 dark:text-rose-300",
+  "bg-teal-500/15 text-teal-700 dark:text-teal-300",
+];
+function avatarTint(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
+  return AVATAR_TINTS[Math.abs(h) % AVATAR_TINTS.length];
+}
+
+function ConversationListSkeleton() {
+  return (
+    <div className="flex flex-col" aria-hidden>
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3 px-3 py-3">
+          <div className="skeleton size-10 shrink-0 rounded-full" />
+          <div className="flex-1 space-y-2">
+            <div className="skeleton h-3 w-2/5 rounded" />
+            <div className="skeleton h-2.5 w-4/5 rounded" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 const STATUS_COLORS: Record<ConversationStatus, string> = {
@@ -134,7 +167,10 @@ export function ConversationList({
       const { data, error } = await supabase
         .from("conversations")
         .select(CONVERSATION_SELECT)
-        .order("last_message_at", { ascending: false });
+        .order("last_message_at", { ascending: false, nullsFirst: false })
+        // Most recent threads only — older ones resurface through
+        // realtime/hydrate the moment they get a new message.
+        .limit(CONVERSATION_PAGE_SIZE);
 
       if (cancelled) return;
 
@@ -237,7 +273,14 @@ export function ConversationList({
       });
     }
 
-    return result;
+    // Keep the list ordered by latest activity. Realtime patches update
+    // last_message_at in place, so without this a thread that just got a
+    // new message would stay where it was instead of jumping to the top.
+    return [...result].sort((a, b) => {
+      const ta = a.last_message_at ? Date.parse(a.last_message_at) : 0;
+      const tb = b.last_message_at ? Date.parse(b.last_message_at) : 0;
+      return tb - ta;
+    });
   }, [conversations, filter, selectedChannel, search, selectedTagIds, selectedCompany, selectedConnectionId]);
 
   const toggleTag = useCallback((id: string) => {
@@ -566,12 +609,13 @@ export function ConversationList({
           parent's overflow-hidden with no scrollbar (issue #229). */}
       <ScrollArea className="min-h-0 flex-1">
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          </div>
+          <ConversationListSkeleton />
         ) : filtered.length === 0 ? (
-          <div className="px-4 py-12 text-center">
-            <p className="text-sm text-muted-foreground">{t("noConversations")}</p>
+          <div className="flex flex-col items-center px-6 py-14 text-center animate-page-in">
+            <div className="mb-3 flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <MessageSquare className="size-5" aria-hidden />
+            </div>
+            <p className="text-sm font-medium text-foreground">{t("noConversations")}</p>
           </div>
         ) : (
           <div className="flex flex-col">
@@ -598,7 +642,9 @@ interface ConversationItemProps {
   t: ReturnType<typeof useTranslations>;
 }
 
-function ConversationItem({
+// Memoised: a realtime event replaces only the changed conversation
+// object, so every other row can skip re-rendering.
+const ConversationItem = memo(function ConversationItem({
   conversation,
   isActive,
   onSelect,
@@ -607,6 +653,8 @@ function ConversationItem({
   const contact = conversation.contact;
   const displayName = contact?.name || contact?.phone || t("unknown");
   const initials = displayName.charAt(0).toUpperCase();
+
+  const hasUnread = conversation.unread_count > 0;
 
   const handleClick = useCallback(() => {
     onSelect(conversation);
@@ -620,14 +668,23 @@ function ConversationItem({
 
   return (
     <button
+      type="button"
       onClick={handleClick}
+      aria-current={isActive ? "true" : undefined}
       className={cn(
-        "flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-muted/50",
-        isActive && "border-l-2 border-primary bg-muted/70"
+        // Inset shadow (not a border) marks the active row so selecting
+        // never shifts the content sideways.
+        "group flex min-h-[64px] w-full items-start gap-3 px-3 py-3 text-left transition-[background-color,box-shadow] duration-150 hover:bg-muted/50 active:bg-muted/80 focus-visible:outline-offset-[-2px]",
+        isActive && "bg-primary/[0.07] shadow-[inset_3px_0_0_var(--primary)] hover:bg-primary/10"
       )}
     >
       {/* Avatar */}
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+      <div
+        className={cn(
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold",
+          contact?.avatar_url ? "bg-muted" : avatarTint(conversation.contact_id || conversation.id),
+        )}
+      >
         {contact?.avatar_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -643,13 +700,30 @@ function ConversationItem({
       {/* Content */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-sm font-medium text-foreground">
+          <span
+            className={cn(
+              "truncate text-sm text-foreground",
+              hasUnread ? "font-semibold" : "font-medium",
+            )}
+          >
             {displayName}
           </span>
-          <span className="shrink-0 text-[10px] text-muted-foreground">{timeAgo}</span>
+          <span
+            className={cn(
+              "shrink-0 text-[10px] tabular-nums",
+              hasUnread ? "font-semibold text-primary" : "text-muted-foreground",
+            )}
+          >
+            {timeAgo}
+          </span>
         </div>
         <div className="mt-0.5 flex items-center justify-between gap-2">
-          <p className="truncate text-xs text-muted-foreground flex-1">
+          <p
+            className={cn(
+              "flex-1 truncate text-xs",
+              hasUnread ? "text-foreground/85" : "text-muted-foreground",
+            )}
+          >
             {conversation.last_message_text || t("noMessagesYet")}
           </p>
           <div className="flex shrink-0 items-center gap-1.5">
@@ -669,9 +743,13 @@ function ConversationItem({
                 {conversation.whatsapp_connection.connection_name || conversation.whatsapp_connection.display_phone_number}
               </span>
             ) : null}
-            {conversation.unread_count > 0 && (
-              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
-                {conversation.unread_count}
+            {hasUnread && (
+              <span
+                key={conversation.unread_count}
+                className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold tabular-nums text-primary-foreground animate-pop-in"
+                aria-label={`${conversation.unread_count} unread`}
+              >
+                {conversation.unread_count > 99 ? "99+" : conversation.unread_count}
               </span>
             )}
             <span
@@ -686,4 +764,4 @@ function ConversationItem({
       </div>
     </button>
   );
-}
+});

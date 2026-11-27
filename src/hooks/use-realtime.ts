@@ -57,10 +57,16 @@ export function useRealtime({
     const scopedTopic = accountId ? `${channelName}-${accountId}` : channelName;
     const channel = supabase.channel(scopedTopic);
 
-    // Messages subscription
+    // Messages subscription. Filtered server-side by account (migration
+    // 058 added messages.account_id) so Realtime only evaluates RLS for
+    // this tenant's rows instead of every message on the platform — the
+    // unfiltered stream was the main source of inbox lag.
+    const msgFilter = accountId ? `account_id=eq.${accountId}` : undefined;
     channel.on(
       "postgres_changes",
-      { event: "*", schema: "public", table: "messages" },
+      msgFilter
+        ? { event: "*", schema: "public", table: "messages", filter: msgFilter }
+        : { event: "*", schema: "public", table: "messages" },
       (payload) => {
         onMessageRef.current?.({
           eventType: payload.eventType as RealtimeEvent<Message>["eventType"],

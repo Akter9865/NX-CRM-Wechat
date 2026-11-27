@@ -227,6 +227,8 @@ export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed'
 export interface Message {
   id: string;
   conversation_id: string;
+  /** Denormalised by trigger (migration 058); used to scope realtime. */
+  account_id?: string;
   sender_type: SenderType;
   sender_id?: string;
   content_type: ContentType;
@@ -295,6 +297,8 @@ export interface WhatsAppConfig {
   code_verification_status?: string;
   access_token: string;
   verify_token?: string;
+  /** Dedicated Meta callback URL for this connection (API-provided). */
+  webhook_url?: string;
   status: 'connected' | 'connecting' | 'disconnected' | 'error' | 'banned' | 'restricted' | 'flagged' | 'deactivated' | 'replaced';
   is_default?: boolean;
   is_archived?: boolean;

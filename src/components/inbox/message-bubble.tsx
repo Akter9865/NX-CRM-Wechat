@@ -253,16 +253,18 @@ export function MessageBubble({
   return (
     <div
       className={cn(
-        "flex flex-col",
-        isAgent ? "items-end" : "items-start",
+        "flex flex-col animate-message-in",
+        isAgent ? "items-end origin-bottom-right" : "items-start origin-bottom-left",
       )}
     >
       <div
         className={cn(
-          "relative rounded-2xl px-3 py-2",
+          "relative rounded-2xl px-3 py-2 shadow-xs transition-[opacity,box-shadow] duration-200",
           isAgent
             ? "rounded-br-md bg-primary text-primary-foreground"
             : "rounded-bl-md bg-muted text-foreground",
+          message.status === "sending" && "opacity-80",
+          message.status === "failed" && "ring-2 ring-rose-500/60 ring-offset-1 ring-offset-background",
         )}
       >
         {reply && (

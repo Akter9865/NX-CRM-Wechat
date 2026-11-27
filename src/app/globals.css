@@ -497,3 +497,147 @@ html[data-theme="slate"] {
     -webkit-text-fill-color: transparent;
   }
 }
+/* ==========================================================================
+   Motion system
+   One set of durations/easings shared by every interactive surface so
+   transitions feel consistent: micro (press/hover), base (enter/exit),
+   page (route change). Everything collapses under prefers-reduced-motion.
+   ========================================================================== */
+:root {
+  --motion-micro: 120ms;
+  --motion-base: 220ms;
+  --motion-page: 320ms;
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes message-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes list-item-in {
+  from {
+    opacity: 0;
+    transform: translate3d(-4px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes skeleton-sweep {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+@keyframes pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@layer utilities {
+  .animate-page-in {
+    animation: page-in var(--motion-page) var(--ease-out-soft) both;
+  }
+  .animate-message-in {
+    animation: message-in var(--motion-base) var(--ease-out-soft) both;
+  }
+  .animate-list-item-in {
+    animation: list-item-in var(--motion-base) var(--ease-out-soft) both;
+  }
+  .animate-pop-in {
+    animation: pop-in var(--motion-base) var(--ease-spring) both;
+  }
+  /* Neutral skeleton that reads in both light and dark themes. */
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--muted) 0%,
+      color-mix(in oklch, var(--muted) 55%, var(--background)) 50%,
+      var(--muted) 100%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-sweep 1.4s ease-in-out infinite;
+  }
+  /* Press feedback without shifting layout bounds. */
+  .press {
+    transition: transform var(--motion-micro) var(--ease-out-soft);
+  }
+  .press:active {
+    transform: scale(0.97);
+  }
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklch, var(--muted-foreground) 35%, transparent) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background: color-mix(in oklch, var(--muted-foreground) 35%, transparent);
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  /* Smooth scrolling for in-page anchors, but never for users who opted out. */
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
