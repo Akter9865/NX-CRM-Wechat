@@ -45,7 +45,11 @@ export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: Pricing
   const searchParams = useSearchParams();
   const { account, accountId, user, profile } = useAuth();
   const [plans, setPlans] = useState<PlanConfig[]>(PLAN_LIST);
-  const [manualPlanModal, setManualPlanModal] = useState<PlanConfig | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<PlanConfig | null>(null);
+  // The ?upgrade=<planId> deep link the user already closed — derived
+  // instead of copied into state from an effect, so the modal opens on
+  // the first render that has the plan list without a cascading render.
+  const [dismissedAutoPlanId, setDismissedAutoPlanId] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   useEffect(() => {
@@ -59,16 +63,20 @@ export function PricingCards({ currentPlanId = 'free', onPlanUpgraded }: Pricing
       .catch(() => {});
   }, []);
 
-  // Auto-trigger if ?upgrade=planId is in query params
-  useEffect(() => {
-    const autoPlanId = searchParams?.get('upgrade') as PlanId;
-    if (autoPlanId && autoPlanId !== 'free' && autoPlanId !== currentPlanId) {
-      const match = plans.find((p) => p.id === autoPlanId);
-      if (match) {
-        setManualPlanModal(match);
-      }
-    }
-  }, [searchParams, currentPlanId, plans]);
+  // Auto-open when ?upgrade=planId is in the query params.
+  const autoPlanId = searchParams?.get('upgrade') as PlanId | null;
+  const autoPlan =
+    autoPlanId &&
+    autoPlanId !== 'free' &&
+    autoPlanId !== currentPlanId &&
+    autoPlanId !== dismissedAutoPlanId
+      ? plans.find((p) => p.id === autoPlanId) ?? null
+      : null;
+  const manualPlanModal = selectedPlan ?? autoPlan;
+  const setManualPlanModal = (plan: PlanConfig | null) => {
+    if (!plan && autoPlanId) setDismissedAutoPlanId(autoPlanId);
+    setSelectedPlan(plan);
+  };
 
   const cleanPhone = '918653678794';
   const upiId = '8653678794@upi';
