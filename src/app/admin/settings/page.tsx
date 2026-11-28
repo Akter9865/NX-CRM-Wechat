@@ -35,7 +35,7 @@ export default function AdminSettingsPage() {
 
   // General Settings State
   const [platformName, setPlatformName] = useState('NX CRM');
-  const [companyName, setCompanyName] = useState('Nexora Spark Agency');
+  const [companyName, setCompanyName] = useState('NX CRM');
   const [supportEmail, setSupportEmail] = useState('nexorasparkagencyofficial@gmail.com');
   const [salesEmail, setSalesEmail] = useState('nexorasparkagencyofficial@gmail.com');
   const [phone, setPhone] = useState('+91 8653678794');
@@ -77,7 +77,7 @@ export default function AdminSettingsPage() {
   const [razorpayKeySecret, setRazorpayKeySecret] = useState('');
   const [razorpayWebhookSecret, setRazorpayWebhookSecret] = useState('');
   const [upiId, setUpiId] = useState('8653678794@upi');
-  const [upiBusinessName, setUpiBusinessName] = useState('NX CRM / Nexora Spark Agency');
+  const [upiBusinessName, setUpiBusinessName] = useState('NX CRM');
   const [manualQrEnabled, setManualQrEnabled] = useState(true);
   const [autoActivate, setAutoActivate] = useState(true);
 
@@ -103,7 +103,7 @@ export default function AdminSettingsPage() {
         const { general, billing, payment_gateway, meta_embedded_signup, auth_providers } = data.settings;
         if (general) {
           setPlatformName(general.platform_name || 'NX CRM');
-          setCompanyName(general.company_name || 'Nexora Spark Agency');
+          setCompanyName(general.company_name || 'NX CRM');
           setSupportEmail(general.support_email || 'nexorasparkagencyofficial@gmail.com');
           setSalesEmail(general.sales_email || 'nexorasparkagencyofficial@gmail.com');
           setPhone(general.phone || '+91 8653678794');
@@ -139,7 +139,7 @@ export default function AdminSettingsPage() {
           setRazorpayKeySecret(payment_gateway.razorpay_key_secret || '');
           setRazorpayWebhookSecret(payment_gateway.razorpay_webhook_secret || '');
           setUpiId(payment_gateway.upi_id || '8653678794@upi');
-          setUpiBusinessName(payment_gateway.upi_business_name || 'NX CRM / Nexora Spark Agency');
+          setUpiBusinessName(payment_gateway.upi_business_name || 'NX CRM');
           setManualQrEnabled(payment_gateway.manual_qr_enabled !== false);
           setAutoActivate(payment_gateway.auto_activate_on_payment !== false);
         }

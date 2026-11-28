@@ -140,8 +140,6 @@ export default async function Image() {
               fontWeight: '600',
             }}
           >
-            <span>Powered by Nexora Spark Agency</span>
-            <span>•</span>
             <span style={{ color: '#60A5FA' }}>https://nxcrm.online</span>
           </div>
         </div>

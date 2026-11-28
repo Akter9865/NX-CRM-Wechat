@@ -139,7 +139,7 @@ export default function AdminLoginPage() {
 
           {/* Footer note */}
           <div className="text-center pt-2 border-t border-slate-800/80 text-[11px] text-slate-500">
-            Powered by <strong className="text-slate-400">Nexora Spark Agency</strong>
+            <strong className="text-slate-400">NX CRM</strong> Admin Console
           </div>
         </div>
       </div>

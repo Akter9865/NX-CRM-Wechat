@@ -9,7 +9,7 @@ export const metadata = {
     template: '%s | NX CRM',
   },
   description:
-    'Manage WhatsApp conversations, contacts, visual automations, AI auto-replies, and multi-agent customer workflows in one modern CRM. Powered by Nexora Spark Agency.',
+    'Manage WhatsApp conversations, contacts, visual automations, AI auto-replies, and multi-agent customer workflows in one modern CRM.',
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://nxcrm.online'),
   alternates: {
     canonical: '/',

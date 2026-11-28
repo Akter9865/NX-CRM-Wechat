@@ -149,7 +149,7 @@ export function AdminSidebar({ open = false, onClose }: AdminSidebarProps) {
                     Admin
                   </span>
                 </div>
-                <p className="text-[10px] text-muted-foreground">Nexora Spark Agency</p>
+                <p className="text-[10px] text-muted-foreground">Control Center</p>
               </div>
             </Link>
 

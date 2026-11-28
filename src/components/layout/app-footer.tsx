@@ -14,17 +14,10 @@ export function AppFooter({ className }: { className?: string }) {
       )}
     >
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 max-w-7xl mx-auto">
-        {/* Left: Product & Agency Branding */}
+        {/* Left: Product branding */}
         <div className="flex items-center gap-2 flex-wrap justify-center sm:justify-start">
           <span className="font-semibold text-foreground tracking-tight">
             NX CRM Enterprise
-          </span>
-          <span className="text-muted-foreground/40 font-mono">•</span>
-          <span className="flex items-center gap-1 font-medium">
-            <span>Crafted & Powered by</span>
-            <span className="font-bold text-foreground bg-gradient-to-r from-emerald-400 via-teal-400 to-blue-500 bg-clip-text text-transparent">
-              Nexora Spark Agency
-            </span>
           </span>
         </div>
 
@@ -39,7 +32,7 @@ export function AppFooter({ className }: { className?: string }) {
             Commercial SaaS License
           </span>
           <span className="text-muted-foreground/30 font-mono hidden sm:inline">•</span>
-          <span>© {currentYear} Nexora Spark Agency. All rights reserved.</span>
+          <span>© {currentYear} NX CRM. All rights reserved.</span>
         </div>
       </div>
     </footer>

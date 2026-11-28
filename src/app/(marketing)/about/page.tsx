@@ -18,9 +18,9 @@ import {
 import { Button } from '@/components/ui/button';
 
 export const metadata = {
-  title: 'About Us — NX CRM & Nexora Spark Agency',
+  title: 'About Us — NX CRM',
   description:
-    'Discover the vision behind NX CRM, the modern multi-tenant WhatsApp CRM platform built by Nexora Spark Agency in West Bengal, India.',
+    'Discover the vision behind NX CRM, the modern multi-tenant WhatsApp CRM platform built in West Bengal, India.',
 };
 
 export default function AboutPage() {
@@ -31,7 +31,7 @@ export default function AboutPage() {
         <div className="text-center max-w-3xl mx-auto space-y-6">
           <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-xs font-semibold text-emerald-800 shadow-xs">
             <Sparkles className="size-3.5 text-emerald-600" />
-            <span>Built by Nexora Spark Agency</span>
+            <span>Built in India for growing businesses</span>
           </div>
 
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-slate-900 tracking-tight leading-tight">

@@ -1,6 +1,6 @@
 -- ==============================================================================
 -- NX CRM — FULL PRODUCTION SUPABASE CONSOLIDATED SCHEMA (v1.0.0 Enterprise)
--- Powered by Nexora Spark Agency
+-- NX CRM
 --
 -- This script is completely IDEMPOTENT and backward-compatible.
 -- It safely upgrades existing tables with missing columns before adding
@@ -925,7 +925,7 @@ INSERT INTO system_settings (key, value)
 VALUES
   ('general', '{
     "platform_name": "NX CRM",
-    "company_name": "Nexora Spark Agency",
+    "company_name": "NX CRM",
     "support_email": "nexorasparkagencyofficial@gmail.com",
     "sales_email": "nexorasparkagencyofficial@gmail.com",
     "phone": "+91 8653678794",
@@ -954,7 +954,7 @@ VALUES
     "razorpay_key_secret": "",
     "razorpay_webhook_secret": "",
     "upi_id": "8653678794@upi",
-    "upi_business_name": "NX CRM / Nexora Spark Agency",
+    "upi_business_name": "NX CRM",
     "manual_qr_enabled": true,
     "auto_activate_on_payment": true
   }'::jsonb)

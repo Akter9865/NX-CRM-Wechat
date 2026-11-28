@@ -25,12 +25,12 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://nxcrm.online'),
   title: {
     default: "NX CRM — WhatsApp CRM, Automation & AI for Growing Businesses",
-    template: "%s — NX CRM | Nexora Spark Agency",
+    template: "%s — NX CRM",
   },
-  description: "Next-generation enterprise CRM for WhatsApp with AI Auto-Replies, Visual Flow Builder, Multi-Agent Team Management, and Shared Inbox. Powered by Nexora Spark Agency.",
-  authors: [{ name: "Nexora Spark Agency", url: "https://nexorasparkagency.com" }],
-  creator: "Nexora Spark Agency",
-  publisher: "Nexora Spark Agency",
+  description: "Next-generation enterprise CRM for WhatsApp with AI Auto-Replies, Visual Flow Builder, Multi-Agent Team Management, and Shared Inbox.",
+  authors: [{ name: "NX CRM", url: "https://nxcrm.online" }],
+  creator: "NX CRM",
+  publisher: "NX CRM",
   applicationName: "NX CRM Enterprise",
   robots: {
     index: true,

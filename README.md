@@ -1,8 +1,7 @@
 # NX CRM — Enterprise WhatsApp & WeChat AI CRM Suite
 
 <p align="center">
-  <strong>The Next-Gen Multi-Tenant Omni-Channel CRM with Gemini AI & Visual Automations</strong><br>
-  <em>Developed, Maintained, and Powered by <strong>Nexora Spark Agency</strong></em>
+  <strong>The Next-Gen Multi-Tenant Omni-Channel CRM with Gemini AI & Visual Automations</strong>
 </p>
 
 ---

@@ -40,8 +40,8 @@ export function BrandLogo({
     <div className={cn('flex items-center gap-2 group transition-transform duration-200 hover:opacity-95', className)}>
       <div className="relative flex items-center shrink-0">
         <Image
-          src="/images/marketing/nxcrm-logo-tight.png"
-          alt="NX CRM - Powered by Nexora Spark Agency"
+          src="/images/marketing/nxcrm-wordmark.png"
+          alt="NX CRM"
           width={imageWidthMap[size]}
           height={imageHeightMap[size]}
           priority

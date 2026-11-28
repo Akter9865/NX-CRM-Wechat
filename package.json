@@ -2,10 +2,10 @@
   "name": "nx-crm-wechat",
   "version": "1.0.0",
   "private": true,
-  "description": "Enterprise Multi-Tenant WhatsApp & WeChat AI CRM platform with shared inbox, visual flow builder, AI auto-replies, and billing — powered by Nexora Spark Agency.",
+  "description": "Enterprise Multi-Tenant WhatsApp & WeChat AI CRM platform with shared inbox, visual flow builder, AI auto-replies, and billing.",
   "license": "UNLICENSED",
   "author": "Nexora Spark Agency <contact@nexorasparkagency.com>",
-  "homepage": "https://nexorasparkagency.com",
+  "homepage": "https://nxcrm.online",
   "keywords": [
     "crm",
     "whatsapp",
