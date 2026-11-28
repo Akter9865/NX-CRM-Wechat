@@ -1,7 +1,6 @@
 /**
  * Centralized Site and Organization Configuration for NX CRM.
  * Single source of truth for branding, URLs, legal company entities, and contact channels.
- * Powered by Nexora Spark Agency.
  */
 
 export const siteConfig = {
@@ -10,9 +9,9 @@ export const siteConfig = {
   description:
     'Manage WhatsApp conversations, contacts, visual automations, AI agents, and multi-agent team workflows in one powerful CRM.',
   brand: 'NX CRM',
-  parentCompany: 'Nexora Spark Agency',
+  parentCompany: 'NX CRM',
   companyName: 'NX CRM',
-  legalCompanyName: 'Nexora Spark Agency',
+  legalCompanyName: 'NX CRM',
   businessAddress: 'Sripur Bazar, Balagarh, West Bengal 712514, India',
   jurisdiction: 'West Bengal, India',
   phone: '+91 8653678794',
@@ -24,12 +23,6 @@ export const siteConfig = {
   securityEmail: 'nexorasparkagencyofficial@gmail.com',
   websiteUrl: process.env.NEXT_PUBLIC_SITE_URL || 'https://nxcrm.online',
   appUrl: process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://nxcrm.online',
-  social: {
-    instagram: 'https://instagram.com/nexorasparkagency',
-    linkedin: 'https://linkedin.com/company/nexorasparkagency',
-    twitter: 'https://x.com/nexoraspark',
-    youtube: 'https://youtube.com/@nexorasparkagency',
-  },
   links: {
     github: 'https://github.com/Akter9865/NX-CRM-Wechat',
     docs: '/docs',

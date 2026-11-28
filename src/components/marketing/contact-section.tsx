@@ -107,7 +107,7 @@ export function ContactSection() {
           </h2>
 
           <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
-            Connect instantly on WhatsApp, give us a call, or send an inquiry. Our dedicated team at Nexora Spark Agency is ready to assist with onboarding, custom plans, and enterprise integrations.
+            Connect instantly on WhatsApp, give us a call, or send an inquiry. Our dedicated NX CRM team is ready to assist with onboarding, custom plans, and enterprise integrations.
           </p>
         </div>
 
@@ -219,8 +219,8 @@ export function ContactSection() {
                   NX
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-slate-900">Nexora Spark Agency</h4>
-                  <p className="text-[11px] text-slate-500">Official Tech & Operating Entity</p>
+                  <h4 className="text-sm font-bold text-slate-900">NX CRM</h4>
+                  <p className="text-[11px] text-slate-500">Official Support Team</p>
                 </div>
               </div>
 

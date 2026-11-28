@@ -5,7 +5,7 @@ import { ShieldCheck, Lock, Database, EyeOff, Server, FileText } from 'lucide-re
 export const metadata = {
   title: 'Privacy Policy — NX CRM Data Protection & Multi-Tenant Security',
   description:
-    'Learn how NX CRM, operated by Nexora Spark Agency, safeguards your WhatsApp conversations, contact lists, AI keys, and payments with strict Row Level Security (RLS) and AES-256 encryption.',
+    'Learn how NX CRM safeguards your WhatsApp conversations, contact lists, AI keys, and payments with strict Row Level Security (RLS) and AES-256 encryption.',
 };
 
 export default function PrivacyPolicyPage() {
@@ -35,7 +35,7 @@ export default function PrivacyPolicyPage() {
           <section className="space-y-3">
             <h2 className="text-lg font-bold text-slate-900">1. Commitment to Privacy</h2>
             <p>
-              <strong>{siteConfig.legalCompanyName}</strong> (&quot;NX CRM&quot;, &quot;we&quot;, &quot;us&quot;, or &quot;our&quot;) provides an enterprise multi-tenant WhatsApp CRM, Shared Inbox, and Visual Automation SaaS platform. We are deeply committed to protecting your organizational privacy, customer phone records, and communication transcripts in strict compliance with the Digital Personal Data Protection Act, 2023 (DPDP, India), GDPR, and Meta&apos;s Platform Data Policies.
+              <strong>{siteConfig.legalCompanyName}</strong> (&quot;we&quot;, &quot;us&quot;, or &quot;our&quot;) provides an enterprise multi-tenant WhatsApp CRM, Shared Inbox, and Visual Automation SaaS platform. We are deeply committed to protecting your organizational privacy, customer phone records, and communication transcripts in strict compliance with the Digital Personal Data Protection Act, 2023 (DPDP, India), GDPR, and Meta&apos;s Platform Data Policies.
             </p>
           </section>
 
@@ -118,7 +118,7 @@ export default function PrivacyPolicyPage() {
               For privacy audits, compliance verification, or questions regarding personal data processing:
             </p>
             <div className="mt-3 p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1 text-xs text-slate-700">
-              <p><strong>Entity:</strong> {siteConfig.legalCompanyName} (NX CRM)</p>
+              <p><strong>Entity:</strong> {siteConfig.legalCompanyName}</p>
               <p><strong>Attn:</strong> Data Protection & Security Compliance Office</p>
               <p><strong>Address:</strong> {siteConfig.businessAddress}</p>
               <p><strong>Email:</strong> <a href={`mailto:${siteConfig.privacyEmail}`} className="text-emerald-700 underline font-semibold">{siteConfig.privacyEmail}</a></p>

@@ -26,7 +26,7 @@ export async function GET() {
       settings: {
         general: settingsMap.general || {
           platform_name: 'NX CRM',
-          company_name: 'Nexora Spark Agency',
+          company_name: 'NX CRM',
           support_email: 'nexorasparkagencyofficial@gmail.com',
           sales_email: 'nexorasparkagencyofficial@gmail.com',
           default_trial_days: 14,
@@ -70,7 +70,7 @@ export async function GET() {
           razorpay_key_secret: process.env.RAZORPAY_KEY_SECRET ? '••••••••' : '',
           razorpay_webhook_secret: process.env.RAZORPAY_WEBHOOK_SECRET ? '••••••••' : '',
           upi_id: '8653678794@upi',
-          upi_business_name: 'NX CRM / Nexora Spark Agency',
+          upi_business_name: 'NX CRM',
           manual_qr_enabled: true,
           auto_activate_on_payment: true,
           ...((settingsMap.payment_gateway as Record<string, unknown>) || {}),

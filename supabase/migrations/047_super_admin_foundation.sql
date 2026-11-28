@@ -109,7 +109,7 @@ INSERT INTO system_settings (key, value)
 VALUES
   ('general', '{
     "platform_name": "NX CRM",
-    "company_name": "Nexora Spark Agency",
+    "company_name": "NX CRM",
     "support_email": "support@nxcrm.online",
     "sales_email": "sales@nxcrm.online",
     "default_trial_days": 14,

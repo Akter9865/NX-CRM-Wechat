@@ -5,7 +5,7 @@ import { FileText, Shield, AlertTriangle, CheckCircle2, Lock, Scale } from 'luci
 export const metadata = {
   title: 'Terms of Service — NX CRM SaaS Agreement & Compliance',
   description:
-    'Read the official Terms of Service, Meta WhatsApp Cloud API compliance rules, and Master Services Agreement for NX CRM, operated by Nexora Spark Agency.',
+    'Read the official Terms of Service, Meta WhatsApp Cloud API compliance rules, and Master Services Agreement for NX CRM.',
 };
 
 export default function TermsPage() {
@@ -160,7 +160,7 @@ export default function TermsPage() {
               For formal legal notices, questions about these Terms, or enterprise data protection agreements, please contact:
             </p>
             <div className="mt-3 p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5 text-xs text-slate-700">
-              <p><strong>Entity:</strong> {siteConfig.legalCompanyName} ({siteConfig.brand})</p>
+              <p><strong>Entity:</strong> {siteConfig.legalCompanyName}</p>
               <p><strong>Address:</strong> {siteConfig.businessAddress}</p>
               <p><strong>Email:</strong> <a href={`mailto:${siteConfig.supportEmail}`} className="text-emerald-700 underline font-semibold">{siteConfig.supportEmail}</a></p>
               <p><strong>Phone:</strong> <a href={`tel:${siteConfig.phone}`} className="text-emerald-700 underline font-semibold">{siteConfig.phone}</a></p>

@@ -563,7 +563,7 @@ export function ChannelsPanel() {
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-foreground">Channel Name</label>
               <Input
-                placeholder="e.g. Nexora Support Telegram"
+                placeholder="e.g. Support Telegram"
                 value={tgName}
                 onChange={(e) => setTgName(e.target.value)}
                 className="h-9 text-xs bg-background"

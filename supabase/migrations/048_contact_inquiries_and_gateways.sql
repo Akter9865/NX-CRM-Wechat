@@ -52,7 +52,7 @@ VALUES
     "razorpay_key_secret": "",
     "razorpay_webhook_secret": "",
     "upi_id": "8653678794@upi",
-    "upi_business_name": "NX CRM / Nexora Spark Agency",
+    "upi_business_name": "NX CRM",
     "manual_qr_enabled": true,
     "auto_activate_on_payment": true
   }'::jsonb)

@@ -152,8 +152,8 @@ function ContactPageInner() {
                     <Building className="size-4" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-slate-900">Nexora Spark Agency</h4>
-                    <p className="text-slate-500 mt-0.5">Parent Operating Company</p>
+                    <h4 className="font-bold text-slate-900">NX CRM</h4>
+                    <p className="text-slate-500 mt-0.5">Operating Company</p>
                   </div>
                 </div>
               </div>
